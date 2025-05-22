@@ -1,0 +1,23 @@
+{
+  "name": "code-reviews-of-gui-tests",
+  "version": "1.0.0",
+  "description": "Prototype to address the challenge of reviewing GUI tests",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/issues"
+  },
+  "homepage": "https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.52.0"
+  }
+}
