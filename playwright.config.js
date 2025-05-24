@@ -4,9 +4,14 @@ module.exports = defineConfig({
   testDir: './tests',
   use: {
     headless: true,
-    screenshot: 'only-on-failure',
-    trace: 'on-first-retry',
-    video: 'retain-on-failure',
+    screenshot: 'on',
+    trace: 'on',
+    video: 'off',
+    ignoreHTTPSErrors: true,
   },
-  reporter: [['html', { outputFolder: 'playwright-report' }]],
+  reporter: [
+    ['list'], // optional for CLI output
+    ['json', { outputFile: 'playwright-report/report.json' }],
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+  ],
 });
