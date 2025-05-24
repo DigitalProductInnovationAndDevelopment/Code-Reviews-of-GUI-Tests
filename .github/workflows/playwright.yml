@@ -39,12 +39,13 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
-
-      - name: Output test summary to GitHub Actions summary
-        if: always()
+      - name: Generate test summary from Playwright JSON
+        id: generate-summary
         run: |
-          node scripts/parse-playwright-results.js >> $GITHUB_STEP_SUMMARY
-
+          node scripts/parse-playwright-results.js > summary.txt
+          echo "COMMENT_BODY<<EOF" >> $GITHUB_ENV
+          cat summary.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Comment summary on PR
         if: always()
@@ -52,11 +53,4 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            $(node scripts/parse-playwright-results.js)
-
-      - name: Add Playwright report to GitHub summary
-        if: always()
-        run: |
-          echo "## 🧪 Playwright Test Report" >> $GITHUB_STEP_SUMMARY
-          echo "[🔗 View HTML report in artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          body: ${{ env.COMMENT_BODY }}

@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const reportPath = path.join(__dirname, '../playwright-report/report.json');
+const reportPath = path.join(__dirname, '../metrics.json');
 
 if (!fs.existsSync(reportPath)) {
   console.log("❗ No test results found.");
