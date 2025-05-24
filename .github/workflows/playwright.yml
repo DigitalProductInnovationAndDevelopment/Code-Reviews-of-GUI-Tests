@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -38,18 +38,25 @@ jobs:
         with:
           name: playwright-report
           path: playwright-report/
-          message: |
-            🧪 **Playwright Tests Completed**
-
-            ✅ Tests finished running.
-
-            📁 **[Download report (HTML)](${{ steps.upload.outputs.artifact_url }})**
-
-            _You can find detailed results, screenshots, and traces in the report above._
-
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
+      - name: Output test summary to GitHub Actions summary
+        if: always()
+        run: |
+          node scripts/parse-playwright-results.js >> $GITHUB_STEP_SUMMARY
 
-          
+
+      - name: Comment summary on PR
+        if: always()
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            $(node scripts/parse-playwright-results.js)
+
+      - name: Add Playwright report to GitHub summary
+        if: always()
+        run: |
+          echo "## 🧪 Playwright Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "[🔗 View HTML report in artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
