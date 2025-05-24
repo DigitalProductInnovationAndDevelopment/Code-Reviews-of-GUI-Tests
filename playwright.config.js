@@ -10,7 +10,7 @@ module.exports = defineConfig({
     ignoreHTTPSErrors: true,
   },
   reporter: [
-    ['json', { outputFile: 'metric.json' }],
+    ['json', { outputFile: 'metrics.json' }],
     ['html', { outputFile: 'report.html', open: 'never' }],
   ],
 });
