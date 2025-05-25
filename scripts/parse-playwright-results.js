@@ -52,4 +52,4 @@ if (process.env.GITHUB_RUN_ID && process.env.GITHUB_REPOSITORY) {
   summary.push(`\n**Full HTML report:** [View in Actions](${reportUrl})`);
 }
 
-fs.writeFileSync('summary.txt', summary.join('\n'));
+fs.writeFileSync('scripts/summary.txt', summary.join('\n'));

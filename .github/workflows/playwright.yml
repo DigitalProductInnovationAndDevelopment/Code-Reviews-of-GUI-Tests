@@ -40,17 +40,10 @@ jobs:
           path: playwright-report/
 
       - name: Generate test summary
-        run: node scripts/parse-playwright-results.js
-        env:
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-
-      - name: Read summary file
-        id: read_summary
+        id: summary
         run: |
-          echo "summary<<EOF" >> $GITHUB_OUTPUT
-          cat scripts/summary.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          node scripts/parse-playwright-results.js
+          echo "summary=$(cat scripts/summary.txt)" >> $GITHUB_OUTPUT
 
       - name: Comment summary on PR
         if: always()
@@ -58,4 +51,4 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ github.event.pull_request.number }}
-          body: ${{ steps.read_summary.outputs.summary }}
+          body: ${{ steps.summary.outputs.summary }}
