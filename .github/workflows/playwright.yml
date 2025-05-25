@@ -48,7 +48,12 @@ jobs:
           FAILED=$(jq '[.suites[].specs[] | .tests[] | select(.status=="failed")] | length' $REPORT_FILE)
           SKIPPED=$(jq '[.suites[].specs[] | .tests[] | select(.status=="skipped")] | length' $REPORT_FILE)
           DURATION=$(jq '[.suites[].duration] | add' $REPORT_FILE)
-          PASS_RATE=$(awk "BEGIN {printf \"%.2f\", ($PASSED/$TOTAL)*100}")
+
+          if [ "$TOTAL" -eq 0 ]; then
+            PASS_RATE="%0.00"
+          else
+            PASS_RATE=$(awk "BEGIN {printf \"%.2f\", ($PASSED/$TOTAL)*100}")
+          fi
 
           echo "total=$TOTAL" >> $GITHUB_OUTPUT
           echo "passed=$PASSED" >> $GITHUB_OUTPUT
