@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
 
     steps:
@@ -39,18 +39,45 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
-      - name: Generate test summary from Playwright JSON
-        id: generate-summary
+      - name: Extract test summary
+        id: summary
         run: |
-          node scripts/parse-playwright-results.js > summary.txt
-          echo "COMMENT_BODY<<EOF" >> $GITHUB_ENV
-          cat summary.txt >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          REPORT_FILE="metrics.json"
 
-      - name: Comment summary on PR
-        if: always()
-        uses: peter-evans/create-or-update-comment@v3
+          TOTAL=$(jq '[.suites[].suites[].specs[].tests[]] | length' $REPORT_FILE)
+          PASSED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="expected")] | length' $REPORT_FILE)
+          FAILED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="failed")] | length' $REPORT_FILE)
+          SKIPPED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="skipped")] | length' $REPORT_FILE)
+          DURATION=$(jq '.stats.duration * 1000 | floor' $REPORT_FILE)
+
+          if [ "$TOTAL" -eq 0 ]; then
+            PASS_RATE="0.00"
+          else
+            PASS_RATE=$(awk "BEGIN {printf \"%.2f\", ($PASSED/$TOTAL)*100}")
+          fi
+
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "failed=$FAILED" >> $GITHUB_OUTPUT
+          echo "skipped=$SKIPPED" >> $GITHUB_OUTPUT
+          echo "duration=$DURATION" >> $GITHUB_OUTPUT
+          echo "passrate=$PASS_RATE" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR with test results
+        uses: marocchino/sticky-pull-request-comment@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body: ${{ env.COMMENT_BODY }}
+          message: |
+            ## Playwright Test Metrics
+
+            **Summary**
+            - Total Tests: ${{ steps.summary.outputs.total }}
+            - Passed: ${{ steps.summary.outputs.passed }}
+            - Failed: ${{ steps.summary.outputs.failed }}
+            - Skipped: ${{ steps.summary.outputs.skipped }}
+
+            **Duration:** ${{ steps.summary.outputs.duration }} ms
+            **Pass Rate:** ${{ steps.summary.outputs.passrate }}%
+
+
+            ## Detailed Test Report
+            [View Test Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
