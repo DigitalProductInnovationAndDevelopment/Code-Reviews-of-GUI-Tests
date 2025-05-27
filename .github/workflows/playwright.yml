@@ -24,7 +24,8 @@ jobs:
           node-version: 18
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
+
 
       - name: Install Playwright and browsers
         run: npx playwright install --with-deps
@@ -43,25 +44,40 @@ jobs:
         id: summary
         run: |
           REPORT_FILE="metrics.json"
-
           TOTAL=$(jq '[.suites[].suites[].specs[].tests[]] | length' $REPORT_FILE)
           PASSED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="expected")] | length' $REPORT_FILE)
           FAILED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="failed")] | length' $REPORT_FILE)
           SKIPPED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="skipped")] | length' $REPORT_FILE)
           DURATION=$(jq '.stats.duration * 1000 | floor' $REPORT_FILE)
-
           if [ "$TOTAL" -eq 0 ]; then
             PASS_RATE="0.00"
           else
             PASS_RATE=$(awk "BEGIN {printf \"%.2f\", ($PASSED/$TOTAL)*100}")
           fi
-
           echo "total=$TOTAL" >> $GITHUB_OUTPUT
           echo "passed=$PASSED" >> $GITHUB_OUTPUT
           echo "failed=$FAILED" >> $GITHUB_OUTPUT
           echo "skipped=$SKIPPED" >> $GITHUB_OUTPUT
           echo "duration=$DURATION" >> $GITHUB_OUTPUT
           echo "passrate=$PASS_RATE" >> $GITHUB_OUTPUT
+
+      - name: Run ESLint
+        run: |
+          npm run lint > eslint-report.txt || true
+
+      - name: Upload ESLint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-report
+          path: eslint-report.txt
+
+      - name: Read ESLint report
+        id: lint_summary
+        run: |
+          echo 'summary<<EOF' >> $GITHUB_OUTPUT
+          head -n 20 eslint-report.txt >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
 
       - name: Comment on PR with test results
         uses: marocchino/sticky-pull-request-comment@v2
@@ -75,9 +91,13 @@ jobs:
             - Failed: ${{ steps.summary.outputs.failed }}
             - Skipped: ${{ steps.summary.outputs.skipped }}
 
-            **Duration:** ${{ steps.summary.outputs.duration }} ms
+            **Duration:** ${{ steps.summary.outputs.duration }} ms  
             **Pass Rate:** ${{ steps.summary.outputs.passrate }}%
 
+            ## Linter Results (ESLint)
+            ```
+            ${{ steps.lint_summary.outputs.summary }}
+            ```
 
             ## Detailed Test Report
             [View Test Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
