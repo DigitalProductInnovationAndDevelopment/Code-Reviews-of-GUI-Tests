@@ -1,0 +1,8 @@
+# Ignore dependency tree
+node_modules/**
+
+# Ignore workflow YAML (prevents permission issue)
+.github/workflows/**
+
+# Ignore test output
+playwright-report/**
