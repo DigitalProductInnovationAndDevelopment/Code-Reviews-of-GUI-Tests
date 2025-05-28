@@ -1,4 +1,4 @@
-name: Playwright Tests
+name: Playwright Tests + Prettier (reviewdog inline)
 
 on:
   push:
@@ -11,73 +11,152 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read            # checkout & diff
+      pull-requests: write      # allow reviewdog to comment
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    # --------------------------------------------------
+    # 0 – Checkout
+    # --------------------------------------------------
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0          # we need history to produce a diff
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
+    # --------------------------------------------------
+    # 1 – Setup reviewdog CLI
+    # --------------------------------------------------
+    - name: Setup reviewdog
+      uses: reviewdog/action-setup@v1
+      with:
+        reviewdog_version: latest
 
-      - name: Install dependencies
-        run: npm ci
+    # --------------------------------------------------
+    # 2 – Run Prettier in-place & feed diff to reviewdog
+    # --------------------------------------------------
+    - name: Prettier check (inline comments)
+      shell: bash
+      env:
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # 2.1  Run prettier --write on all relevant files
+        npx prettier --write "**/*.{js,ts,tsx,jsx,json,yml,yaml,md}"
 
-      - name: Install Playwright and browsers
-        run: npx playwright install --with-deps
+        # 2.2  Capture the diff (files changed by prettier)
+        git diff -U0 --no-color > prettier.patch || true
 
-      - name: Run Playwright tests
-        run: npx playwright test
+        # 2.3  If the patch is non-empty, send it to reviewdog
+        if [ -s prettier.patch ]; then
+          cat prettier.patch \
+            | reviewdog -f=diff \
+                        -name="prettier" \
+                        -reporter=github-pr-review \
+                        -filter-mode=diff_context \
+                        -level=warning
+        else
+          echo "No Prettier issues found."
+        fi
 
-      - name: Upload HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: playwright-report/
+    # --------------------------------------------------
+    # 3 – Set up Node & install deps
+    # --------------------------------------------------
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18
 
-      - name: Extract test summary
-        id: summary
-        run: |
-          REPORT_FILE="metrics.json"
+    - name: Install dependencies
+      run: npm install
 
-          TOTAL=$(jq '[.suites[].suites[].specs[].tests[]] | length' $REPORT_FILE)
-          PASSED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="expected")] | length' $REPORT_FILE)
-          FAILED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="failed")] | length' $REPORT_FILE)
-          SKIPPED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="skipped")] | length' $REPORT_FILE)
-          DURATION=$(jq '.stats.duration * 1000 | floor' $REPORT_FILE)
+    # --------------------------------------------------
+    # 4 – Install Playwright browsers
+    # --------------------------------------------------
+    - name: Install Playwright and browsers
+      run: npx playwright install --with-deps
 
-          if [ "$TOTAL" -eq 0 ]; then
-            PASS_RATE="0.00"
-          else
-            PASS_RATE=$(awk "BEGIN {printf \"%.2f\", ($PASSED/$TOTAL)*100}")
-          fi
+    # --------------------------------------------------
+    # 5 – Run Playwright tests
+    # --------------------------------------------------
+    - name: Run Playwright tests
+      run: npx playwright test
 
-          echo "total=$TOTAL" >> $GITHUB_OUTPUT
-          echo "passed=$PASSED" >> $GITHUB_OUTPUT
-          echo "failed=$FAILED" >> $GITHUB_OUTPUT
-          echo "skipped=$SKIPPED" >> $GITHUB_OUTPUT
-          echo "duration=$DURATION" >> $GITHUB_OUTPUT
-          echo "passrate=$PASS_RATE" >> $GITHUB_OUTPUT
+    # --------------------------------------------------
+    # 6 – Upload HTML report
+    # --------------------------------------------------
+    - name: Upload HTML report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report
+        path: playwright-report/
 
-      - name: Comment on PR with test results
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          message: |
-            ## Playwright Test Metrics
+    # --------------------------------------------------
+    # 7 – Extract test summary 
+    # --------------------------------------------------
+    - name: Extract test summary
+      id: summary
+      run: |
+        REPORT_FILE="metrics.json"
+        TOTAL=$(jq '[.suites[].suites[].specs[].tests[]] | length' $REPORT_FILE)
+        PASSED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="expected")] | length' $REPORT_FILE)
+        FAILED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="failed")] | length' $REPORT_FILE)
+        SKIPPED=$(jq '[.suites[].suites[].specs[].tests[] | select(.status=="skipped")] | length' $REPORT_FILE)
+        DURATION=$(jq '.stats.duration * 1000 | floor' $REPORT_FILE)
+        if [ "$TOTAL" -eq 0 ]; then
+          PASS_RATE="0.00"
+        else
+          PASS_RATE=$(awk "BEGIN {printf \"%.2f\", ($PASSED/$TOTAL)*100}")
+        fi
+        echo "total=$TOTAL" >> $GITHUB_OUTPUT
+        echo "passed=$PASSED" >> $GITHUB_OUTPUT
+        echo "failed=$FAILED" >> $GITHUB_OUTPUT
+        echo "skipped=$SKIPPED" >> $GITHUB_OUTPUT
+        echo "duration=$DURATION" >> $GITHUB_OUTPUT
+        echo "passrate=$PASS_RATE" >> $GITHUB_OUTPUT
 
-            **Summary**
-            - Total Tests: ${{ steps.summary.outputs.total }}
-            - Passed: ${{ steps.summary.outputs.passed }}
-            - Failed: ${{ steps.summary.outputs.failed }}
-            - Skipped: ${{ steps.summary.outputs.skipped }}
+    # --------------------------------------------------
+    # 8 – ESLint 
+    # --------------------------------------------------
+    - name: Run ESLint
+      run: |
+        npm run lint > eslint-report.txt || true
 
-            **Duration:** ${{ steps.summary.outputs.duration }} ms
-            **Pass Rate:** ${{ steps.summary.outputs.passrate }}%
+    - name: Upload ESLint report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: eslint-report
+        path: eslint-report.txt
 
+    - name: Read ESLint report
+      id: lint_summary
+      run: |
+        echo 'summary<<EOF' >> $GITHUB_OUTPUT
+        head -n 20 eslint-report.txt >> $GITHUB_OUTPUT
+        echo 'EOF' >> $GITHUB_OUTPUT
 
-            ## Detailed Test Report
-            [View Test Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+    # --------------------------------------------------
+    # 9 – Sticky PR comment (tests + lint summary)
+    # --------------------------------------------------
+    - name: Comment on PR with test results
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        message: |
+          ## Playwright Test Metrics
+
+          **Summary**
+          - Total Tests: ${{ steps.summary.outputs.total }}
+          - Passed: ${{ steps.summary.outputs.passed }}
+          - Failed: ${{ steps.summary.outputs.failed }}
+          - Skipped: ${{ steps.summary.outputs.skipped }}
+
+          **Duration:** ${{ steps.summary.outputs.duration }} ms  
+          **Pass Rate:** ${{ steps.summary.outputs.passrate }}%
+
+          ## Linter Results (ESLint)
+          ```
+          ${{ steps.lint_summary.outputs.summary }}
+          ```
+
+          ## Detailed Test Report
+          [View Test Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
