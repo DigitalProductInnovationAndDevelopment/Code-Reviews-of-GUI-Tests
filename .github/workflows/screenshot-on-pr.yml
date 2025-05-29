@@ -27,7 +27,8 @@ jobs:
         run: node scripts/screenshot.js
 
       - name: Comment PR with screenshots
-        uses: opengisch/comment-pr-with-images@v1.1.0
+        uses: opengisch/comment-pr-with-images@main
+
         with:
           images: "tests_artifacts/**/*.png"
           upload_to: github_branch
