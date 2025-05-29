@@ -1,5 +1,9 @@
 name: Playwright Visual Review
 
+concurrency:
+  group: playwright-screenshots-${{ github.head_ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     types: [opened, reopened, synchronize]
@@ -38,23 +42,44 @@ jobs:
       - name: Capture GUI screenshots
         run: node scripts/screenshot.js
 
-      # FIXED ARTIFACT UPLOAD - USE v4
-      - name: Upload screenshots
-        uses: actions/upload-artifact@v4
+      # UPLOAD SCREENSHOTS TO REPOSITORY BRANCH
+      - name: Upload screenshots to repo
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          name: gui-screenshots
-          path: tests_artifacts/*.png
-          retention-days: 1
+          branch: gh-pages  # Special branch for hosting content
+          folder: tests_artifacts
+          clean: true
+          clean-exclude: |
+            *.js
+            *.html
+            *.css
+          commit-message: "Upload GUI screenshots [skip ci]"
 
-      - name: Post PR comment
+      # GENERATE DIRECT IMAGE LINKS
+      - name: Prepare image URLs
+        id: images
+        run: |
+          BASE_URL="https://raw.githubusercontent.com/${{ github.repository }}/gh-pages/"
+          IMAGES=$(find tests_artifacts -name '*.png')
+          MARKDOWN=""
+          
+          for image in $IMAGES; do
+            FILENAME=$(basename "$image")
+            URL="$BASE_URL$FILENAME"
+            MARKDOWN+="![$FILENAME]($URL)\n\n"
+          done
+          
+          echo "markdown_images<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$MARKDOWN" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # POST COMMENT WITH EMBEDDED IMAGES
+      - name: Post PR comment with images
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: gui-screenshots
           message: |
             ## 🖼️ Automated GUI Test Preview
-            Screenshots captured during tests are available in workflow artifacts:
+            Below are the UI states captured during tests:
             
-            [Download Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            
-            **Path:** `tests_artifacts/`
-        if: always()
+            ${{ steps.images.outputs.markdown_images }}
