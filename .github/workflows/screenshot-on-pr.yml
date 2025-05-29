@@ -31,36 +31,73 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Resolve dependencies
+      - name: Install dependencies
         run: |
           npm install --package-lock-only --ignore-scripts
-          npm install
+          npm install playwright
 
       - name: Install Playwright
         run: npx playwright install --with-deps
 
+      # UPDATED SCREENSHOT CAPTURE WITH DEBUGGING
       - name: Capture GUI screenshots
-        run: node scripts/screenshot.js
+        id: capture-screenshots
+        run: |
+          # Enable verbose Playwright debugging
+          export DEBUG=pw:api,pw:browser,pw:protocol
+          
+          # Add detailed logging
+          echo "Starting screenshot capture with debug logging..."
+          echo "Target URL: $TARGET_URL"
+          
+          node scripts/screenshot.js
+          
+          # List captured files for verification
+          echo "Screenshot files:"
+          ls -l tests_artifacts || echo "No artifacts directory"
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          TARGET_URL: "https://your-app.com/login"  # UPDATE TO YOUR ACTUAL URL
 
-      # UPLOAD SCREENSHOTS TO REPOSITORY BRANCH
+      # DEBUGGING AND ERROR HANDLING
+      - name: Check for screenshots
+        if: always() && steps.capture-screenshots.outcome != 'success'
+        run: |
+          echo "Screenshot capture failed! Debugging information:"
+          ls -lR tests_artifacts || echo "No artifacts directory"
+          if [ -f tests_artifacts/error-state.png ]; then
+            echo "Error screenshot available in artifacts"
+          fi
+          if [ -f tests_artifacts/error-page.html ]; then
+            echo "Error page HTML available in artifacts"
+          fi
+          exit 1  # Fail the job explicitly
+
+      - name: Upload debug artifacts
+        if: always() && steps.capture-screenshots.outcome != 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-debug
+          path: tests_artifacts/
+          retention-days: 1
+
+      # MAIN FLOW CONTINUES IF SCREENSHOTS SUCCEEDED
       - name: Upload screenshots to repo
+        if: steps.capture-screenshots.outcome == 'success'
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          branch: gh-pages  # Special branch for hosting content
+          branch: gh-pages
           folder: tests_artifacts
           clean: true
-          clean-exclude: |
-            *.js
-            *.html
-            *.css
           commit-message: "Upload GUI screenshots [skip ci]"
 
-      # GENERATE DIRECT IMAGE LINKS
       - name: Prepare image URLs
+        if: steps.capture-screenshots.outcome == 'success'
         id: images
         run: |
           BASE_URL="https://raw.githubusercontent.com/${{ github.repository }}/gh-pages/"
-          IMAGES=$(find tests_artifacts -name '*.png')
+          IMAGES=$(find tests_artifacts -name '*.png' -not -name 'error-*')
           MARKDOWN=""
           
           for image in $IMAGES; do
@@ -73,8 +110,8 @@ jobs:
           echo -e "$MARKDOWN" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # POST COMMENT WITH EMBEDDED IMAGES
       - name: Post PR comment with images
+        if: steps.capture-screenshots.outcome == 'success'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: gui-screenshots
@@ -83,3 +120,23 @@ jobs:
             Below are the UI states captured during tests:
             
             ${{ steps.images.outputs.markdown_images }}
+            
+            [View full debug info](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      # ERROR COMMENT
+      - name: Post error comment
+        if: failure() && steps.capture-screenshots.outcome != 'success'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: gui-screenshots-error
+          message: |
+            ## ❌ GUI Screenshot Capture Failed
+            Screenshot capture failed during execution. Debugging information:
+            
+            - [View debug artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            - Check application availability and element selectors
+            
+            Common fixes:
+            1. Verify application URL is accessible from GitHub's servers
+            2. Check element selectors in screenshot.js
+            3. Increase timeouts if application is slow to load
