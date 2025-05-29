@@ -26,12 +26,14 @@ jobs:
       - name: Run Playwright screenshot script
         run: node scripts/screenshot.js
 
+      - name: Mark repo safe for git
+        run: git config --global --add safe.directory /github/workspace
+
       - name: Comment PR with screenshots
         uses: opengisch/comment-pr-with-images@upload_only
         with:
           images: "tests_artifacts/**/*.png"
           upload_to: github_branch
-          custom_attachment_msg: "Automated Playwright screenshots for this PR"
-          edit_previous_comment: true
+         
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
