@@ -53,3 +53,7 @@ if (process.env.GITHUB_RUN_ID && process.env.GITHUB_REPOSITORY) {
 }
 
 fs.writeFileSync('scripts/summary.txt', summary.join('\n'));
+
+use: {
+  storageState: 'playwright/.auth/user.json',
+}
