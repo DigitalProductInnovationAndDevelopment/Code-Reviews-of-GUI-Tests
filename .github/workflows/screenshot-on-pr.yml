@@ -6,31 +6,32 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write  # Essential for commenting
-  issues: write         # Required for some comment APIs
+  pull-requests: write
 
 jobs:
   visual-review:
     runs-on: ubuntu-latest
-    # Add permissions at job level too for safety
     permissions:
       contents: write
       pull-requests: write
-      issues: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Get full history for PR context
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci  # More reliable than npm install
+      - name: Resolve dependencies
+        run: |
+          # Fix lockfile issues
+          npm install --package-lock-only --ignore-scripts
+          npm install
 
       - name: Install Playwright
         run: npx playwright install --with-deps
@@ -38,28 +39,22 @@ jobs:
       - name: Capture GUI screenshots
         run: node scripts/screenshot.js
 
-      - name: Post screenshots to PR
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v3
+        with:
+          name: gui-screenshots
+          path: tests_artifacts/*.png
+          retention-days: 1
+
+      - name: Post PR comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: gui-screenshots
           message: |
             ## 🖼️ Automated GUI Test Preview
-            Below are the latest UI states captured during tests:
+            Screenshots captured during tests are available in workflow artifacts:
             
-            ${{ steps.screenshots.outputs.markdown_images }}
-        if: always()  # Post even if previous steps fail
-
-      - name: Prepare images for comment
-        id: screenshots
-        run: |
-          IMAGES=$(find tests_artifacts -name '*.png')
-          MARKDOWN=""
-          for image in $IMAGES; do
-            # Upload each image as artifact
-            echo "Uploading $image"
-            ARTIFACT_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=${image##*/}"
-            MARKDOWN+="![${image##*/}]($ARTIFACT_URL)\n\n"
-          done
-          echo "markdown_images<<EOF" >> $GITHUB_OUTPUT
-          echo "$MARKDOWN" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+            [Download Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            **Path:** `tests_artifacts/`
+        if: always()
