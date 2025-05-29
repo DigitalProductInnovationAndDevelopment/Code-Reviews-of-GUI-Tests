@@ -29,7 +29,6 @@ jobs:
 
       - name: Resolve dependencies
         run: |
-          # Fix lockfile issues
           npm install --package-lock-only --ignore-scripts
           npm install
 
@@ -39,8 +38,9 @@ jobs:
       - name: Capture GUI screenshots
         run: node scripts/screenshot.js
 
+      # FIXED ARTIFACT UPLOAD - USE v4
       - name: Upload screenshots
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: gui-screenshots
           path: tests_artifacts/*.png
