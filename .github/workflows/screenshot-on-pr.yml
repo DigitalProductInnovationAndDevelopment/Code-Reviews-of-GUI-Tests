@@ -1,40 +1,34 @@
-name: PR Visual Screenshot
+name: Playwright Screenshot on PR
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, reopened, synchronize]
 
 jobs:
-  screenshot-and-comment:
+  screenshot:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Install dependencies
-      run: npm install
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
 
-    - name: Build or Serve app
-      run: |
-        npm run build     # or npm run dev or similar if you don’t have build
-        npx serve build -l 3000 &  # serve the built folder; change if your output folder differs
-        sleep 5  # wait for the server to start
+      - name: Install dependencies
+        run: npm install
 
-    - name: Install Playwright and dependencies
-      run: npx playwright install --with-deps
+      - name: Run Playwright screenshot script
+        run: node your-playwright-script.js
 
-    - name: Take screenshots using Playwright
-      run: |
-        mkdir -p tests_artifacts
-        node scripts/screenshot.js
-
-    - name: Comment with screenshots
-      uses: opengisch/comment-pr-with-images@upload_only
-      with:
-        images: "tests_artifacts/**/*.png"
-        upload_to: github_branch
-        custom_attachment_msg: "📸 Visual regression screenshots for this PR"
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-
-
+      - name: Comment PR with screenshots
+        uses: opengisch/comment-pr-with-images@upload_only
+        with:
+          images: "tests_artifacts/**/*.png"
+          upload_to: github_branch
+          custom_attachment_msg: "Automated Playwright screenshots for this PR"
+          edit_previous_comment: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
