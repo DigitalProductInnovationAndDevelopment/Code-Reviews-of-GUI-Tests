@@ -7,7 +7,6 @@ on:
 permissions:
   contents: write
 
-
 jobs:
   screenshot:
     runs-on: ubuntu-latest
@@ -30,10 +29,13 @@ jobs:
       - name: Run Playwright screenshot script
         run: node scripts/screenshot.js
 
+      - name: List screenshots folder (debug)
+        run: ls -lR tests_artifacts
+
       - name: Comment PR with screenshots
         uses: opengisch/comment-pr-with-images@main
-
         with:
           images: "tests_artifacts/**/*.png"
-          upload_to: github_branch
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          upload_to: pr_comment        # <-- change here
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # <-- change here, use env not with.github_token
