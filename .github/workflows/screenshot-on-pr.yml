@@ -4,23 +4,41 @@ on:
   pull_request:
     types: [opened, reopened, synchronize]
 
+# Add permissions here
+permissions:
+  pull-requests: write
+  contents: write
+
 jobs:
   capture-and-comment:
     runs-on: ubuntu-latest
+    # Add permissions at job level too
+    permissions:
+      pull-requests: write
+      contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Install Playwright
         run: npx playwright install chromium
 
       - name: Take screenshots
+        id: capture
         run: node scripts/screenshot.js
 
       - name: Post images to PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
+          # Explicitly pass GitHub token
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           header: gui-screenshots
           message: |
             ## 🖼️ UI Screenshots
-            ${{ steps.screenshots.outputs.images }}
+            ${{ steps.capture.outputs.images }}
