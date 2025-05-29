@@ -1,0 +1,28 @@
+name: Comment Screenshot on PR
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  comment-screenshot:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Serve HTML (example)
+      run: |
+        npm install -g serve
+        serve . -l 3000 &
+        sleep 5
+
+    - name: Comment Screenshot
+      uses: saadmk11/comment-webpage-screenshot@v1.0.4
+      with:
+        url: http://localhost:3000/index.html
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
