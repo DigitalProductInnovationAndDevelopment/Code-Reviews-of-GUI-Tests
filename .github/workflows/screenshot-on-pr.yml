@@ -1,12 +1,13 @@
-name: Comment Screenshot on PR
+name: PR Visual Screenshot
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
-  comment-screenshot:
+  screenshot-and-comment:
     runs-on: ubuntu-latest
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
@@ -14,15 +15,26 @@ jobs:
     - name: Install dependencies
       run: npm install
 
-    - name: Serve HTML (example)
+    - name: Build or Serve app
       run: |
-        npm install -g serve
-        serve . -l 3000 &
-        sleep 5
+        npm run build     # or npm run dev or similar if you don’t have build
+        npx serve build -l 3000 &  # serve the built folder; change if your output folder differs
+        sleep 5  # wait for the server to start
 
-    - name: Comment Screenshot
-      uses: saadmk11/comment-webpage-screenshot@v1.0.4
+    - name: Install Playwright and dependencies
+      run: npx playwright install --with-deps
+
+    - name: Take screenshots using Playwright
+      run: |
+        mkdir -p tests_artifacts
+        node scripts/screenshot.js
+
+    - name: Comment with screenshots
+      uses: opengisch/comment-pr-with-images@upload_only
       with:
-        url: http://localhost:3000/index.html
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        images: "tests_artifacts/**/*.png"
+        upload_to: github_branch
+        custom_attachment_msg: "📸 Visual regression screenshots for this PR"
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+
 
