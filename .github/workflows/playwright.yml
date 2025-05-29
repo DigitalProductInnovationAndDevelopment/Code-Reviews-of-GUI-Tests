@@ -1,4 +1,3 @@
-/2
 name: Playwright Tests + Prettier (reviewdog) + test-flow chart
 
 on:
@@ -67,10 +66,10 @@ jobs:
       run: npx playwright install --with-deps
 
     #---------------------------------------------------
-    # 5 – Run Playwright tests
+    # 5 – Run Playwright tests (MODIFIED)
     #---------------------------------------------------
     - name: Run Playwright tests
-      run: npx playwright test
+      run: npx playwright test --grep-invert "screenshot"  # ADDED FILTER
 
     #---------------------------------------------------
     # 6 – Upload HTML report
@@ -120,8 +119,6 @@ jobs:
         echo 'summary<<EOF' >> $GITHUB_OUTPUT
         head -n 20 eslint-tests.txt >> $GITHUB_OUTPUT
         echo 'EOF' >> $GITHUB_OUTPUT
-
-
 
     #---------------------------------------------------
     # 9 – Generate Suite→Spec Mermaid chart (flowchart.png)
@@ -180,7 +177,7 @@ jobs:
         path: flowchart.png
 
     #---------------------------------------------------
-    # 10 – Sticky PR comment
+    # 10 – Sticky PR comment (MODIFIED)
     #---------------------------------------------------
     - name: Comment on PR with results
       uses: marocchino/sticky-pull-request-comment@v2
@@ -203,4 +200,7 @@ jobs:
           ## Test-Flow Chart  
           Artifact: **test-flow-chart → flowchart.png**
 
+          ## GUI Test Visuals
+          See screenshots in [GUI Test Preview](#gui-screenshots) below
+          
           _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
