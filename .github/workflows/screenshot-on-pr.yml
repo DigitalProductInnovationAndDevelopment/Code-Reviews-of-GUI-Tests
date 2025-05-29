@@ -34,8 +34,8 @@ jobs:
 
       - name: Comment PR with screenshots
         uses: opengisch/comment-pr-with-images@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           images: "tests_artifacts/**/*.png"
-          upload_to: pr_comment        # <-- change here
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # <-- change here, use env not with.github_token
+          upload_to: pr_comment
