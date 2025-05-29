@@ -1,142 +1,26 @@
-name: Playwright Visual Review
-
-concurrency:
-  group: playwright-screenshots-${{ github.head_ref }}
-  cancel-in-progress: true
+name: GUI Screenshots in PR
 
 on:
   pull_request:
     types: [opened, reopened, synchronize]
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
-  visual-review:
+  capture-and-comment:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: |
-          npm install --package-lock-only --ignore-scripts
-          npm install playwright
 
       - name: Install Playwright
-        run: npx playwright install --with-deps
+        run: npx playwright install chromium
 
-      # UPDATED SCREENSHOT CAPTURE WITH DEBUGGING
-      - name: Capture GUI screenshots
-        id: capture-screenshots
-        run: |
-          # Enable verbose Playwright debugging
-          export DEBUG=pw:api,pw:browser,pw:protocol
-          
-          # Add detailed logging
-          echo "Starting screenshot capture with debug logging..."
-          echo "Target URL: $TARGET_URL"
-          
-          node scripts/screenshot.js
-          
-          # List captured files for verification
-          echo "Screenshot files:"
-          ls -l tests_artifacts || echo "No artifacts directory"
-        continue-on-error: true
-        timeout-minutes: 5
-        env:
-          TARGET_URL: "https://your-app.com/login"  # UPDATE TO YOUR ACTUAL URL
+      - name: Take screenshots
+        run: node scripts/screenshot.js
 
-      # DEBUGGING AND ERROR HANDLING
-      - name: Check for screenshots
-        if: always() && steps.capture-screenshots.outcome != 'success'
-        run: |
-          echo "Screenshot capture failed! Debugging information:"
-          ls -lR tests_artifacts || echo "No artifacts directory"
-          if [ -f tests_artifacts/error-state.png ]; then
-            echo "Error screenshot available in artifacts"
-          fi
-          if [ -f tests_artifacts/error-page.html ]; then
-            echo "Error page HTML available in artifacts"
-          fi
-          exit 1  # Fail the job explicitly
-
-      - name: Upload debug artifacts
-        if: always() && steps.capture-screenshots.outcome != 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshot-debug
-          path: tests_artifacts/
-          retention-days: 1
-
-      # MAIN FLOW CONTINUES IF SCREENSHOTS SUCCEEDED
-      - name: Upload screenshots to repo
-        if: steps.capture-screenshots.outcome == 'success'
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          branch: gh-pages
-          folder: tests_artifacts
-          clean: true
-          commit-message: "Upload GUI screenshots [skip ci]"
-
-      - name: Prepare image URLs
-        if: steps.capture-screenshots.outcome == 'success'
-        id: images
-        run: |
-          BASE_URL="https://raw.githubusercontent.com/${{ github.repository }}/gh-pages/"
-          IMAGES=$(find tests_artifacts -name '*.png' -not -name 'error-*')
-          MARKDOWN=""
-          
-          for image in $IMAGES; do
-            FILENAME=$(basename "$image")
-            URL="$BASE_URL$FILENAME"
-            MARKDOWN+="![$FILENAME]($URL)\n\n"
-          done
-          
-          echo "markdown_images<<EOF" >> $GITHUB_OUTPUT
-          echo -e "$MARKDOWN" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Post PR comment with images
-        if: steps.capture-screenshots.outcome == 'success'
+      - name: Post images to PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: gui-screenshots
           message: |
-            ## 🖼️ Automated GUI Test Preview
-            Below are the UI states captured during tests:
-            
-            ${{ steps.images.outputs.markdown_images }}
-            
-            [View full debug info](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-      # ERROR COMMENT
-      - name: Post error comment
-        if: failure() && steps.capture-screenshots.outcome != 'success'
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          header: gui-screenshots-error
-          message: |
-            ## ❌ GUI Screenshot Capture Failed
-            Screenshot capture failed during execution. Debugging information:
-            
-            - [View debug artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            - Check application availability and element selectors
-            
-            Common fixes:
-            1. Verify application URL is accessible from GitHub's servers
-            2. Check element selectors in screenshot.js
-            3. Increase timeouts if application is slow to load
+            ## 🖼️ UI Screenshots
+            ${{ steps.screenshots.outputs.images }}
