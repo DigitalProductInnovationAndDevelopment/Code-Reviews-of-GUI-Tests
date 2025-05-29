@@ -21,7 +21,7 @@ jobs:
         run: npm install
 
       - name: Run Playwright screenshot script
-        run: node your-playwright-script.js
+        run: node scripts/screenshot.js
 
       - name: Comment PR with screenshots
         uses: opengisch/comment-pr-with-images@upload_only
