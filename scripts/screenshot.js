@@ -1,4 +1,4 @@
-// Trigger workflow rerun
+// Trigger workflow rerun one more time
 
 const fs = require('fs');
 const path = require('path');
