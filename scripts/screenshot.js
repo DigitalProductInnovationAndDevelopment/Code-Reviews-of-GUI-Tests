@@ -1,36 +1,46 @@
 const { chromium } = require('playwright');
 
 (async () => {
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-  
+  let browser;
   try {
-    // Reduce image size
+    // Launch Chromium (explicitly specify)
+    browser = await chromium.launch({ 
+      channel: 'chromium',
+      headless: true
+    });
+    
+    const page = await browser.newPage();
     await page.setViewportSize({ width: 800, height: 600 });
     
-    // Example 1: Homepage
-    await page.goto('https://example.com', { waitUntil: 'networkidle' });
+    // Capture homepage
+    await page.goto('https://example.com', { 
+      waitUntil: 'networkidle',
+      timeout: 60000
+    });
     await page.screenshot({ 
       path: 'screenshots/home.jpg',
       type: 'jpeg',
-      quality: 70,
-      fullPage: false
+      quality: 70
     });
     
-    // Example 2: About page
-    await page.goto('https://example.com/about', { waitUntil: 'networkidle' });
+    // Capture about page
+    await page.goto('https://example.com/about', { 
+      waitUntil: 'networkidle',
+      timeout: 60000
+    });
     await page.screenshot({ 
       path: 'screenshots/about.jpg',
       type: 'jpeg',
-      quality: 70,
-      fullPage: false
+      quality: 70
     });
     
-    console.log('Screenshots captured successfully!');
+    console.log('✅ Screenshots captured successfully!');
   } catch (error) {
     console.error('❌ Screenshot failed:', error);
     process.exit(1);
   } finally {
-    await browser.close();
+    if (browser) {
+      await browser.close();
+    }
   }
 })();
