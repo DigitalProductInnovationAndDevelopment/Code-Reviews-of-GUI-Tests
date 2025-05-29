@@ -1,4 +1,4 @@
-name: Playwright Screenshot on PR
+name: Playwright Visual Review
 
 on:
   pull_request:
@@ -6,36 +6,60 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write  # Essential for commenting
+  issues: write         # Required for some comment APIs
 
 jobs:
-  screenshot:
+  visual-review:
     runs-on: ubuntu-latest
+    # Add permissions at job level too for safety
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get full history for PR context
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci  # More reliable than npm install
 
-      - name: Install Playwright browsers
-        run: npx playwright install
+      - name: Install Playwright
+        run: npx playwright install --with-deps
 
-      - name: Run Playwright screenshot script
+      - name: Capture GUI screenshots
         run: node scripts/screenshot.js
 
-      - name: List screenshots folder (debug)
-        run: ls -lR tests_artifacts
-
-      - name: Comment PR with screenshots
-        uses: opengisch/comment-pr-with-images@main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Post screenshots to PR
+        uses: marocchino/sticky-pull-request-comment@v2
         with:
-          images: "tests_artifacts/**/*.png"
-          upload_to: pr_comment
+          header: gui-screenshots
+          message: |
+            ## 🖼️ Automated GUI Test Preview
+            Below are the latest UI states captured during tests:
+            
+            ${{ steps.screenshots.outputs.markdown_images }}
+        if: always()  # Post even if previous steps fail
+
+      - name: Prepare images for comment
+        id: screenshots
+        run: |
+          IMAGES=$(find tests_artifacts -name '*.png')
+          MARKDOWN=""
+          for image in $IMAGES; do
+            # Upload each image as artifact
+            echo "Uploading $image"
+            ARTIFACT_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=${image##*/}"
+            MARKDOWN+="![${image##*/}]($ARTIFACT_URL)\n\n"
+          done
+          echo "markdown_images<<EOF" >> $GITHUB_OUTPUT
+          echo "$MARKDOWN" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
