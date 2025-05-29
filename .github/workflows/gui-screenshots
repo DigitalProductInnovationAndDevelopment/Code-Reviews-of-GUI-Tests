@@ -26,7 +26,16 @@ jobs:
           node-version: '20'
 
       - name: Install Playwright
-        run: npx playwright install chromium
+       # Add after "Install Playwright" step
+- name: Authenticate for screenshots
+  run: |
+    # Create auth file with test credentials
+    mkdir -p playwright/.auth
+    echo '{"cookies":[{"name":"session","value":"test-session","domain":"your-app.com","path":"/"}]}' > playwright/.auth/user.json
+  env:
+    # Use real credentials from secrets in production
+    APP_USER: ${{ secrets.APP_USER }}
+    APP_PASS: ${{ secrets.APP_PASS }}
 
       - name: Create screenshots directory
         run: mkdir -p screenshots
