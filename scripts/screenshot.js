@@ -1,4 +1,4 @@
-// scripts/screenshot.js
+// scripts/screenshot.js once more
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
