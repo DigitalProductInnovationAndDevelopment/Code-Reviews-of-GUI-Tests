@@ -22,12 +22,29 @@ jobs:
           node-version: '20'
 
       - name: Install Playwright
-        run: npx playwright install chromium
+        run: npm install playwright
 
       - name: Capture and embed screenshots
         id: screenshots
-        run: node scripts/screenshot.js
-        
+        run: |
+          # Create output directory
+          mkdir -p screenshots
+          
+          # Run screenshot script
+          node scripts/screenshot.js
+          
+          # Get base64 images and set output
+          IMAGES_MARKDOWN=""
+          for file in screenshots/*.jpg; do
+            [ -e "$file" ] || continue
+            base64_data=$(base64 -w0 "$file")
+            IMAGES_MARKDOWN+="![${file##*/}](data:image/jpeg;base64,$base64_data)\n\n"
+          done
+          
+          # Escape newlines for output
+          IMAGES_MARKDOWN="${IMAGES_MARKDOWN//$'\n'/'%0A'}"
+          echo "images=$IMAGES_MARKDOWN" >> $GITHUB_OUTPUT
+
       - name: Post images to PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
