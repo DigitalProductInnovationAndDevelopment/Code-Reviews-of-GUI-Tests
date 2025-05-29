@@ -20,14 +20,6 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # Start your app in the background so Playwright can connect to it
-      - name: Start the app
-        run: npm run start &
-
-      # Wait for the app to be fully ready on localhost:3000
-      - name: Wait for app to be ready
-        run: npx wait-on http://localhost:3000
-
       - name: Run Playwright screenshot script
         run: node scripts/screenshot.js
 
