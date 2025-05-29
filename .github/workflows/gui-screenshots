@@ -1,0 +1,56 @@
+name: GUI Test Screenshots
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches: [main]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  capture-and-comment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: npx playwright install chromium
+
+      - name: Create screenshots directory
+        run: mkdir -p screenshots
+
+      - name: Run screenshot tests
+        run: npx playwright test --grep "screenshot"
+
+      - name: Generate base64 images
+        id: screenshots
+        run: |
+          IMAGES_MARKDOWN=""
+          for file in screenshots/*.jpg; do
+            [ -e "$file" ] || continue
+            base64_data=$(base64 -w0 "$file")
+            IMAGES_MARKDOWN+="![${file##*/}](data:image/jpeg;base64,$base64_data)\n\n"
+          done
+          echo "images<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$IMAGES_MARKDOWN" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post screenshots to PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          header: gui-screenshots
+          message: |
+            ## 🖼️ Automated GUI Test Preview
+            Below are the UI states captured during tests:
+            
+            ${{ steps.screenshots.outputs.images }}
