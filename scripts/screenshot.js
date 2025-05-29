@@ -1,3 +1,5 @@
+// Trigger workflow rerun
+
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
