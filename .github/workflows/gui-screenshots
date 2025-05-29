@@ -6,16 +6,19 @@ on:
     branches: [main]
 
 permissions:
+  contents: write  # Required for image upload branch
   pull-requests: write
 
 jobs:
   capture-and-comment:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for branch operations
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -31,26 +34,10 @@ jobs:
       - name: Run screenshot tests
         run: npx playwright test --grep "screenshot"
 
-      - name: Generate base64 images
-        id: screenshots
-        run: |
-          IMAGES_MARKDOWN=""
-          for file in screenshots/*.jpg; do
-            [ -e "$file" ] || continue
-            base64_data=$(base64 -w0 "$file")
-            IMAGES_MARKDOWN+="![${file##*/}](data:image/jpeg;base64,$base64_data)\n\n"
-          done
-          echo "images<<EOF" >> $GITHUB_OUTPUT
-          echo -e "$IMAGES_MARKDOWN" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Post screenshots to PR
-        uses: marocchino/sticky-pull-request-comment@v2
+      - name: Upload screenshots to PR comment
+        uses: opengisch/comment-pr-with-images@upload_only
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          header: gui-screenshots
-          message: |
-            ## 🖼️ Automated GUI Test Preview
-            Below are the UI states captured during tests:
-            
-            ${{ steps.screenshots.outputs.images }}
+          images: "screenshots/*.jpg"
+          upload_to: "github_branch"  # Hosts images in your repo
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          custom_attachment_msg: "## 🖼️ Automated GUI Test Preview"
