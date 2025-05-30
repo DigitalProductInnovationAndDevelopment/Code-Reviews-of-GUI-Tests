@@ -1,3 +1,4 @@
+/trial
 const { test, expect } = require('@playwright/test');
 
 test.describe('Playwright Basic Workflow Tests', () => {
