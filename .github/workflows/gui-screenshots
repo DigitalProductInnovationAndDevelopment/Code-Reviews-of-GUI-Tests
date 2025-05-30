@@ -6,19 +6,17 @@ on:
     branches: [main]
 
 permissions:
-  contents: write  # Required for image upload branch
+  contents: write
   pull-requests: write
 
 jobs:
   capture-and-comment:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Needed for branch operations
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -26,27 +24,23 @@ jobs:
           node-version: '20'
 
       - name: Install Playwright
-       # Add after "Install Playwright" step
-- name: Authenticate for screenshots
-  run: |
-    # Create auth file with test credentials
-    mkdir -p playwright/.auth
-    echo '{"cookies":[{"name":"session","value":"test-session","domain":"your-app.com","path":"/"}]}' > playwright/.auth/user.json
-  env:
-    # Use real credentials from secrets in production
-    APP_USER: ${{ secrets.APP_USER }}
-    APP_PASS: ${{ secrets.APP_PASS }}
+        run: npx playwright install chromium
 
       - name: Create screenshots directory
         run: mkdir -p screenshots
 
       - name: Run screenshot tests
-        run: npx playwright test --grep "screenshot"
+        run: npx playwright test tests/gui-screenshots.spec.js
 
       - name: Upload screenshots to PR comment
         uses: opengisch/comment-pr-with-images@upload_only
         with:
           images: "screenshots/*.jpg"
-          upload_to: "github_branch"  # Hosts images in your repo
+          upload_to: "github_branch"
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          custom_attachment_msg: "## 🖼️ Automated GUI Test Preview"
+          custom_attachment_msg: |
+            ## 🖼️ Automated GUI Test Preview
+            **Commit:** ${{ github.sha }}
+            **Workflow:** [${{ github.workflow }} Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            Below are the latest UI states captured by Playwright:
