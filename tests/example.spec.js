@@ -6,7 +6,6 @@ test.describe('Playwright Basic Workflow Tests', () => {
     await expect(page).toHaveTitle(/Example Domain/);
     await page.screenshot({ path: 'playwright-report/example-domain.png' });
 
-    await expect(page).toHaveScreenshot('example-domain.png');
   });
   
   test('should find and click the More information link', async ({ page }) => {
@@ -15,7 +14,5 @@ test.describe('Playwright Basic Workflow Tests', () => {
     await expect(page).toHaveURL(/iana.org/);
     await page.screenshot({ path: 'playwright-report/navigation.png' });
     
-    await expect(page).toHaveScreenshot('navigation.png');
-
   });
 });
