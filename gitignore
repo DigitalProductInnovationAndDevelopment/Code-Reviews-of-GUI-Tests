@@ -1,0 +1,15 @@
+# Playwright
+screenshots/
+playwright-report/
+test-results/
+
+# Node
+node_modules/
+npm-debug.log
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
