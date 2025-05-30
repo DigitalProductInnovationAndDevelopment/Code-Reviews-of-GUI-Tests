@@ -1,3 +1,4 @@
+/1
 module.exports = {
   use: {
     headless: true,
