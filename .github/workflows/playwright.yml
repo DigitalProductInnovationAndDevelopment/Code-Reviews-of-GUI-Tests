@@ -108,7 +108,8 @@ jobs:
         REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
 
         # Base URL for GitHub Pages, including the PR-specific path
-        GITHUB_PAGES_BASE_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/pr/${{ github.event.pull_request.number }}/screenshots/"
+        # Using the provided URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/
+        GITHUB_PAGES_BASE_URL="https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/pr/${{ github.event.pull_request.number }}/screenshots/"
 
         IMAGE_MARKDOWN=""
         # Iterate over the screenshot files and create Markdown for each
@@ -253,9 +254,9 @@ jobs:
           ```
 
           ## Test-Flow Chart
-          # If you also copy flowchart.png to published-screenshots/, you can embed it here too.
-          # For example, if you added 'cp flowchart.png published-screenshots/flowchart.png' in step 9:
-          # ![Test Flow Chart](YOUR_REPO_GITHUB_PAGES_BASE_URL/pr/${{ github.event.pull_request.number }}/screenshots/flowchart.png)
+          # Note: The flowchart.png is uploaded as an artifact. To embed it directly like screenshots,
+          # you would also need to copy it into the 'published-screenshots' directory in step 9,
+          # and then reference it using the PR-specific GitHub Pages URL.
           Artifact: **test-flow-chart → flowchart.png**
 
           ## Playwright Screenshots for this PR
