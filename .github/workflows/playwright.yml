@@ -19,7 +19,10 @@ jobs:
     #---------------------------------------------------
     - name: Checkout code
       uses: actions/checkout@v3
-      with: { fetch-depth: 0 }
+      with:
+        fetch-depth: 0
+        # --- NEW: Explicitly checkout the PR's head branch to allow pushing back ---
+        ref: ${{ github.event.pull_request.head.ref }}
 
     #---------------------------------------------------
     # 1 – reviewdog CLI
@@ -86,17 +89,16 @@ jobs:
         echo "Copied screenshots to $PR_DIR/"
         ls -lh "$PR_DIR/" # For debugging, shows what was copied
 
-    # Commit and Push the PR-specific Screenshots to the PR's head branch
+    # Commit and Push PR Screenshots to GitHub Pages
     - name: Commit and Push PR Screenshots to GitHub Pages
       if: github.event_name == 'pull_request' # Only for PRs
       uses: EndBug/add-and-commit@v9 # Use this action to commit and push changes
       with:
         add: 'docs/pr/${{ github.event.pull_request.number }}/screenshots/' # Add the new screenshot files
         message: 'Docs: Publish Playwright screenshots for PR #${{ github.event.pull_request.number }} [skip ci]'
-        # Push to the current branch (the PR's head branch)
-        branch: ${{ github.head_ref }}
         default_author: github_actions # Use GitHub Actions bot as author
-        # Using '[skip ci]' in the commit message prevents a new workflow run loop
+        # --- NEW: Remove 'branch' and use 'push: true' ---
+        push: true # This will push to the currently checked-out branch (your PR branch)
 
     # Generate Markdown for screenshots with their public URLs
     - name: Generate Screenshot Markdown for PR Comment
