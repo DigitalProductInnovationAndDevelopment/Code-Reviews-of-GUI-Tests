@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     permissions:
-      contents: write 
+      contents: write
       pull-requests: write
 
     steps:
@@ -70,6 +70,62 @@ jobs:
     - name: Run Playwright tests
       run: npx playwright test
 
+    # --- START OF NEW STEPS FOR SCREENSHOT PUBLISHING ---
+
+    # Prepare the directory for PR-specific screenshots on GitHub Pages
+    - name: Prepare PR Screenshots for GitHub Pages
+      if: github.event_name == 'pull_request' # Only for PRs
+      run: |
+        # Create a unique directory for this PR's screenshots within docs/
+        # e.g., docs/pr/123/screenshots/
+        PR_DIR="docs/pr/${{ github.event.pull_request.number }}/screenshots"
+        mkdir -p "$PR_DIR"
+
+        # Copy captured screenshots to this PR-specific folder
+        cp published-screenshots/*.png "$PR_DIR/"
+        echo "Copied screenshots to $PR_DIR/"
+        ls -lh "$PR_DIR/" # For debugging, shows what was copied
+
+    # Commit and Push the PR-specific Screenshots to the PR's head branch
+    - name: Commit and Push PR Screenshots to GitHub Pages
+      if: github.event_name == 'pull_request' # Only for PRs
+      uses: EndBug/add-and-commit@v9 # Use this action to commit and push changes
+      with:
+        add: 'docs/pr/${{ github.event.pull_request.number }}/screenshots/' # Add the new screenshot files
+        message: 'Docs: Publish Playwright screenshots for PR #${{ github.event.pull_request.number }} [skip ci]'
+        # Push to the current branch (the PR's head branch)
+        branch: ${{ github.head_ref }}
+        default_author: github_actions # Use GitHub Actions bot as author
+        # Using '[skip ci]' in the commit message prevents a new workflow run loop
+
+    # Generate Markdown for screenshots with their public URLs
+    - name: Generate Screenshot Markdown for PR Comment
+      id: generate_screenshot_markdown
+      if: github.event_name == 'pull_request' # Only for PRs
+      run: |
+        # Get repository details to construct GitHub Pages URL
+        REPO_OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+        REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+
+        # Base URL for GitHub Pages, including the PR-specific path
+        GITHUB_PAGES_BASE_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/pr/${{ github.event.pull_request.number }}/screenshots/"
+
+        IMAGE_MARKDOWN=""
+        # Iterate over the screenshot files and create Markdown for each
+        for img_file in published-screenshots/*.png; do
+          img_name=$(basename "$img_file")
+          # Construct the full public URL for the image
+          img_url="${GITHUB_PAGES_BASE_URL}${img_name}"
+          IMAGE_MARKDOWN+="![${img_name}](${img_url})\n\n"
+        done
+        # Set the generated markdown as an output to be used in the comment step
+        echo "pr_screenshots_markdown<<EOF" >> $GITHUB_OUTPUT
+        echo "$IMAGE_MARKDOWN" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+      shell: bash
+
+    # --- END OF NEW STEPS FOR SCREENSHOT PUBLISHING ---
+
     #---------------------------------------------------
     # 6 – Upload HTML report
     #---------------------------------------------------
@@ -89,7 +145,7 @@ jobs:
         REPORT=metrics.json
         TOTAL=$(jq '[..|objects|select(has("status"))] | length' "$REPORT")
         PASSED=$(jq '[..|objects|select(.status?=="expected")] | length' "$REPORT")
-        FAILED=$(jq '[..|objects|select(.status?=="failed")]   | length' "$REPORT")
+        FAILED=$(jq '[..|objects|select(.status?=="failed")]    | length' "$REPORT")
         SKIPPED=$(jq '[..|objects|select(.status?=="skipped")] | length' "$REPORT")
         DURATION=$(jq '.stats.duration*1000|floor' "$REPORT")
         PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($TOTAL==0)?0:($PASSED/$TOTAL)*100}")
@@ -118,8 +174,6 @@ jobs:
         echo 'summary<<EOF' >> $GITHUB_OUTPUT
         head -n 20 eslint-tests.txt >> $GITHUB_OUTPUT
         echo 'EOF' >> $GITHUB_OUTPUT
-
-
 
     #---------------------------------------------------
     # 9 – Generate Suite→Spec Mermaid chart (flowchart.png)
@@ -167,7 +221,7 @@ jobs:
 
         ls -lh flowchart.png
 
-    - name: Show flowchart.mmd for debugging  
+    - name: Show flowchart.mmd for debugging
       run: cat flowchart.mmd
 
     - name: Upload test-flow chart
@@ -185,12 +239,12 @@ jobs:
       with:
         message: |
           ## Playwright Test Metrics
-          *Total:* **${{ steps.summary.outputs.total }}**  
-          *Passed:* **${{ steps.summary.outputs.passed }}**  
-          *Failed:* **${{ steps.summary.outputs.failed }}**  
+          *Total:* **${{ steps.summary.outputs.total }}**
+          *Passed:* **${{ steps.summary.outputs.passed }}**
+          *Failed:* **${{ steps.summary.outputs.failed }}**
           *Skipped:* **${{ steps.summary.outputs.skipped }}**
 
-          Duration: **${{ steps.summary.outputs.duration }} ms**  
+          Duration: **${{ steps.summary.outputs.duration }} ms**
           Pass Rate: **${{ steps.summary.outputs.passrate }} %**
 
           ## ESLint (GUI tests)
@@ -198,7 +252,13 @@ jobs:
           ${{ steps.lint_summary.outputs.summary }}
           ```
 
-          ## Test-Flow Chart  
+          ## Test-Flow Chart
+          # If you also copy flowchart.png to published-screenshots/, you can embed it here too.
+          # For example, if you added 'cp flowchart.png published-screenshots/flowchart.png' in step 9:
+          # ![Test Flow Chart](YOUR_REPO_GITHUB_PAGES_BASE_URL/pr/${{ github.event.pull_request.number }}/screenshots/flowchart.png)
           Artifact: **test-flow-chart → flowchart.png**
+
+          ## Playwright Screenshots for this PR
+          ${{ steps.generate_screenshot_markdown.outputs.pr_screenshots_markdown }}
 
           _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
