@@ -48,6 +48,7 @@ jobs:
                                          -level=warning
         else
           echo "No Prettier issues found."
+        Ends if
         fi
 
     #---------------------------------------------------
@@ -76,7 +77,7 @@ jobs:
 
     # Prepare the directory for PR-specific screenshots on GitHub Pages
     - name: Prepare PR Screenshots for GitHub Pages
-      if: github.event_name == 'pull_request' # Only for PRs
+      if: github.event_name == 'pull_request'
       run: |
         PR_DIR="docs/pr/${{ github.event.pull_request.number }}/screenshots"
         mkdir -p "$PR_DIR"
@@ -86,8 +87,8 @@ jobs:
 
     # Commit and Push PR Screenshots to GitHub Pages
     - name: Commit and Push PR Screenshots to GitHub Pages
-      if: github.event_name == 'pull_request' # Only for PRs
-      uses: EndBug/add-and-commit@v9 # Use this action to commit and push changes
+      if: github.event_name == 'pull_request'
+      uses: EndBug/add-and-commit@v9
       with:
         add: 'docs/pr/${{ github.event.pull_request.number }}/screenshots/'
         message: 'Docs: Publish Playwright screenshots for PR #${{ github.event.pull_request.number }} [skip ci]'
@@ -97,7 +98,7 @@ jobs:
     # Generate Markdown for screenshots with their public URLs
     - name: Generate Screenshot Markdown for PR Comment
       id: generate_screenshot_markdown
-      if: github.event_name == 'pull_request' # Only for PRs
+      if: github.event_name == 'pull_request'
       run: |
         REPO_OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
         REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
@@ -106,28 +107,23 @@ jobs:
 
         GITHUB_PAGES_BASE_URL="https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/pr/${PR_NUMBER}/screenshots/"
 
-        # --- DEBUGGING: List files in the directory we're trying to read ---
-        echo "Attempting to read from: $PR_SCREENSHOTS_LOCAL_DIR"
-        ls -lh "$PR_SCREENSHOTS_LOCAL_DIR" || echo "Directory does not exist or is empty here."
-        # --- END DEBUGGING ---
-
         IMAGE_MARKDOWN=""
+        # Ensure the directory exists before trying to list files
         if [ -d "$PR_SCREENSHOTS_LOCAL_DIR" ]; then
-          for img_file in "$PR_SCREENSHOTS_LOCAL_DIR"/*.png; do
-            if [ -f "$img_file" ]; then
-              img_name=$(basename "$img_file")
-              img_url="${GITHUB_PAGES_BASE_URL}${img_name}"
-              IMAGE_MARKDOWN+="![${img_name}](${img_url})\n\n"
-            fi
-          done
+            # Use find with -print0 and xargs -0 to handle spaces in filenames safely
+            find "$PR_SCREENSHOTS_LOCAL_DIR" -maxdepth 1 -name "*.png" -print0 | while IFS= read -r -d $'\0' img_file; do
+                img_name=$(basename "$img_file")
+                img_url="${GITHUB_PAGES_BASE_URL}${img_name}"
+                IMAGE_MARKDOWN+="![${img_name}](${img_url})\n\n"
+            done
         else
-          echo "Warning: Local directory '$PR_SCREENSHOTS_LOCAL_DIR' does not exist for Markdown generation."
+            echo "Warning: Local directory '$PR_SCREENSHOTS_LOCAL_DIR' does not exist for Markdown generation."
         fi
 
         echo "pr_screenshots_markdown<<EOF" >> $GITHUB_OUTPUT
         echo "$IMAGE_MARKDOWN" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
-      shell: bash
+      shell: bash # Ensure bash is used for the find/xargs syntax
 
     # --- END OF NEW STEPS FOR SCREENSHOT PUBLISHING ---
 
