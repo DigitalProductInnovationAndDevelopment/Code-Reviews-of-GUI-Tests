@@ -233,7 +233,7 @@ jobs:
       run: |
         git add .
         git commit -m "Publish test and lint reports to GitHub Pages [skip ci]" || echo "No changes to commit"
-        git push origin gh-pages --force
+        git push origin feature/github-pages-link --force
 
 
     #---------------------------------------------------
