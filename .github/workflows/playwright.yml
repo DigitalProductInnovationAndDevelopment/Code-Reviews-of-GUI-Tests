@@ -224,6 +224,11 @@ jobs:
       run: |
         cp -r playwright-report docs/
 
+    - name: Setup Git for pushing
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
     - name: Commit and push reports
       run: |
         git add .
