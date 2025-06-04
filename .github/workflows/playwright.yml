@@ -216,8 +216,23 @@ jobs:
         name: test-flow-chart
         path: flowchart.png
 
+
     #---------------------------------------------------
-    # 11 – Sticky PR comment
+    # 11 – GitHub Pages deployment
+    #---------------------------------------------------
+    - name: Copy Playwright and ESLint reports
+      run: |
+        cp -r playwright-report ./
+
+    - name: Commit and push reports
+      run: |
+        git add .
+        git commit -m "Publish test and lint reports to GitHub Pages [skip ci]" || echo "No changes to commit"
+        git push origin gh-pages --force
+
+
+    #---------------------------------------------------
+    # 12 – Sticky PR comment
     #---------------------------------------------------
     - name: Comment on PR with results
       uses: marocchino/sticky-pull-request-comment@v2
@@ -249,13 +264,8 @@ jobs:
           _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
 
-    - name: Copy Playwright and ESLint reports
-      run: |
-        cp -r playwright-report ./
-        cp -r eslint-report ./
+          ## GitHub Pages Report  
+          [View Detailed Report](https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/)
 
-    - name: Commit and push reports
-      run: |
-        git add .
-        git commit -m "Publish test and lint reports to GitHub Pages [skip ci]" || echo "No changes to commit"
-        git push origin gh-pages --force
+
+
