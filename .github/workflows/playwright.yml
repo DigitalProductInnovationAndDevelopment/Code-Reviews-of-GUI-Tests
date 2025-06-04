@@ -220,11 +220,6 @@ jobs:
     #---------------------------------------------------
     # 11 – GitHub Pages deployment
     #---------------------------------------------------
-    - name: Checkout feature branch
-      uses: actions/checkout@v3
-      with:
-        ref: feature/github-pages-link
-
     - name: Copy Playwright report to docs/
       run: |
         if [ -d playwright-report ]; then
@@ -234,6 +229,11 @@ jobs:
           echo "playwright-report folder not found!"
           exit 1
         fi
+
+    - name: Checkout feature branch
+      uses: actions/checkout@v3
+      with:
+        ref: feature/github-pages-link
 
     - name: Setup Git for pushing
       run: |
