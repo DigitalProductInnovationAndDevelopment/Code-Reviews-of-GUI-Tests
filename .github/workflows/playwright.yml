@@ -222,7 +222,7 @@ jobs:
     #---------------------------------------------------
     - name: Copy Playwright and ESLint reports
       run: |
-        cp -r playwright-report ./
+        cp -r playwright-report docs/
 
     - name: Commit and push reports
       run: |
