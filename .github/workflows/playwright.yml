@@ -87,13 +87,24 @@ jobs:
     - name: Extract test summary
       id: summary
       run: |
-        REPORT=metrics.json
+        export REPORT="metrics.json"
+
+        if [ ! -f "$REPORT" ]; then
+            echo "$REPORT not found!"
+            exit 1
+        fi
+
         TOTAL=$(jq '[..|objects|select(has("status"))] | length' "$REPORT")
         PASSED=$(jq '[..|objects|select(.status?=="expected")] | length' "$REPORT")
-        FAILED=$(jq '[..|objects|select(.status?=="failed")]   | length' "$REPORT")
+        FAILED=$(jq '[..|objects|select(.status?=="failed")] | length' "$REPORT")
         SKIPPED=$(jq '[..|objects|select(.status?=="skipped")] | length' "$REPORT")
         DURATION=$(jq '.stats.duration*1000|floor' "$REPORT")
-        PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($TOTAL==0)?0:($PASSED/$TOTAL)*100}")
+
+        if [ "$TOTAL" -eq 0 ]; then
+            PASS_RATE=0.00
+        else
+            PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($PASSED/$TOTAL)*100}")
+        fi
 
         echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
         echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
