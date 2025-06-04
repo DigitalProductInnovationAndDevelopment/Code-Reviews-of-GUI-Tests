@@ -220,14 +220,15 @@ jobs:
     #---------------------------------------------------
     # 11 – GitHub Pages deployment
     #---------------------------------------------------
-    - name: Copy Playwright and ESLint reports
-      run: |
-        cp -r playwright-report docs/
-
     - name: Checkout feature branch
       uses: actions/checkout@v3
       with:
-      ref: feature/github-pages-link
+        ref: feature/github-pages-link
+
+    - name: Copy Playwright and ESLint reports
+      run: |
+        mkdir -p docs
+        cp -r playwright-report/* docs/
 
     - name: Setup Git for pushing
       run: |
@@ -236,7 +237,7 @@ jobs:
 
     - name: Commit and push reports
       run: |
-        git add .
+        git add docs/
         git commit -m "Publish test and lint reports to GitHub Pages [skip ci]" || echo "No changes to commit"
         git push origin feature/github-pages-link --force
 
