@@ -164,6 +164,7 @@ jobs:
     - name: Generate test-flow chart
       shell: bash
       run: |
+        REPORT="playwright-metrics.json"
         set -e
         echo "graph TD" > flowchart.mmd
 
@@ -175,7 +176,7 @@ jobs:
               $suite.specs[]? as $spec |
                 ($spec.title // "NO_SPEC_TITLE") as $specTitle |
                 [$fileTitle, $suiteTitle, $specTitle] | @tsv
-        ' metrics.json |
+        ' "$REPORT" |
         while IFS=$'\t' read -r fileTitle suiteTitle specTitle; do
           # Build unique, safe IDs by combining parent and child
           fileId=$(echo "$fileTitle" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
@@ -230,8 +231,6 @@ jobs:
 
           Duration: **${{ steps.summary.outputs.duration }} ms**  
           Pass Rate: **${{ steps.summary.outputs.passrate }} %**
-
-          ## ESLint (GUI tests)
          
 
           ## ESLint Test Metrics
