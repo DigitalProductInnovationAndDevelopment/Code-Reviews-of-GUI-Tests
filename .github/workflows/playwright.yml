@@ -88,7 +88,7 @@ jobs:
       id: summary
       shell: bash
       run: |
-        REPORT="metrics.json"
+        REPORT="playwright-metrics.json"
 
         if [ ! -f "$REPORT" ]; then
             echo "$REPORT not found!"
@@ -121,20 +121,20 @@ jobs:
     - name: Run ESLint on GUI tests
       shell: bash
       run: |
-        npx eslint "tests/**/*.{js,ts,tsx}" -f stylish > eslint-tests.txt || true
+        npx eslint "tests/**/*.{js,ts,tsx}" -f json -o eslint-tests.json || true
 
     - name: Upload ESLint report
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: eslint-test-report
-        path: eslint-tests.txt
+        path: eslint-tests.json
 
     - name: Read ESLint report (preview)
       id: lint_summary
       run: |
         echo 'summary<<EOF' >> $GITHUB_OUTPUT
-        head -n 20 eslint-tests.txt >> $GITHUB_OUTPUT
+        jq '.' eslint-tests.json | head -n 20 >> $GITHUB_OUTPUT
         echo 'EOF' >> $GITHUB_OUTPUT
 
 
@@ -144,7 +144,7 @@ jobs:
     - name: Extract ESLint summary
       id: eslint_summary
       run: |
-        REPORT = eslint-tests.txt
+        REPORT = "eslint-tests.json"
         TOTAL_FILES=$(jq length "$REPORT")
         ERRORS=$(jq '[.[] | .errorCount] | add' "$REPORT")
         WARNINGS=$(jq '[.[] | .warningCount] | add' "$REPORT")
