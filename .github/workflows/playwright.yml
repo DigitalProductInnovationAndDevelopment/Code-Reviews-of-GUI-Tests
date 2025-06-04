@@ -82,7 +82,7 @@ jobs:
         path: playwright-report/
 
     #---------------------------------------------------
-    # 7 – Extract test summary
+    # 7 – Extract Playwright test summary
     #---------------------------------------------------
     - name: Extract test summary
       id: summary
@@ -94,9 +94,14 @@ jobs:
         SKIPPED=$(jq '[..|objects|select(.status?=="skipped")] | length' "$REPORT")
         DURATION=$(jq '.stats.duration*1000|floor' "$REPORT")
         PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($TOTAL==0)?0:($PASSED/$TOTAL)*100}")
-        for k in total passed failed skipped duration passrate; do
-          eval "echo \"$k=\${${k^^}}\" >> \$GITHUB_OUTPUT"
-        done
+
+        echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+        echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+        echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+        echo "skipped=$SKIPPED" >> "$GITHUB_OUTPUT"
+        echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
+        echo "passrate=$PASS_RATE" >> "$GITHUB_OUTPUT"
+
 
     #---------------------------------------------------
     # 8 – ESLint (tests only)
@@ -121,9 +126,28 @@ jobs:
         echo 'EOF' >> $GITHUB_OUTPUT
 
 
+   #---------------------------------------------------
+    # 9 – Extract ESLint test summary
+    #---------------------------------------------------
+    - name: Extract ESLint summary
+      id: eslint_summary
+      run: |
+        REPORT = eslint-tests.txt
+        TOTAL_FILES=$(jq length "$REPORT")
+        ERRORS=$(jq '[.[] | .errorCount] | add' "$REPORT")
+        WARNINGS=$(jq '[.[] | .warningCount] | add' "$REPORT")
+        FIXABLE_ERRORS=$(jq '[.[] | .fixableErrorCount] | add' "$REPORT")
+        FIXABLE_WARNINGS=$(jq '[.[] | .fixableWarningCount] | add' "$REPORT")
+
+        echo "total_files=$TOTAL_FILES" >> "$GITHUB_OUTPUT"
+        echo "errors=$ERRORS" >> "$GITHUB_OUTPUT"
+        echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
+        echo "fixable_errors=$FIXABLE_ERRORS" >> "$GITHUB_OUTPUT"
+        echo "fixable_warnings=$FIXABLE_WARNINGS" >> "$GITHUB_OUTPUT"
+
 
     #---------------------------------------------------
-    # 9 – Generate Suite→Spec Mermaid chart (flowchart.png)
+    # 10 – Generate Suite→Spec Mermaid chart (flowchart.png)
     #---------------------------------------------------
     - name: Generate test-flow chart
       shell: bash
@@ -168,6 +192,7 @@ jobs:
 
         ls -lh flowchart.png
 
+
     - name: Show flowchart.mmd for debugging  
       run: cat flowchart.mmd
 
@@ -179,7 +204,7 @@ jobs:
         path: flowchart.png
 
     #---------------------------------------------------
-    # 10 – Sticky PR comment
+    # 11 – Sticky PR comment
     #---------------------------------------------------
     - name: Comment on PR with results
       uses: marocchino/sticky-pull-request-comment@v2
@@ -195,6 +220,14 @@ jobs:
           Pass Rate: **${{ steps.summary.outputs.passrate }} %**
 
           ## ESLint (GUI tests)
+         
+
+          ## ESLint Test Metrics
+          *Files Checked:* **${{ steps.eslint_summary.outputs.total_files }}**  
+          *Errors:* **${{ steps.eslint_summary.outputs.errors }}**  
+          *Warnings:* **${{ steps.eslint_summary.outputs.warnings }}**  
+          *Fixable Errors:* **${{ steps.eslint_summary.outputs.fixable_errors }}**  
+          *Fixable Warnings:* **${{ steps.eslint_summary.outputs.fixable_warnings }}**
           ```
           ${{ steps.lint_summary.outputs.summary }}
           ```
