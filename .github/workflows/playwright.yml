@@ -225,10 +225,15 @@ jobs:
       with:
         ref: feature/github-pages-link
 
-    - name: Copy Playwright and ESLint reports
+    - name: Copy Playwright report to docs/
       run: |
-        mkdir -p docs
-        cp -r playwright-report/* docs/
+        if [ -d playwright-report ]; then
+          mkdir -p docs
+          cp -r playwright-report/* docs/
+        else
+          echo "playwright-report folder not found!"
+          exit 1
+        fi
 
     - name: Setup Git for pushing
       run: |
