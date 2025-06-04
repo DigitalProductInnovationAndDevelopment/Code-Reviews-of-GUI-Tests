@@ -224,6 +224,11 @@ jobs:
       run: |
         cp -r playwright-report docs/
 
+    - name: Checkout feature branch
+      uses: actions/checkout@v3
+      with:
+      ref: feature/github-pages-link
+
     - name: Setup Git for pushing
       run: |
         git config user.name "github-actions[bot]"
