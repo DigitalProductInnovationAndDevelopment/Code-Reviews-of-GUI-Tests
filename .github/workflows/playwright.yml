@@ -247,3 +247,15 @@ jobs:
           Artifact: **test-flow-chart → flowchart.png**
 
           _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+
+    - name: Copy Playwright and ESLint reports
+      run: |
+        cp -r playwright-report ./
+        cp -r eslint-report ./
+
+    - name: Commit and push reports
+      run: |
+        git add .
+        git commit -m "Publish test and lint reports to GitHub Pages [skip ci]" || echo "No changes to commit"
+        git push origin gh-pages --force
