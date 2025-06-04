@@ -84,10 +84,11 @@ jobs:
     #---------------------------------------------------
     # 7 – Extract Playwright test summary
     #---------------------------------------------------
-    - name: Extract test summary
+    - name: Extract Playwright summary
       id: summary
+      shell: bash
       run: |
-        export REPORT="metrics.json"
+        REPORT="metrics.json"
 
         if [ ! -f "$REPORT" ]; then
             echo "$REPORT not found!"
