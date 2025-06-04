@@ -251,6 +251,7 @@ jobs:
     # 12 – Sticky PR comment
     #---------------------------------------------------
     - name: Comment on PR with results
+      if: github.event_name == 'pull_request'
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         message: |
