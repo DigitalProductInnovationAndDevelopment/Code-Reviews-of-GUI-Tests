@@ -144,7 +144,7 @@ jobs:
     - name: Extract ESLint summary
       id: eslint_summary
       run: |
-        REPORT = "eslint-tests.json"
+        REPORT="eslint-tests.json"
         TOTAL_FILES=$(jq length "$REPORT")
         ERRORS=$(jq '[.[] | .errorCount] | add' "$REPORT")
         WARNINGS=$(jq '[.[] | .warningCount] | add' "$REPORT")
