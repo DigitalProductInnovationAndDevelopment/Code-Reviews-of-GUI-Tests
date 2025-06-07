@@ -235,9 +235,6 @@ jobs:
 
           _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-          ## GitHub Pages Report  
-          [View Detailed Report](https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html)
-
   deploy:
     name: GitHub Pages Deployment
     needs: test
