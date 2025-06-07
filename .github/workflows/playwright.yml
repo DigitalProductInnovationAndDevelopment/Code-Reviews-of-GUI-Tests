@@ -238,7 +238,7 @@ jobs:
   deploy:
     name: GitHub Pages Deployment
     needs: test
-    if: github.ref == 'refs/heads/main'
+    if: always()
     runs-on: ubuntu-latest
 
     steps:
