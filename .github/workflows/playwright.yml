@@ -108,22 +108,33 @@ jobs:
         GITHUB_PAGES_BASE_URL="https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/pr/${PR_NUMBER}/screenshots/"
 
         IMAGE_MARKDOWN=""
-        # Ensure the directory exists before trying to list files
+        # Check if the directory exists and contains PNG files
         if [ -d "$PR_SCREENSHOTS_LOCAL_DIR" ]; then
-            # Use find with -print0 and xargs -0 to handle spaces in filenames safely
-            find "$PR_SCREENSHOTS_LOCAL_DIR" -maxdepth 1 -name "*.png" -print0 | while IFS= read -r -d $'\0' img_file; do
-                img_name=$(basename "$img_file")
-                img_url="${GITHUB_PAGES_BASE_URL}${img_name}"
-                IMAGE_MARKDOWN+="![${img_name}](${img_url})\n\n"
-            done
+            # Get all PNG filenames into a bash array in the current shell context
+            # 'shopt -s nullglob' ensures the glob expands to nothing if no files match
+            shopt -s nullglob
+            declare -a IMG_FILES=("$PR_SCREENSHOTS_LOCAL_DIR"/*.png)
+            shopt -u nullglob # disable nullglob after use
+
+            if [ ${#IMG_FILES[@]} -gt 0 ]; then
+                echo "Found ${#IMG_FILES[@]} screenshot(s) for markdown generation:"
+                for img_path in "${IMG_FILES[@]}"; do
+                    img_name=$(basename "$img_path")
+                    img_url="${GITHUB_PAGES_BASE_URL}${img_name}"
+                    IMAGE_MARKDOWN+="![${img_name}](${img_url})\n\n"
+                    echo "- $img_name" # Debugging: show which file is being processed
+                done
+            else
+                echo "No PNG files found in $PR_SCREENSHOTS_LOCAL_DIR for markdown generation."
+            fi
         else
-            echo "Warning: Local directory '$PR_SCREENSHOTS_LOCAL_DIR' does not exist for Markdown generation."
+            echo "Warning: Directory '$PR_SCREENSHOTS_LOCAL_DIR' does not exist for Markdown generation."
         fi
 
         echo "pr_screenshots_markdown<<EOF" >> $GITHUB_OUTPUT
         echo "$IMAGE_MARKDOWN" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
-      shell: bash # Ensure bash is used for the find/xargs syntax
+      shell: bash # Ensure bash is used for array and shopt features
 
     # --- END OF NEW STEPS FOR SCREENSHOT PUBLISHING ---
 
