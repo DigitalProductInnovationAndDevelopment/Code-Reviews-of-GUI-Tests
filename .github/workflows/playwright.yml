@@ -78,8 +78,14 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git fetch origin main # Ensure main branch is fetched
-        # Add this line to discard local changes from Prettier or other previous steps
-        git restore .
+        
+        # --- MORE ROBUST FIX FOR 'LOCAL CHANGES' ERROR ---
+        # Discard all local changes to tracked files and remove untracked files
+        # This ensures a clean working directory before checkout
+        git reset --hard HEAD
+        git clean -fd
+        # --- END ROBUST FIX ---
+        
         git checkout main # Switch to the main branch's code
 
     ## NEW STEP: Run Playwright tests on Main (for "before" screenshots)
@@ -122,8 +128,17 @@ jobs:
       run: |
         PR_BEFORE_DIR="docs/pr/${{ github.event.pull_request.number }}/before-screenshots"
         mkdir -p "$PR_BEFORE_DIR"
-        cp published-screenshots-before/*.png "$PR_BEFORE_DIR/"
-        echo "Copied 'before' screenshots to $PR_BEFORE_DIR/"
+        # The 'nullglob' and 'if [ ${#array[@]} -gt 0 ]' pattern
+        # handles cases where no screenshots are found, preventing 'cp: cannot stat' errors.
+        shopt -s nullglob
+        declare -a IMG_FILES_BEFORE=(published-screenshots-before/*.png)
+        shopt -u nullglob
+        if [ ${#IMG_FILES_BEFORE[@]} -gt 0 ]; then
+          cp "${IMG_FILES_BEFORE[@]}" "$PR_BEFORE_DIR/"
+          echo "Copied 'before' screenshots to $PR_BEFORE_DIR/"
+        else
+          echo "No 'before' screenshots found to copy."
+        fi
         ls -lh "$PR_BEFORE_DIR/" # For debugging
 
     # Commit and Push PR Screenshots to GitHub Pages
