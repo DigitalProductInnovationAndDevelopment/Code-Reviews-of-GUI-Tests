@@ -186,7 +186,7 @@ jobs:
                 done
             else
                 IMAGE_MARKDOWN+="*No 'after' screenshots found.*\n\n"
-            fi
+            H
         else
             IMAGE_MARKDOWN+="*'After' screenshots directory not found.*\n\n"
         fi
@@ -214,16 +214,26 @@ jobs:
     - name: Extract test summary
       id: summary
       run: |
-        REPORT=metrics.json
-        TOTAL=$(jq '[..|objects|select(has("status"))] | length' "$REPORT")
-        PASSED=$(jq '[..|objects|select(.status?=="expected")] | length' "$REPORT")
-        FAILED=$(jq '[..|objects|select(.status?=="failed")]    | length' "$REPORT")
-        SKIPPED=$(jq '[..|objects|select(.status?=="skipped")] | length' "$REPORT")
-        DURATION=$(jq '.stats.duration*1000|floor' "$REPORT")
+        # Playwright's report.json contains the summary statistics
+        REPORT_FILE=playwright-report/data/report.json
+        if [ ! -f "$REPORT_FILE" ]; then
+          echo "Error: Playwright report file not found at $REPORT_FILE"
+          exit 1
+        fi
+        
+        TOTAL=$(jq '.stats.total' "$REPORT_FILE")
+        PASSED=$(jq '.stats.expected' "$REPORT_FILE")
+        FAILED=$(jq '.stats.failures' "$REPORT_FILE")
+        SKIPPED=$(jq '.stats.skipped' "$REPORT_FILE")
+        DURATION=$(jq '.stats.duration' "$REPORT_FILE") # Playwright duration is already in ms
         PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($TOTAL==0)?0:($PASSED/$TOTAL)*100}")
-        for k in total passed failed skipped duration passrate; do
-          eval "echo \"$k=\${${k^^}}\" >> \$GITHUB_OUTPUT"
-        done
+        
+        echo "total=$TOTAL" >> $GITHUB_OUTPUT
+        echo "passed=$PASSED" >> $GITHUB_OUTPUT
+        echo "failed=$FAILED" >> $GITHUB_OUTPUT
+        echo "skipped=$SKIPPED" >> $GITHUB_OUTPUT
+        echo "duration=$DURATION" >> $GITHUB_OUTPUT
+        echo "passrate=$PASS_RATE" >> $GITHUB_OUTPUT
 
     #---------------------------------------------------
     # 8 – ESLint (tests only)
@@ -254,17 +264,23 @@ jobs:
       shell: bash
       run: |
         set -e
+        REPORT_FILE=playwright-report/data/report.json
+        if [ ! -f "$REPORT_FILE" ]; then
+          echo "Error: Playwright report file not found at $REPORT_FILE for flowchart generation."
+          exit 1
+        fi
+        
         echo "graph TD" > flowchart.mmd
 
         jq -r '
           .suites[] as $file |
-            ($file.title // "NO_FILE_TITLE") as $fileTitle |
-            $file.suites[]? as $suite |
-              ($suite.title // "NO_SUITE_TITLE") as $suiteTitle |
-              $suite.specs[]? as $spec |
-                ($spec.title // "NO_SPEC_TITLE") as $specTitle |
-                [$fileTitle, $suiteTitle, $specTitle] | @tsv
-        ' metrics.json |
+          ($file.title // "NO_FILE_TITLE") as $fileTitle |
+          $file.suites[]? as $suite |
+            ($suite.title // "NO_SUITE_TITLE") as $suiteTitle |
+            $suite.specs[]? as $spec |
+              ($spec.title // "NO_SPEC_TITLE") as $specTitle |
+              [$fileTitle, $suiteTitle, $specTitle] | @tsv
+        ' "$REPORT_FILE" | # <-- Changed this line to use $REPORT_FILE
         while IFS=$'\t' read -r fileTitle suiteTitle specTitle; do
           # Build unique, safe IDs by combining parent and child
           fileId=$(echo "$fileTitle" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
