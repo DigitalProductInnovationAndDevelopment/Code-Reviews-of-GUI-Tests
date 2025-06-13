@@ -60,6 +60,10 @@ jobs:
     - name: Install dependencies
       run: npm install
 
+    # --- IMPORTANT FIX: Install Playwright browsers early ---
+    - name: Install Playwright and browsers
+      run: npx playwright install --with-deps
+
     ## NEW STEP: Create a directory for "before" screenshots
     - name: Create "before" screenshots directory
       run: mkdir -p published-screenshots-before
@@ -91,11 +95,8 @@ jobs:
         rm -rf tests/ # Remove the 'main' branch's tests
         mv tests_pr_backup/ tests/ # Move the PR's original test files back into place
 
-    #---------------------------------------------------
-    # 4 – Install Playwright browsers (Re-install if necessary, after git operations)
-    #---------------------------------------------------
-    - name: Install Playwright and browsers
-      run: npx playwright install --with-deps
+    # NOTE: The 'Install Playwright and browsers' step was moved above.
+    # It is no longer needed here as browsers are installed earlier.
 
     #---------------------------------------------------
     # 5 – Run Playwright tests (This now runs on the PR branch's tests, generates to 'published-screenshots/')
@@ -186,7 +187,7 @@ jobs:
                 done
             else
                 IMAGE_MARKDOWN+="*No 'after' screenshots found.*\n\n"
-            H
+            fi
         else
             IMAGE_MARKDOWN+="*'After' screenshots directory not found.*\n\n"
         fi
