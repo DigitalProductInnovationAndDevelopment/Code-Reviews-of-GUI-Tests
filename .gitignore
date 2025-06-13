@@ -1,0 +1,8 @@
+# Ignore generated screenshots
+published-screenshots/
+
+# You might also want to ignore Node.js dependencies
+node_modules/
+
+# And Playwright test results/reports
+playwright-report/
