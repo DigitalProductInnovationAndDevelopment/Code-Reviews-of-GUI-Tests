@@ -14,9 +14,9 @@ jobs:
       pull-requests: write
 
     steps:
-    #----------------------------------------------------
+    #---------------------------------------------------
     # 0 – Checkout
-    #----------------------------------------------------
+    #---------------------------------------------------
     - name: Checkout code
       uses: actions/checkout@v3
       with:
@@ -48,7 +48,7 @@ jobs:
                                          -level=warning
         else
           echo "No Prettier issues found."
-        fi # Corrected 'Ends if' comment to 'fi'
+        fi
 
     #---------------------------------------------------
     # 3 – Node & deps
@@ -74,6 +74,8 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git fetch origin main # Ensure main branch is fetched
+        # Add this line to discard local changes from Prettier or other previous steps
+        git restore .
         git checkout main # Switch to the main branch's code
 
     ## NEW STEP: Run Playwright tests on Main (for "before" screenshots)
@@ -329,7 +331,6 @@ jobs:
           Artifact: **test-flow-chart → flowchart.png**
 
           ## Playwright Screenshots for this PR
-          <!-- This will embed the screenshots directly! -->
           ${{ steps.generate_screenshot_markdown.outputs.pr_screenshots_markdown }}
 
           _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
