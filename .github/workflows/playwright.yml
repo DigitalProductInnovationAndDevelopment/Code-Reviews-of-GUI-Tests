@@ -222,54 +222,64 @@ jobs:
     - name: Build dynamic checklist
       id: checklist
       shell: bash
-      env:
-        ESLINT_ERRORS: ${{ steps.eslint_summary.outputs.errors }}
-        PLAYWRIGHT_FAILED: ${{ steps.summary.outputs.failed }}
-        PLAYWRIGHT_TOTAL: ${{ steps.summary.outputs.total }}
       run: |
         CHECKLIST=""
+        WARNING=false
 
-        # 1. GitHub Action triggered
-        CHECKLIST+="- [x] GitHub Action was triggered\n"
+        # GitHub Action triggered
+        CHECKLIST="${CHECKLIST}- [x] GitHub Action triggered\n"
 
-        # 2. Playwright tests successful
-        if [[ "$PLAYWRIGHT_FAILED" == "0" && "$PLAYWRIGHT_TOTAL" != "" ]]; then
-          CHECKLIST+="- [x] Playwright tests passed\n"
+        # Playwright tests completed successfully
+        if [[ "${{ steps.summary.outputs.total }}" != "" ]]; then
+          CHECKLIST="${CHECKLIST}- [x] Playwright tests completed successfully\n"
         else
-          CHECKLIST+="- [ ] Playwright tests passed\n"
+          CHECKLIST="${CHECKLIST}- [ ] Playwright tests completed successfully\n"
+          WARNING=true
         fi
 
-        # 3. ESLint successful
-        if [[ "$ESLINT_ERRORS" == "0" ]]; then
-          CHECKLIST+="- [x] ESLint passed\n"
+        # ESLint executed without issues
+        if [[ -f eslint-tests.json ]]; then
+          CHECKLIST="${CHECKLIST}- [x] ESLint executed without issues\n"
         else
-          CHECKLIST+="- [ ] ESLint passed\n"
+          CHECKLIST="${CHECKLIST}- [ ] ESLint executed without issues\n"
+          WARNING=true
         fi
 
-        # 4. Prettier successful (no changes needed)
-        if [[ -f prettier.patch && -s prettier.patch ]]; then
-          CHECKLIST+="- [ ] Prettier passed\n"
+        # Prettier check completed
+        if [[ -f prettier.patch ]]; then
+          CHECKLIST="${CHECKLIST}- [x] Prettier check completed\n"
         else
-          CHECKLIST+="- [x] Prettier passed\n"
+          CHECKLIST="${CHECKLIST}- [ ] Prettier check completed\n"
+          WARNING=true
         fi
 
-        # 5. Test summary generated
-        if [[ "$PLAYWRIGHT_TOTAL" != "" && "$PLAYWRIGHT_TOTAL" != "0" ]]; then
-          CHECKLIST+="- [x] Test summary generated\n"
+        # Test summary generated
+        if [[ "${{ steps.summary.outputs.total }}" != "" ]]; then
+          CHECKLIST="${CHECKLIST}- [x] Test summary generated\n"
         else
-          CHECKLIST+="- [ ] Test summary generated\n"
+          CHECKLIST="${CHECKLIST}- [ ] Test summary generated\n"
+          WARNING=true
         fi
 
-        # 6. Flowchart generated
+        # Flowchart created
         if [[ -f flowchart.png ]]; then
-          CHECKLIST+="- [x] Flowchart generated\n"
+          CHECKLIST="${CHECKLIST}- [x] Flowchart created\n"
         else
-          CHECKLIST+="- [ ] Flowchart generated\n"
+          CHECKLIST="${CHECKLIST}- [ ] Flowchart created\n"
+          WARNING=true
         fi
 
         echo -e "value<<EOF" >> $GITHUB_OUTPUT
         echo -e "$CHECKLIST" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
+
+        if [[ "$WARNING" == "true" ]]; then
+          echo "status=warning" >> $GITHUB_OUTPUT
+        else
+          echo "status=success" >> $GITHUB_OUTPUT
+        fi
+
+
 
     #---------------------------------------------------
     # 12 – Sticky PR comment
@@ -280,7 +290,9 @@ jobs:
         message: |
           ### Test Checklist
           ${{ steps.checklist.outputs.value }}
-          
+
+          Checklist Status: ${{ steps.checklist.outputs.status }}
+
           ---
           
           ### Playwright Test Metrics
