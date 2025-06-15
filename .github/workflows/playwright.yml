@@ -72,8 +72,16 @@ jobs:
     - name: Save PR test files
       run: |
         mkdir -p tests_pr_backup/
-        cp -r tests/* tests_pr_backup/ # Copy contents, not the directory itself
+        # Use rsync for robust copy, preserving permissions/timestamps if needed, but cp -r is fine too
+        cp -r tests/ tests_pr_backup/ # Copy the 'tests' directory and its contents
         ls -la tests_pr_backup/ # Debugging: verify backup content
+
+    ## NEW STEP: Prepare for Main branch checkout (clean 'tests/' directory)
+    - name: Clean 'tests/' for Main branch checkout
+      run: |
+        # Force remove 'tests/' to ensure a clean slate before checking out main
+        rm -rf tests/
+        git restore . # This will remove any uncommitted changes from the rest of the repo.
 
     ## NEW STEP: Checkout Main branch for "before" tests
     - name: Checkout Main branch for "before" screenshots
@@ -81,7 +89,7 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git fetch origin main # Ensure main branch is fetched
-        git reset --hard origin/main # Reset to main, discard local changes (tests_pr_backup is safe outside)
+        git checkout --force main # Force checkout main, overriding any local untracked files
 
     ## NEW STEP: Run Playwright tests on Main (for "before" screenshots)
     - name: Run Playwright "before" tests
@@ -90,12 +98,16 @@ jobs:
         # Ensure your playwright.config.js uses process.env.PLAYWRIGHT_SCREENSHOT_DIR for 'output' in 'use'.
         PLAYWRIGHT_SCREENSHOT_DIR="published-screenshots-before" npx playwright test
 
+    ## NEW STEP: Restore PR branch
+    - name: Restore PR branch
+      run: |
+        git checkout --force ${{ github.event.pull_request.head.ref }} # Force checkout PR branch
+
     ## NEW STEP: Restore PR test files
     - name: Restore PR test files
       run: |
-        git reset --hard ${{ github.event.pull_request.head.ref }} # Reset to PR branch's state
         # Now, replace the 'tests/' directory with the backup
-        rm -rf tests/ # Remove current tests/ directory
+        rm -rf tests/ # Remove tests/ that came from PR branch checkout
         mv tests_pr_backup/ tests/ # Move the backup directory to become the new tests/
         ls -la tests/ # Debugging: verify restored content
 
@@ -347,7 +359,7 @@ jobs:
       run: cat flowchart.mmd
 
     - name: Upload test-flow chart
-      if: always() # Removed fileExists: This ensures the step runs and actions/upload-artifact will warn if file is missing.
+      if: always() # Corrected: 'fileExists' is not a valid GitHub Actions function.
       uses: actions/upload-artifact@v4
       with:
         name: test-flow-chart
