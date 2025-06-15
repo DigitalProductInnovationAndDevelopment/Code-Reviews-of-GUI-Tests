@@ -64,12 +64,6 @@ jobs:
     - name: Install Playwright and browsers
       run: npx playwright install --with-deps
 
-    ## NEW STEP: Create directories for screenshots
-    - name: Create screenshots directories
-      run: |
-        mkdir -p published-screenshots-before
-        mkdir -p published-screenshots-after # For clarity, though 'test-results' is default output
-
     ## CORE LOGIC FOR BEFORE/AFTER COMPARISON ##
 
     # Step 1: Save current PR's test files (before checking out main's version)
@@ -77,25 +71,31 @@ jobs:
       run: |
         mkdir -p tests_pr_backup/
         cp -r tests/ tests_pr_backup/ # Copy the 'tests' directory and its contents
+        echo "Contents of tests_pr_backup/:"
         ls -la tests_pr_backup/ # Debugging: verify backup content
 
     # Step 2: Checkout base branch version of test files (from friend's suggestion)
     - name: Checkout base version of test files
       run: |
         git fetch origin main # Ensure origin/main is up-to-date
-        # Use git restore --source instead of git checkout for non-conflicting override
-        # This will put 'tests/' from origin/main into your working directory
-        git restore --source origin/main -- tests/
+        # This will put 'tests/' from origin/main into your working directory, overwriting current 'tests/'
+        # Use --force for git checkout, to ensure it overwrites local modifications in 'tests/'.
+        # For 'git restore', it effectively discards local changes in 'tests/' and takes main's version.
+        git checkout --force origin/main -- tests/
         echo "Contents of tests/ after checking out main's version:"
         ls -la tests/ # Debugging
 
     # Step 3: Run Playwright on base version (from friend's suggestion)
     - name: Run Playwright "before" tests on Main's version
+      # Set the output directory explicitly for this run
+      env:
+        PLAYWRIGHT_SCREENSHOT_DIR: playwright-artifacts-before
       run: |
-        # PLAYWRIGHT_SCREENSHOT_DIR will direct Playwright's output for this run
-        PLAYWRIGHT_SCREENSHOT_DIR="published-screenshots-before" npx playwright test
-        # If you want a separate report JSON for "before" tests:
-        # PLAYWRIGHT_SCREENSHOT_DIR="published-screenshots-before" npx playwright test --output="playwright-report-before/" --reporter=json
+        mkdir -p $PLAYWRIGHT_SCREENSHOT_DIR # Ensure the directory exists
+        npx playwright test --output=$PLAYWRIGHT_SCREENSHOT_DIR --reporter=json # Output JSON report here too
+        # Debugging: List contents after run
+        echo "Contents of $PLAYWRTIGHT_SCREENSHOT_DIR after 'before' tests:"
+        ls -laR $PLAYWRIGHT_SCREENSHOT_DIR
 
     # Step 4: Restore PR version of tests (from friend's suggestion)
     - name: Restore PR test files
@@ -111,21 +111,27 @@ jobs:
     # 5 – Run Playwright tests (This now runs on the PR branch's tests)
     #---------------------------------------------------
     - name: Run Playwright tests (PR version)
+      # Set the output directory explicitly for this run
+      env:
+        PLAYWRIGHT_SCREENSHOT_DIR: playwright-artifacts-pr
       run: |
-        # This will use the default 'test-results' for screenshots unless `output` in config.
-        # And specifically output the HTML/JSON reports to 'playwright-report-pr/'
-        npx playwright test --output=playwright-report-pr/ --reporter=html,json # This creates results.json
+        mkdir -p $PLAYWRIGHT_SCREENSHOT_DIR # Ensure the directory exists
+        npx playwright test --output=$PLAYWRIGHT_SCREENSHOT_DIR --reporter=html,json # This creates results.json in this directory
+        # Debugging: List contents after run
+        echo "Contents of $PLAYWRIGHT_SCREENSHOT_DIR after 'PR' tests:"
+        ls -laR $PLAYWRIGHT_SCREENSHOT_DIR
 
     # --- Debugging: Verify Playwright Report Existence AFTER tests ---
     - name: Verify Playwright Report Existence (PR version)
       run: |
-        echo "Listing contents of playwright-report-pr/:"
-        ls -la playwright-report-pr/
-        # Check if the results.json exists
-        if [ -f "playwright-report-pr/results.json" ]; then # Correctly checking for results.json
-          echo "playwright-report-pr/results.json exists."
+        # Check in the explicitly set output directory
+        REPORT_FILE="playwright-artifacts-pr/results.json"
+        echo "Checking for report file at: $REPORT_FILE"
+        if [ -f "$REPORT_FILE" ]; then
+          echo "$REPORT_FILE exists."
         else
-          echo "ERROR: playwright-report-pr/results.json DOES NOT EXIST."
+          echo "ERROR: $REPORT_FILE DOES NOT EXIST. Listing parent directory contents:"
+          ls -la playwright-artifacts-pr/ || true # List even if directory is empty or missing
           exit 1
         fi
     # --- End Debugging ---
@@ -138,21 +144,22 @@ jobs:
       run: |
         PR_DIR="docs/pr/${{ github.event.pull_request.number }}/screenshots"
         mkdir -p "$PR_DIR"
-        # Find all .png files within the default Playwright output directory (e.g., test-results/)
-        # and copy them to the target PR_DIR.
-        find test-results/ -name "*.png" -exec cp {} "$PR_DIR/" \; || true # The '|| true' prevents failure if no files are found
+        # Copy the *entire contents* of the playwright-artifacts-pr directory to the target.
+        # Playwright puts screenshots in subdirectories (e.g., 'test-results/test-name-chromium/screenshot.png')
+        # This will preserve that structure under the target.
+        cp -r playwright-artifacts-pr/* "$PR_DIR/" || true # The '|| true' prevents failure if no files are found
         echo "Copied 'after' screenshots to $PR_DIR/"
-        ls -lh "$PR_DIR/" # For debugging
+        ls -lhR "$PR_DIR/" # For debugging, recursive list
 
     - name: Prepare PR Screenshots for GitHub Pages (Before)
       if: github.event_name == 'pull_request'
       run: |
         PR_BEFORE_DIR="docs/pr/${{ github.event.pull_request.number }}/before-screenshots"
         mkdir -p "$PR_BEFORE_DIR"
-        # Find all .png files within the 'published-screenshots-before/' directory
-        find published-screenshots-before/ -name "*.png" -exec cp {} "$PR_BEFORE_DIR/" \; || true
+        # Copy the *entire contents* of the playwright-artifacts-before directory to the target.
+        cp -r playwright-artifacts-before/* "$PR_BEFORE_DIR/" || true
         echo "Copied 'before' screenshots to $PR_BEFORE_DIR/"
-        ls -lh "$PR_BEFORE_DIR/" # For debugging
+        ls -lhR "$PR_BEFORE_DIR/" # For debugging, recursive list
 
     # Commit and Push PR Screenshots to GitHub Pages
     - name: Commit and Push PR Screenshots to GitHub Pages
@@ -175,52 +182,51 @@ jobs:
         PR_SCREENSHOTS_LOCAL_DIR_AFTER="docs/pr/${PR_NUMBER}/screenshots"
         PR_SCREENSHOTS_LOCAL_DIR_BEFORE="docs/pr/${PR_NUMBER}/before-screenshots"
 
+        # IMPORTANT: Verify this URL matches your GitHub Pages setup!
         GITHUB_PAGES_BASE_URL_AFTER="https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/pr/${PR_NUMBER}/screenshots/"
         GITHUB_PAGES_BASE_URL_BEFORE="https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/pr/${PR_NUMBER}/before-screenshots/"
 
         IMAGE_MARKDOWN=""
 
+        # Function to generate markdown for a given directory and base URL
+        generate_image_markdown() {
+            local dir=$1
+            local base_url=$2
+            local section_title=$3
+            local prefix=$4
+            local markdown_output=""
+
+            if [ -d "$dir" ]; then
+                shopt -s nullglob
+                # Find all .png files recursively within the directory
+                declare -a IMG_FILES=("$dir"/**/*.png)
+                shopt -u nullglob
+
+                if [ ${#IMG_FILES[@]} -gt 0 ]; then
+                    for img_path in "${IMG_FILES[@]}"; do
+                        # Get path relative to the base directory (e.g., 'test-name-chromium/screenshot.png')
+                        relative_path="${img_path#$dir/}"
+                        img_name=$(basename "$img_path")
+                        # Construct the full URL
+                        img_url="${base_url}${relative_path}"
+                        markdown_output+="![${prefix} - ${img_name}](${img_url})\n\n"
+                    done
+                else
+                    markdown_output+="*No '${section_title}' screenshots found.*\n\n"
+                fi
+            else
+                markdown_output+="*'${section_title}' screenshots directory not found.*\n\n"
+            fi
+            echo "$markdown_output"
+        }
+
         # Add "Before" screenshots section
         IMAGE_MARKDOWN+="### Before (Main Branch)\n\n"
-        if [ -d "$PR_SCREENSHOTS_LOCAL_DIR_BEFORE" ]; then
-            shopt -s nullglob
-            # Look for .png files directly in the directory
-            declare -a IMG_FILES_BEFORE=("$PR_SCREENSHOTS_LOCAL_DIR_BEFORE"/*.png)
-            shopt -u nullglob
-
-            if [ ${#IMG_FILES_BEFORE[@]} -gt 0 ]; then
-                for img_path in "${IMG_FILES_BEFORE[@]}"; do
-                    img_name=$(basename "$img_path")
-                    img_url="${GITHUB_PAGES_BASE_URL_BEFORE}${img_name}"
-                    IMAGE_MARKDOWN+="![Before - ${img_name}](${img_url})\n\n"
-                done
-            else
-                IMAGE_MARKDOWN+="*No 'before' screenshots found.*\n\n"
-            fi
-        else
-            IMAGE_MARKDOWN+="*'Before' screenshots directory not found.*\n\n"
-        fi
+        IMAGE_MARKDOWN+=$(generate_image_markdown "$PR_SCREENSHOTS_LOCAL_DIR_BEFORE" "$GITHUB_PAGES_BASE_URL_BEFORE" "before" "Before")
 
         # Add "After" screenshots section
         IMAGE_MARKDOWN+="### After (PR Branch)\n\n"
-        if [ -d "$PR_SCREENSHOTS_LOCAL_DIR_AFTER" ]; then
-            shopt -s nullglob
-            # Look for .png files directly in the directory
-            declare -a IMG_FILES_AFTER=("$PR_SCREENSHOTS_LOCAL_DIR_AFTER"/*.png)
-            shopt -u nullglob
-
-            if [ ${#IMG_FILES_AFTER[@]} -gt 0 ]; then
-                for img_path in "${IMG_FILES_AFTER[@]}"; do
-                    img_name=$(basename "$img_path")
-                    img_url="${GITHUB_PAGES_BASE_URL_AFTER}${img_name}"
-                    IMAGE_MARKDOWN+="![After - ${img_name}](${img_url})\n\n"
-                done
-            else
-                IMAGE_MARKDOWN+="*No 'after' screenshots found.*\n\n"
-            fi
-        else
-            IMAGE_MARKDOWN+="*'After' screenshots directory not found.*\n\n"
-        fi
+        IMAGE_MARKDOWN+=$(generate_image_markdown "$PR_SCREENSHOTS_LOCAL_DIR_AFTER" "$GITHUB_PAGES_BASE_URL_AFTER" "after" "After")
 
         echo "pr_screenshots_markdown<<EOF" >> $GITHUB_OUTPUT
         echo "$IMAGE_MARKDOWN" >> $GITHUB_OUTPUT
@@ -237,7 +243,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: playwright-report
-        path: playwright-report-pr/
+        path: playwright-artifacts-pr/html/ # Upload the HTML report specifically
 
     #---------------------------------------------------
     # 7 – Extract test summary
@@ -245,8 +251,9 @@ jobs:
     - name: Extract test summary
       id: summary
       run: |
-        # Playwright's JSON report contains the summary statistics
-        REPORT_FILE=playwright-report-pr/results.json # FIXED: Path to results.json
+        # Playwright's JSON report contains the summary statistics.
+        # It's now in the 'playwright-artifacts-pr/' directory.
+        REPORT_FILE="playwright-artifacts-pr/results.json"
         if [ ! -f "$REPORT_FILE" ]; then
           echo "Error: Playwright report file not found at $REPORT_FILE"
           exit 1
@@ -303,7 +310,8 @@ jobs:
       shell: bash
       run: |
         set -e
-        REPORT_FILE=playwright-report-pr/results.json # FIXED: Path to results.json
+        # The report file for the flowchart should be from the PR's run
+        REPORT_FILE="playwright-artifacts-pr/results.json"
         if [ ! -f "$REPORT_FILE" ]; then
           echo "Error: Playwright report file not found at $REPORT_FILE for flowchart generation. Skipping chart."
           exit 0 # Exit successfully if report not found, but log message
@@ -323,7 +331,7 @@ jobs:
         while IFS=$'\t' read -r fileTitle suiteTitle specTitle; do
           # Build unique, safe IDs by combining parent and child
           fileId=$(echo "$fileTitle" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
-          suiteId=$(echo "${fileTitle}_${suiteTitle}" | tr -c 'A-Za-Z0-9' '_' | sed 's/^_*\|_*$//g')
+          suiteId=$(echo "${fileTitle}_${suiteTitle}" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
           specId=$(echo "${fileTitle}_${suiteTitle}_${specTitle}" | tr -c 'A-Za-Z0-9' '_' | sed 's/^_*\|_*$//g')
 
           # File node
