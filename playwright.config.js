@@ -30,14 +30,13 @@ module.exports = defineConfig({
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
 
-    // --- NEW: Dynamic screenshot output directory ---
-    // If PLAYWRIGHT_SCREENSHOT_DIR is set, use it. Otherwise, default to 'published-screenshots'.
-    screenshot: 'only-on-failure', // You can set this to 'on' or 'only-on-failure'
+    // --- IMPORTANT: Dynamic screenshot output directory ---
+    // If PLAYWRIGHT_SCREENSHOT_DIR is set (by our workflow), use it as the base output directory.
+    // Otherwise, default to 'test-results' (Playwright's default for general artifacts).
+    // Playwright will create subdirectories within this 'output' path (e.g., 'output/test-name-platform/').
+    screenshot: 'only-on-failure', // or 'on' if you want screenshots for all steps
     video: 'on-first-retry',
     output: process.env.PLAYWRIGHT_SCREENSHOT_DIR || 'test-results', // This is the key change!
-                                                                      // Playwright itself creates the 'test-results' folder.
-                                                                      // Screenshots go into test-results/{test_name}-snapshots
-                                                                      // We will move them to published-screenshots-before/ or published-screenshots/ later.
   },
 
   /* Configure projects for major browsers */
