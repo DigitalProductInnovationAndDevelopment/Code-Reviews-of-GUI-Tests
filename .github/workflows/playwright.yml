@@ -6,14 +6,13 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    permissions:
+permissions:
       contents: write
       pull-requests: write
 
+jobs:
+  test:
+    runs-on: ubuntu-latest
     steps:
     #---------------------------------------------------
     # 0 – Checkout
