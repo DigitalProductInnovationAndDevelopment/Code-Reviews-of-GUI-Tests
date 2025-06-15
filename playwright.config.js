@@ -36,7 +36,7 @@ module.exports = defineConfig({
     // Playwright will create subdirectories within this 'output' path (e.g., 'output/test-name-platform/').
     screenshot: 'only-on-failure', // or 'on' if you want screenshots for all steps
     video: 'on-first-retry',
-    output: process.env.PLAYWRIGHT_SCREENSHOT_DIR || 'test-results', // This is the key change!
+    output: process.env.PLAYWRIGHT_SCREENSHOT_DIR || 'test-results', // This is the key!
   },
 
   /* Configure projects for major browsers */
