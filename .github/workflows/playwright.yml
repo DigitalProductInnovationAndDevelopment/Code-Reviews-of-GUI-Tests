@@ -219,38 +219,52 @@ jobs:
     #---------------------------------------------------
     # 11 – Checklist generation
     #---------------------------------------------------
-
     - name: Build dynamic checklist
       id: checklist
       shell: bash
+      env:
+        ESLINT_ERRORS: ${{ steps.eslint_summary.outputs.errors }}
+        PLAYWRIGHT_FAILED: ${{ steps.summary.outputs.failed }}
+        PLAYWRIGHT_TOTAL: ${{ steps.summary.outputs.total }}
       run: |
         CHECKLIST=""
 
-        # GitHub Action triggered
-        CHECKLIST="${CHECKLIST}- [x] GitHub Action was triggered\n"
+        # 1. GitHub Action triggered
+        CHECKLIST+="- [x] GitHub Action was triggered\n"
 
-        # ESLint results
-        if [[ "${{ steps.eslint_summary.outputs.errors }}" == "0" ]]; then
-          CHECKLIST="${CHECKLIST}- [x] ESLint passed\n"
+        # 2. Playwright tests successful
+        if [[ "$PLAYWRIGHT_FAILED" == "0" && "$PLAYWRIGHT_TOTAL" != "" ]]; then
+          CHECKLIST+="- [x] Playwright tests passed\n"
         else
-          CHECKLIST="${CHECKLIST}- [ ] ESLint has errors\n"
+          CHECKLIST+="- [ ] Playwright tests passed\n"
         fi
 
-        # Prettier run (assumed always executed)
-        CHECKLIST="${CHECKLIST}- [x] Prettier formatting check completed\n"
-
-        # Playwright test summary
-        if [[ "${{ steps.summary.outputs.total }}" != "" ]]; then
-          CHECKLIST="${CHECKLIST}- [x] Test summary generated\n"
+        # 3. ESLint successful
+        if [[ "$ESLINT_ERRORS" == "0" ]]; then
+          CHECKLIST+="- [x] ESLint passed\n"
         else
-          CHECKLIST="${CHECKLIST}- [ ] Test summary missing\n"
+          CHECKLIST+="- [ ] ESLint passed\n"
         fi
 
-        # Flowchart output
+        # 4. Prettier successful (no changes needed)
+        if [[ -f prettier.patch && -s prettier.patch ]]; then
+          CHECKLIST+="- [ ] Prettier passed\n"
+        else
+          CHECKLIST+="- [x] Prettier passed\n"
+        fi
+
+        # 5. Test summary generated
+        if [[ "$PLAYWRIGHT_TOTAL" != "" && "$PLAYWRIGHT_TOTAL" != "0" ]]; then
+          CHECKLIST+="- [x] Test summary generated\n"
+        else
+          CHECKLIST+="- [ ] Test summary generated\n"
+        fi
+
+        # 6. Flowchart generated
         if [[ -f flowchart.png ]]; then
-          CHECKLIST="${CHECKLIST}- [x] Flowchart generated\n"
+          CHECKLIST+="- [x] Flowchart generated\n"
         else
-          CHECKLIST="${CHECKLIST}- [ ] Flowchart not found\n"
+          CHECKLIST+="- [ ] Flowchart generated\n"
         fi
 
         echo -e "value<<EOF" >> $GITHUB_OUTPUT
@@ -266,8 +280,10 @@ jobs:
         message: |
           ### Test Checklist
           ${{ steps.checklist.outputs.value }}
-
-          ## Playwright Test Metrics
+          
+          ---
+          
+          ### Playwright Test Metrics
           *Total:* **${{ steps.summary.outputs.total }}**  
           *Passed:* **${{ steps.summary.outputs.passed }}**  
           *Failed:* **${{ steps.summary.outputs.failed }}**  
@@ -276,8 +292,9 @@ jobs:
           *Duration:* **${{ steps.summary.outputs.duration }} ms**  
           *Pass Rate:* **${{ steps.summary.outputs.passrate }} %**
          
- 
-          ## ESLint Test Metrics
+          ---
+
+          ### ESLint Test Metrics
           *Files Checked:* **${{ steps.eslint_summary.outputs.total_files }}**  
           *Errors:* **${{ steps.eslint_summary.outputs.errors }}**  
           *Warnings:* **${{ steps.eslint_summary.outputs.warnings }}**  
@@ -287,7 +304,9 @@ jobs:
           ${{ steps.lint_summary.outputs.summary }}
           ```
 
-          ## Test-Flow Chart  
+          ---
+
+          ### Test-Flow Chart  
           Artifact: **test-flow-chart → flowchart.png**
 
           _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
