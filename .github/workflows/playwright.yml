@@ -355,7 +355,7 @@ jobs:
         path: flowchart.png
 
     #---------------------------------------------------
-    # 10 – Sticky PR comment
+    # 10 – Sticky PR comment -
     #---------------------------------------------------
     - name: Comment on PR with results
       uses: marocchino/sticky-pull-request-comment@v2
