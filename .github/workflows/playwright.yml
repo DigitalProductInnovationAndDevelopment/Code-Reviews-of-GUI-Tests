@@ -91,9 +91,8 @@ jobs:
       run: |
         mkdir -p $PLAYWRIGHT_SCREENSHOT_DIR # Ensure the directory exists
         echo "Running Playwright 'before' tests, outputting to: $PLAYWRIGHT_SCREENSHOT_DIR"
-        # Using --reporter=json for Playwright's default json report for summary extraction
-        npx playwright test --output=$PLAYWRIGHT_SCREENSHOT_DIR --reporter=json --debug || true
-        # The '|| true' allows the workflow to continue even if Playwright fails, so we can inspect artifacts
+        # Explicitly set the output path for results.json
+        npx playwright test --output=$PLAYWRIGHT_SCREENSHOT_DIR --reporter=json,json-reporter=$PLAYWRIGHT_SCREENSHOT_DIR/results.json --debug || true
         
         # Debugging: List contents after run
         echo "Contents of $PLAYWRIGHT_SCREENSHOT_DIR after 'before' tests:"
@@ -117,9 +116,8 @@ jobs:
       run: |
         mkdir -p $PLAYWRIGHT_SCREENSHOT_DIR # Ensure the directory exists
         echo "Running Playwright 'PR' tests, outputting to: $PLAYWRIGHT_SCREENSHOT_DIR"
-        # Use html reporter here so we can upload the full interactive report
-        npx playwright test --output=$PLAYWRIGHT_SCREENSHOT_DIR --reporter=html,json --debug || true
-        # The '|| true' allows the workflow to continue even if Playwright fails
+        # Explicitly set the output path for results.json AND keep html reporter
+        npx playwright test --output=$PLAYWRIGHT_SCREENSHOT_DIR --reporter=html,json,json-reporter=$PLAYWRIGHT_SCREENSHOT_DIR/results.json --debug || true
 
         # Debugging: List contents after run
         echo "Contents of $PLAYWRIGHT_SCREENSHOT_DIR after 'PR' tests:"
