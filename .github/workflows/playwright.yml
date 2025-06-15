@@ -91,8 +91,8 @@ jobs:
       run: |
         mkdir -p $PLAYWRIGHT_SCREENSHOT_DIR # Ensure the directory exists
         echo "Running Playwright 'before' tests, outputting to: $PLAYWRIGHT_SCREENSHOT_DIR"
-        # CORRECTED LINE for json reporter output:
-        npx playwright test --output=$PLAYWRIGHT_SCREENSHOT_DIR --reporter=json,outputFile=$PLAYWRIGHT_SCREENSHOT_DIR/results.json --debug || true
+        # REMOVED --reporter=json,outputFile=... as it's now in playwright.config.js
+        npx playwright test --debug || true
         
         # Debugging: List contents after run
         echo "Contents of $PLAYWRIGHT_SCREENSHOT_DIR after 'before' tests:"
@@ -116,8 +116,8 @@ jobs:
       run: |
         mkdir -p $PLAYWRIGHT_SCREENSHOT_DIR # Ensure the directory exists
         echo "Running Playwright 'PR' tests, outputting to: $PLAYWRIGHT_SCREENSHOT_DIR"
-        # CORRECTED LINE for json reporter output (and keeping html reporter):
-        npx playwright test --output=$PLAYWRIGHT_SCREENSHOT_DIR --reporter=html,json,outputFile=$PLAYWRIGHT_SCREENSHOT_DIR/results.json --debug || true
+        # REMOVED --reporter=html,json,outputFile=... as it's now in playwright.config.js
+        npx playwright test --debug || true
 
         # Debugging: List contents after run
         echo "Contents of $PLAYWRIGHT_SCREENSHOT_DIR after 'PR' tests:"
