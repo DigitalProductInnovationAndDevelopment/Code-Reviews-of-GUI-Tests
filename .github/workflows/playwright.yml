@@ -20,8 +20,8 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
       with:
-        fetch-depth: 0
-        ref: ${{ github.event.pull_request.head.ref }} # Crucial for pushing back to PR branch
+        fetch-depth: 0 # Needed to fetch origin/main later
+        ref: ${{ github.event.pull_request.head.ref }} # Checkout PR branch first
 
     #---------------------------------------------------
     # 1 – reviewdog CLI
@@ -64,70 +64,65 @@ jobs:
     - name: Install Playwright and browsers
       run: npx playwright install --with-deps
 
-    ## NEW STEP: Create a directory for "before" screenshots (this will be the Playwright output dir)
-    - name: Create "before" screenshots directory
-      run: mkdir -p published-screenshots-before
+    ## NEW STEP: Create directories for screenshots
+    - name: Create screenshots directories
+      run: |
+        mkdir -p published-screenshots-before
+        mkdir -p published-screenshots-after # For clarity, though 'test-results' is default output
 
-    ## NEW STEP: Save current PR's test files (before checking out main)
+    ## CORE LOGIC FOR BEFORE/AFTER COMPARISON ##
+
+    # Step 1: Save current PR's test files (before checking out main's version)
     - name: Save PR test files
       run: |
         mkdir -p tests_pr_backup/
-        # Use rsync for robust copy, preserving permissions/timestamps if needed, but cp -r is fine too
         cp -r tests/ tests_pr_backup/ # Copy the 'tests' directory and its contents
         ls -la tests_pr_backup/ # Debugging: verify backup content
 
-    ## NEW STEP: Prepare for Main branch checkout (clean 'tests/' directory)
-    - name: Clean 'tests/' for Main branch checkout
+    # Step 2: Checkout base branch version of test files (from friend's suggestion)
+    - name: Checkout base version of test files
       run: |
-        # Force remove 'tests/' to ensure a clean slate before checking out main
-        rm -rf tests/
-        git restore . # This will remove any uncommitted changes from the rest of the repo.
+        git fetch origin main # Ensure origin/main is up-to-date
+        # Use git restore --source instead of git checkout for non-conflicting override
+        # This will put 'tests/' from origin/main into your working directory
+        git restore --source origin/main -- tests/
+        echo "Contents of tests/ after checking out main's version:"
+        ls -la tests/ # Debugging
 
-    ## NEW STEP: Checkout Main branch for "before" tests
-    - name: Checkout Main branch for "before" screenshots
+    # Step 3: Run Playwright on base version (from friend's suggestion)
+    - name: Run Playwright "before" tests on Main's version
       run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        git fetch origin main # Ensure main branch is fetched
-        git checkout --force main # Force checkout main, overriding any local untracked files
-
-    ## NEW STEP: Run Playwright tests on Main (for "before" screenshots)
-    - name: Run Playwright "before" tests
-      run: |
-        # Playwright will output its results (including screenshots) directly into PLAYWRIGHT_SCREENSHOT_DIR.
-        # Ensure your playwright.config.js uses process.env.PLAYWRIGHT_SCREENSHOT_DIR for 'output' in 'use'.
+        # PLAYWRIGHT_SCREENSHOT_DIR will direct Playwright's output for this run
         PLAYWRIGHT_SCREENSHOT_DIR="published-screenshots-before" npx playwright test
+        # If you want a separate report JSON for "before" tests:
+        # PLAYWRIGHT_SCREENSHOT_DIR="published-screenshots-before" npx playwright test --output="playwright-report-before/" --reporter=json
 
-    ## NEW STEP: Restore PR branch
-    - name: Restore PR branch
-      run: |
-        git checkout --force ${{ github.event.pull_request.head.ref }} # Force checkout PR branch
-
-    ## NEW STEP: Restore PR test files
+    # Step 4: Restore PR version of tests (from friend's suggestion)
     - name: Restore PR test files
       run: |
-        # Now, replace the 'tests/' directory with the backup
-        rm -rf tests/ # Remove tests/ that came from PR branch checkout
-        mv tests_pr_backup/ tests/ # Move the backup directory to become the new tests/
-        ls -la tests/ # Debugging: verify restored content
+        rm -rf tests/ # Remove tests/ from main's version
+        mv tests_pr_backup/ tests/ # Move the backup back to become the PR's tests/
+        echo "Contents of tests/ after restoring PR's version:"
+        ls -la tests/ # Debugging
+
+    ## END CORE LOGIC FOR BEFORE/AFTER COMPARISON ##
 
     #---------------------------------------------------
-    # 5 – Run Playwright tests (This now runs on the PR branch's tests, generates to 'published-screenshots/')
+    # 5 – Run Playwright tests (This now runs on the PR branch's tests)
     #---------------------------------------------------
-    - name: Run Playwright tests
-      run: npx playwright test --output=playwright-report-pr/ --reporter=html,json # This will create results.json
-      # Playwright will output screenshots into the default location defined in playwright.config.js (e.g., test-results/)
-      # We will then move them to 'published-screenshots/' in the next step.
+    - name: Run Playwright tests (PR version)
+      run: |
+        # This will use the default 'test-results' for screenshots unless `output` in config.
+        # And specifically output the HTML/JSON reports to 'playwright-report-pr/'
+        npx playwright test --output=playwright-report-pr/ --reporter=html,json # This creates results.json
 
     # --- Debugging: Verify Playwright Report Existence AFTER tests ---
-    - name: Verify Playwright Report Existence
+    - name: Verify Playwright Report Existence (PR version)
       run: |
-        echo "Listing contents of the workspace:"
-        ls -la
         echo "Listing contents of playwright-report-pr/:"
         ls -la playwright-report-pr/
         # Check if the results.json exists
-        if [ -f "playwright-report-pr/results.json" ]; then # FIXED: Check for results.json
+        if [ -f "playwright-report-pr/results.json" ]; then # Correctly checking for results.json
           echo "playwright-report-pr/results.json exists."
         else
           echo "ERROR: playwright-report-pr/results.json DOES NOT EXIST."
@@ -145,7 +140,6 @@ jobs:
         mkdir -p "$PR_DIR"
         # Find all .png files within the default Playwright output directory (e.g., test-results/)
         # and copy them to the target PR_DIR.
-        # This assumes your playwright.config.js sets `output` to 'test-results' for the main run.
         find test-results/ -name "*.png" -exec cp {} "$PR_DIR/" \; || true # The '|| true' prevents failure if no files are found
         echo "Copied 'after' screenshots to $PR_DIR/"
         ls -lh "$PR_DIR/" # For debugging
@@ -155,8 +149,7 @@ jobs:
       run: |
         PR_BEFORE_DIR="docs/pr/${{ github.event.pull_request.number }}/before-screenshots"
         mkdir -p "$PR_BEFORE_DIR"
-        # Find all .png files within the 'published-screenshots-before/' directory (Playwright's output for before tests)
-        # and copy them to the target PR_BEFORE_DIR.
+        # Find all .png files within the 'published-screenshots-before/' directory
         find published-screenshots-before/ -name "*.png" -exec cp {} "$PR_BEFORE_DIR/" \; || true
         echo "Copied 'before' screenshots to $PR_BEFORE_DIR/"
         ls -lh "$PR_BEFORE_DIR/" # For debugging
@@ -330,7 +323,7 @@ jobs:
         while IFS=$'\t' read -r fileTitle suiteTitle specTitle; do
           # Build unique, safe IDs by combining parent and child
           fileId=$(echo "$fileTitle" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
-          suiteId=$(echo "${fileTitle}_${suiteTitle}" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
+          suiteId=$(echo "${fileTitle}_${suiteTitle}" | tr -c 'A-Za-Z0-9' '_' | sed 's/^_*\|_*$//g')
           specId=$(echo "${fileTitle}_${suiteTitle}_${specTitle}" | tr -c 'A-Za-Z0-9' '_' | sed 's/^_*\|_*$//g')
 
           # File node
@@ -359,7 +352,7 @@ jobs:
       run: cat flowchart.mmd
 
     - name: Upload test-flow chart
-      if: always() # Corrected: 'fileExists' is not a valid GitHub Actions function.
+      if: always() # No fileExists function, just let upload-artifact warn if missing
       uses: actions/upload-artifact@v4
       with:
         name: test-flow-chart
