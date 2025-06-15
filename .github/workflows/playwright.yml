@@ -71,9 +71,8 @@ jobs:
     ## NEW STEP: Save current PR's test files (before checking out main)
     - name: Save PR test files
       run: |
-        # Ensure a clean slate for the backup directory before copying.
-        rm -rf tests_pr_backup/
-        cp -r tests/ tests_pr_backup/
+        mkdir -p tests_pr_backup/ # Ensure backup directory exists
+        cp -r tests/* tests_pr_backup/ # Copy contents, not the directory itself
         ls -la tests_pr_backup/ # Debugging: verify backup content
 
     ## NEW STEP: Checkout Main branch for "before" tests
@@ -83,35 +82,31 @@ jobs:
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git fetch origin main # Ensure main branch is fetched
         
-        # --- FIX: Ensure git clean does NOT remove tests_pr_backup/ ---
-        git reset --hard HEAD
-        git clean -fd --exclude='tests_pr_backup/' # Crucial: Exclude the backup directory
-        # --- END FIX ---
-        
+        # Stash local changes to avoid conflicts when checking out 'main'
+        git stash --include-untracked
         git checkout main # Switch to the main branch's code
+        # No need for git clean if we stash and then checkout.
+        # The 'tests_pr_backup' is outside of git's direct control if we don't commit it.
 
     ## NEW STEP: Run Playwright tests on Main (for "before" screenshots)
     - name: Run Playwright "before" tests
       run: |
         # Run tests, setting the environment variable to direct screenshots to the 'before' folder
+        # Ensure Playwright finds test files in 'tests/' on the main branch
         PLAYWRIGHT_SCREENSHOT_DIR="published-screenshots-before" npx playwright test
 
     ## NEW STEP: Restore PR test files
     - name: Restore PR test files
       run: |
-        # Checkout the PR branch again to get its state. This will restore the PR's 'tests' directory.
-        git checkout -f ${{ github.event.pull_request.head.ref }} 
-        
-        # Debugging: Verify tests_pr_backup/ still exists and has content
-        ls -la tests_pr_backup/ || { echo "Error: tests_pr_backup/ is missing after operations. Check git clean --exclude."; exit 1; }
-        
-        # --- FIX: Properly restore 'tests/' directory content from backup ---
-        # Remove the 'tests/' directory that was just restored by 'git checkout -f' (which holds the PR's tests)
-        # This is because 'mv source_dir dest_dir' will move source_dir *into* dest_dir if dest_dir exists.
-        # We want to replace 'tests/' with the content of 'tests_pr_backup/'.
-        rm -rf tests/
-        mv tests_pr_backup/ tests/
-        # --- END FIX ---
+        # Restore stashed changes which brings back the PR branch's state
+        git stash pop || true # Use || true to prevent failure if there's nothing to pop
+        git checkout ${{ github.event.pull_request.head.ref }} # Explicitly checkout PR branch to ensure its files are present
+
+        # Copy backed-up test files back into the 'tests/' directory
+        rm -rf tests/ # Clean existing tests/ directory
+        mkdir -p tests/ # Recreate it
+        cp -r tests_pr_backup/* tests/ # Copy contents back
+        ls -la tests/ # Debugging: verify restored content
 
     # NOTE: The 'Install Playwright and browsers' step was moved above.
     # It is no longer needed here as browsers are installed earlier.
@@ -120,9 +115,10 @@ jobs:
     # 5 – Run Playwright tests (This now runs on the PR branch's tests, generates to 'published-screenshots/')
     #---------------------------------------------------
     - name: Run Playwright tests
-      run: npx playwright test --output=playwright-report-pr/ --reporter=html,json # FIXED: Add json reporter to generate report.json
+      run: npx playwright test --output=playwright-report-pr/ --reporter=html,json # Added json reporter, html is default
       # This step will generate screenshots into 'published-screenshots/' (the default from example.spec.js)
       # and the HTML report into 'playwright-report-pr/'
+      # The JSON report will be at playwright-report-pr/results.json (default for json reporter)
 
     # --- Debugging: Verify Playwright Report Existence AFTER tests ---
     - name: Verify Playwright Report Existence
@@ -130,15 +126,12 @@ jobs:
         echo "Listing contents of the workspace:"
         ls -la
         echo "Listing contents of playwright-report-pr/:"
-        ls -la playwright-report-pr/ # This should now show report.json directly
-        # Remove the 'data/' subdirectory check as it's not expected
-        # echo "Listing contents of playwright-report-pr/data/:"
-        # ls -la playwright-report-pr/data/ 
+        ls -la playwright-report-pr/
         # Check if the report.json exists
-        if [ -f "playwright-report-pr/report.json" ]; then # FIXED: Check for report.json directly in the output folder
-          echo "playwright-report-pr/report.json exists."
+        if [ -f "playwright-report-pr/results.json" ]; then # FIXED: Check for results.json
+          echo "playwright-report-pr/results.json exists."
         else
-          echo "ERROR: playwright-report-pr/report.json DOES NOT EXIST."
+          echo "ERROR: playwright-report-pr/results.json DOES NOT EXIST."
           exit 1
         fi
     # --- End Debugging ---
@@ -242,6 +235,7 @@ jobs:
                 done
             else
                 IMAGE_MARKDOWN+="*No 'after' screenshots found.*\n\n"
+            C
             fi
         else
             IMAGE_MARKDOWN+="*'After' screenshots directory not found.*\n\n"
@@ -262,7 +256,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: playwright-report
-        path: playwright-report-pr/ # Path is already correct based on previous fix
+        path: playwright-report-pr/ # Path is already correct
 
     #---------------------------------------------------
     # 7 – Extract test summary
@@ -271,7 +265,7 @@ jobs:
       id: summary
       run: |
         # Playwright's report.json contains the summary statistics
-        REPORT_FILE=playwright-report-pr/report.json # FIXED: Path to report.json
+        REPORT_FILE=playwright-report-pr/results.json # FIXED: Path to results.json
         if [ ! -f "$REPORT_FILE" ]; then
           echo "Error: Playwright report file not found at $REPORT_FILE"
           exit 1
@@ -320,7 +314,7 @@ jobs:
       shell: bash
       run: |
         set -e
-        REPORT_FILE=playwright-report-pr/report.json # FIXED: Path to report.json
+        REPORT_FILE=playwright-report-pr/results.json # FIXED: Path to results.json
         if [ ! -f "$REPORT_FILE" ]; then
           echo "Error: Playwright report file not found at $REPORT_FILE for flowchart generation."
           exit 1
