@@ -82,21 +82,38 @@ jobs:
         path: playwright-report/
 
     #---------------------------------------------------
-    # 7 – Extract test summary
+    # 7 – Extract Playwright test summary
     #---------------------------------------------------
-    - name: Extract test summary
+    - name: Extract Playwright summary
       id: summary
+      shell: bash
       run: |
-        REPORT=metrics.json
+        REPORT="playwright-metrics.json"
+
+        if [ ! -f "$REPORT" ]; then
+            echo "$REPORT not found!"
+            exit 1
+        fi
+
         TOTAL=$(jq '[..|objects|select(has("status"))] | length' "$REPORT")
         PASSED=$(jq '[..|objects|select(.status?=="expected")] | length' "$REPORT")
-        FAILED=$(jq '[..|objects|select(.status?=="failed")]   | length' "$REPORT")
+        FAILED=$(jq '[..|objects|select(.status?=="failed")] | length' "$REPORT")
         SKIPPED=$(jq '[..|objects|select(.status?=="skipped")] | length' "$REPORT")
         DURATION=$(jq '.stats.duration*1000|floor' "$REPORT")
-        PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($TOTAL==0)?0:($PASSED/$TOTAL)*100}")
-        for k in total passed failed skipped duration passrate; do
-          eval "echo \"$k=\${${k^^}}\" >> \$GITHUB_OUTPUT"
-        done
+
+        if [ "$TOTAL" -eq 0 ]; then
+            PASS_RATE=0.00
+        else
+            PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($PASSED/$TOTAL)*100}")
+        fi
+
+        echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+        echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+        echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+        echo "skipped=$SKIPPED" >> "$GITHUB_OUTPUT"
+        echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
+        echo "passrate=$PASS_RATE" >> "$GITHUB_OUTPUT"
+
 
     #---------------------------------------------------
     # 8 – ESLint (tests only)
@@ -104,30 +121,50 @@ jobs:
     - name: Run ESLint on GUI tests
       shell: bash
       run: |
-        npx eslint "tests/**/*.{js,ts,tsx}" -f stylish > eslint-tests.txt || true
+        npx eslint "tests/**/*.{js,ts,tsx}" -f json -o eslint-tests.json || true
 
     - name: Upload ESLint report
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: eslint-test-report
-        path: eslint-tests.txt
+        path: eslint-tests.json
 
     - name: Read ESLint report (preview)
       id: lint_summary
       run: |
         echo 'summary<<EOF' >> $GITHUB_OUTPUT
-        head -n 20 eslint-tests.txt >> $GITHUB_OUTPUT
+        jq '.' eslint-tests.json | head -n 20 >> $GITHUB_OUTPUT
         echo 'EOF' >> $GITHUB_OUTPUT
 
 
+   #---------------------------------------------------
+    # 9 – Extract ESLint test summary
+    #---------------------------------------------------
+    - name: Extract ESLint summary
+      id: eslint_summary
+      run: |
+        REPORT="eslint-tests.json"
+        TOTAL_FILES=$(jq length "$REPORT")
+        ERRORS=$(jq '[.[] | .errorCount] | add' "$REPORT")
+        WARNINGS=$(jq '[.[] | .warningCount] | add' "$REPORT")
+        FIXABLE_ERRORS=$(jq '[.[] | .fixableErrorCount] | add' "$REPORT")
+        FIXABLE_WARNINGS=$(jq '[.[] | .fixableWarningCount] | add' "$REPORT")
+
+        echo "total_files=$TOTAL_FILES" >> "$GITHUB_OUTPUT"
+        echo "errors=$ERRORS" >> "$GITHUB_OUTPUT"
+        echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
+        echo "fixable_errors=$FIXABLE_ERRORS" >> "$GITHUB_OUTPUT"
+        echo "fixable_warnings=$FIXABLE_WARNINGS" >> "$GITHUB_OUTPUT"
+
 
     #---------------------------------------------------
-    # 9 – Generate Suite→Spec Mermaid chart (flowchart.png)
+    # 10 – Generate Suite→Spec Mermaid chart (flowchart.png)
     #---------------------------------------------------
     - name: Generate test-flow chart
       shell: bash
       run: |
+        REPORT="playwright-metrics.json"
         set -e
         echo "graph TD" > flowchart.mmd
 
@@ -139,7 +176,7 @@ jobs:
               $suite.specs[]? as $spec |
                 ($spec.title // "NO_SPEC_TITLE") as $specTitle |
                 [$fileTitle, $suiteTitle, $specTitle] | @tsv
-        ' metrics.json |
+        ' "$REPORT" |
         while IFS=$'\t' read -r fileTitle suiteTitle specTitle; do
           # Build unique, safe IDs by combining parent and child
           fileId=$(echo "$fileTitle" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
@@ -168,6 +205,7 @@ jobs:
 
         ls -lh flowchart.png
 
+
     - name: Show flowchart.mmd for debugging  
       run: cat flowchart.mmd
 
@@ -179,7 +217,7 @@ jobs:
         path: flowchart.png
 
     #---------------------------------------------------
-    # 10 – Sticky PR comment
+    # 11 – Sticky PR comment
     #---------------------------------------------------
     - name: Comment on PR with results
       uses: marocchino/sticky-pull-request-comment@v2
@@ -191,10 +229,16 @@ jobs:
           *Failed:* **${{ steps.summary.outputs.failed }}**  
           *Skipped:* **${{ steps.summary.outputs.skipped }}**
 
-          Duration: **${{ steps.summary.outputs.duration }} ms**  
-          Pass Rate: **${{ steps.summary.outputs.passrate }} %**
-
-          ## ESLint (GUI tests)
+          *Duration:* **${{ steps.summary.outputs.duration }} ms**  
+          *Pass Rate:* **${{ steps.summary.outputs.passrate }} %**
+         
+ 
+          ## ESLint Test Metrics
+          *Files Checked:* **${{ steps.eslint_summary.outputs.total_files }}**  
+          *Errors:* **${{ steps.eslint_summary.outputs.errors }}**  
+          *Warnings:* **${{ steps.eslint_summary.outputs.warnings }}**  
+          *Fixable Errors:* **${{ steps.eslint_summary.outputs.fixable_errors }}**  
+          *Fixable Warnings:* **${{ steps.eslint_summary.outputs.fixable_warnings }}**
           ```
           ${{ steps.lint_summary.outputs.summary }}
           ```
