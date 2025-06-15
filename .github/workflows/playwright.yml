@@ -71,7 +71,11 @@ jobs:
 
     ## NEW STEP: Save current PR's test files (before checking out main)
     - name: Save PR test files
-      run: cp -r tests/ tests_pr_backup/
+      run: |
+        # Ensure a clean slate for the backup directory before copying.
+        rm -rf tests_pr_backup/
+        cp -r tests/ tests_pr_backup/
+        ls -la tests_pr_backup/ # Debugging: verify backup content
 
     ## NEW STEP: Checkout Main branch for "before" tests
     - name: Checkout Main branch for "before" screenshots
@@ -80,12 +84,10 @@ jobs:
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git fetch origin main # Ensure main branch is fetched
         
-        # --- MORE ROBUST FIX FOR 'LOCAL CHANGES' ERROR ---
-        # Discard all local changes to tracked files and remove untracked files
-        # This ensures a clean working directory before checkout
+        # --- FIX: Ensure git clean does NOT remove tests_pr_backup/ ---
         git reset --hard HEAD
-        git clean -fd
-        # --- END ROBUST FIX ---
+        git clean -fd --exclude='tests_pr_backup/' # Crucial: Exclude the backup directory
+        # --- END FIX ---
         
         git checkout main # Switch to the main branch's code
 
@@ -98,9 +100,20 @@ jobs:
     ## NEW STEP: Restore PR test files
     - name: Restore PR test files
       run: |
-        git checkout -f ${{ github.event.pull_request.head.ref }} # Checkout the PR branch again to get its state
-        rm -rf tests/ # Remove the 'main' branch's tests
-        mv tests_pr_backup/ tests/ # Move the PR's original test files back into place
+        # Checkout the PR branch again to get its state. This will restore the PR's 'tests' directory.
+        git checkout -f ${{ github.event.pull_request.head.ref }} 
+        
+        # Debugging: Verify tests_pr_backup/ still exists and has content
+        ls -la tests_pr_backup/ || { echo "Error: tests_pr_backup/ is missing after operations. Check git clean --exclude."; exit 1; }
+        
+        # --- FIX: Properly restore 'tests/' directory content from backup ---
+        # Remove the 'tests/' directory that was just restored by 'git checkout -f' (which holds the PR's tests)
+        # This is because 'mv source_dir dest_dir' will move source_dir *into* dest_dir if dest_dir exists.
+        # We want to replace 'tests/' with the content of 'tests_pr_backup/'.
+        rm -rf tests/
+        # Move the backed-up tests into the 'tests/' directory.
+        mv tests_pr_backup/ tests/
+        # --- END FIX ---
 
     # NOTE: The 'Install Playwright and browsers' step was moved above.
     # It is no longer needed here as browsers are installed earlier.
@@ -120,8 +133,16 @@ jobs:
       run: |
         PR_DIR="docs/pr/${{ github.event.pull_request.number }}/screenshots"
         mkdir -p "$PR_DIR"
-        cp published-screenshots/*.png "$PR_DIR/"
-        echo "Copied 'after' screenshots to $PR_DIR/"
+        # The 'nullglob' handles cases where no screenshots are found, preventing 'cp: cannot stat' errors.
+        shopt -s nullglob
+        declare -a IMG_FILES_AFTER=(published-screenshots/*.png)
+        shopt -u nullglob
+        if [ ${#IMG_FILES_AFTER[@]} -gt 0 ]; then
+          cp "${IMG_FILES_AFTER[@]}" "$PR_DIR/"
+          echo "Copied 'after' screenshots to $PR_DIR/"
+        else
+          echo "No 'after' screenshots found to copy."
+        fi
         ls -lh "$PR_DIR/" # For debugging
 
     - name: Prepare PR Screenshots for GitHub Pages (Before)
