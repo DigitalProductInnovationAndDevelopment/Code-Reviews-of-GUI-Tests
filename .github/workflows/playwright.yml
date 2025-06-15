@@ -64,15 +64,15 @@ jobs:
     - name: Install Playwright and browsers
       run: npx playwright install --with-deps
 
-    ## NEW STEP: Create a directory for "before" screenshots
+    ## NEW STEP: Create a directory for "before" screenshots (this will be the Playwright output dir)
     - name: Create "before" screenshots directory
       run: mkdir -p published-screenshots-before
 
     ## NEW STEP: Save current PR's test files (before checking out main)
     - name: Save PR test files
       run: |
-        mkdir -p tests_pr_backup/ # Ensure backup directory exists
-        cp -r tests/* tests_pr_backup/ # Copy contents, not the directory itself
+        mkdir -p tests_pr_backup/
+        cp -r tests/ tests_pr_backup/ # Copy tests directory and its contents
         ls -la tests_pr_backup/ # Debugging: verify backup content
 
     ## NEW STEP: Checkout Main branch for "before" tests
@@ -81,44 +81,31 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git fetch origin main # Ensure main branch is fetched
-        
-        # Stash local changes to avoid conflicts when checking out 'main'
-        git stash --include-untracked
-        git checkout main # Switch to the main branch's code
-        # No need for git clean if we stash and then checkout.
-        # The 'tests_pr_backup' is outside of git's direct control if we don't commit it.
+        git reset --hard origin/main # Reset to main, discard local changes (tests_pr_backup is safe outside)
 
     ## NEW STEP: Run Playwright tests on Main (for "before" screenshots)
     - name: Run Playwright "before" tests
       run: |
-        # Run tests, setting the environment variable to direct screenshots to the 'before' folder
-        # Ensure Playwright finds test files in 'tests/' on the main branch
+        # Playwright will output its results (including screenshots) directly into PLAYWRIGHT_SCREENSHOT_DIR.
+        # Ensure your playwright.config.js uses process.env.PLAYWRIGHT_SCREENSHOT_DIR for 'output' in 'use'.
         PLAYWRIGHT_SCREENSHOT_DIR="published-screenshots-before" npx playwright test
 
     ## NEW STEP: Restore PR test files
     - name: Restore PR test files
       run: |
-        # Restore stashed changes which brings back the PR branch's state
-        git stash pop || true # Use || true to prevent failure if there's nothing to pop
-        git checkout ${{ github.event.pull_request.head.ref }} # Explicitly checkout PR branch to ensure its files are present
-
-        # Copy backed-up test files back into the 'tests/' directory
-        rm -rf tests/ # Clean existing tests/ directory
-        mkdir -p tests/ # Recreate it
-        cp -r tests_pr_backup/* tests/ # Copy contents back
+        git reset --hard ${{ github.event.pull_request.head.ref }} # Reset to PR branch's state
+        # Now, replace the 'tests/' directory with the backup
+        rm -rf tests/
+        mv tests_pr_backup/ tests/ # Move the backup directory to become the new tests/
         ls -la tests/ # Debugging: verify restored content
-
-    # NOTE: The 'Install Playwright and browsers' step was moved above.
-    # It is no longer needed here as browsers are installed earlier.
 
     #---------------------------------------------------
     # 5 – Run Playwright tests (This now runs on the PR branch's tests, generates to 'published-screenshots/')
     #---------------------------------------------------
     - name: Run Playwright tests
-      run: npx playwright test --output=playwright-report-pr/ --reporter=html,json # Added json reporter, html is default
-      # This step will generate screenshots into 'published-screenshots/' (the default from example.spec.js)
-      # and the HTML report into 'playwright-report-pr/'
-      # The JSON report will be at playwright-report-pr/results.json (default for json reporter)
+      run: npx playwright test --output=playwright-report-pr/ --reporter=html,json # This will create results.json
+      # Playwright will output screenshots into the default location defined in playwright.config.js (e.g., test-results/)
+      # We will then move them to 'published-screenshots/' in the next step.
 
     # --- Debugging: Verify Playwright Report Existence AFTER tests ---
     - name: Verify Playwright Report Existence
@@ -127,7 +114,7 @@ jobs:
         ls -la
         echo "Listing contents of playwright-report-pr/:"
         ls -la playwright-report-pr/
-        # Check if the report.json exists
+        # Check if the results.json exists
         if [ -f "playwright-report-pr/results.json" ]; then # FIXED: Check for results.json
           echo "playwright-report-pr/results.json exists."
         else
@@ -144,16 +131,11 @@ jobs:
       run: |
         PR_DIR="docs/pr/${{ github.event.pull_request.number }}/screenshots"
         mkdir -p "$PR_DIR"
-        # The 'nullglob' handles cases where no screenshots are found, preventing 'cp: cannot stat' errors.
-        shopt -s nullglob
-        declare -a IMG_FILES_AFTER=(published-screenshots/*.png)
-        shopt -u nullglob
-        if [ ${#IMG_FILES_AFTER[@]} -gt 0 ]; then
-          cp "${IMG_FILES_AFTER[@]}" "$PR_DIR/"
-          echo "Copied 'after' screenshots to $PR_DIR/"
-        else
-          echo "No 'after' screenshots found to copy."
-        fi
+        # Find all .png files within the default Playwright output directory (e.g., test-results/)
+        # and copy them to the target PR_DIR.
+        # This assumes your playwright.config.js sets `output` to 'test-results' for the main run.
+        find test-results/ -name "*.png" -exec cp {} "$PR_DIR/" \; || true # The '|| true' prevents failure if no files are found
+        echo "Copied 'after' screenshots to $PR_DIR/"
         ls -lh "$PR_DIR/" # For debugging
 
     - name: Prepare PR Screenshots for GitHub Pages (Before)
@@ -161,17 +143,10 @@ jobs:
       run: |
         PR_BEFORE_DIR="docs/pr/${{ github.event.pull_request.number }}/before-screenshots"
         mkdir -p "$PR_BEFORE_DIR"
-        # The 'nullglob' and 'if [ ${#array[@]} -gt 0 ]' pattern
-        # handles cases where no screenshots are found, preventing 'cp: cannot stat' errors.
-        shopt -s nullglob
-        declare -a IMG_FILES_BEFORE=(published-screenshots-before/*.png)
-        shopt -u nullglob
-        if [ ${#IMG_FILES_BEFORE[@]} -gt 0 ]; then
-          cp "${IMG_FILES_BEFORE[@]}" "$PR_BEFORE_DIR/"
-          echo "Copied 'before' screenshots to $PR_BEFORE_DIR/"
-        else
-          echo "No 'before' screenshots found to copy."
-        fi
+        # Find all .png files within the 'published-screenshots-before/' directory (Playwright's output for before tests)
+        # and copy them to the target PR_BEFORE_DIR.
+        find published-screenshots-before/ -name "*.png" -exec cp {} "$PR_BEFORE_DIR/" \; || true
+        echo "Copied 'before' screenshots to $PR_BEFORE_DIR/"
         ls -lh "$PR_BEFORE_DIR/" # For debugging
 
     # Commit and Push PR Screenshots to GitHub Pages
@@ -204,6 +179,7 @@ jobs:
         IMAGE_MARKDOWN+="### Before (Main Branch)\n\n"
         if [ -d "$PR_SCREENSHOTS_LOCAL_DIR_BEFORE" ]; then
             shopt -s nullglob
+            # Look for .png files directly in the directory
             declare -a IMG_FILES_BEFORE=("$PR_SCREENSHOTS_LOCAL_DIR_BEFORE"/*.png)
             shopt -u nullglob
 
@@ -224,6 +200,7 @@ jobs:
         IMAGE_MARKDOWN+="### After (PR Branch)\n\n"
         if [ -d "$PR_SCREENSHOTS_LOCAL_DIR_AFTER" ]; then
             shopt -s nullglob
+            # Look for .png files directly in the directory
             declare -a IMG_FILES_AFTER=("$PR_SCREENSHOTS_LOCAL_DIR_AFTER"/*.png)
             shopt -u nullglob
 
@@ -235,7 +212,6 @@ jobs:
                 done
             else
                 IMAGE_MARKDOWN+="*No 'after' screenshots found.*\n\n"
-            C
             fi
         else
             IMAGE_MARKDOWN+="*'After' screenshots directory not found.*\n\n"
@@ -256,7 +232,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: playwright-report
-        path: playwright-report-pr/ # Path is already correct
+        path: playwright-report-pr/
 
     #---------------------------------------------------
     # 7 – Extract test summary
@@ -264,7 +240,7 @@ jobs:
     - name: Extract test summary
       id: summary
       run: |
-        # Playwright's report.json contains the summary statistics
+        # Playwright's JSON report contains the summary statistics
         REPORT_FILE=playwright-report-pr/results.json # FIXED: Path to results.json
         if [ ! -f "$REPORT_FILE" ]; then
           echo "Error: Playwright report file not found at $REPORT_FILE"
@@ -291,6 +267,7 @@ jobs:
     - name: Run ESLint on GUI tests
       shell: bash
       run: |
+        # Run ESLint and redirect output to a file. The `|| true` prevents the step from failing if lint issues are found.
         npx eslint "tests/**/*.{js,ts,tsx}" -f stylish > eslint-tests.txt || true
 
     - name: Upload ESLint report
@@ -299,13 +276,21 @@ jobs:
       with:
         name: eslint-test-report
         path: eslint-tests.txt
+        # If the file might not exist (e.g., if the previous step failed), use if: success() || failure() for this upload
 
     - name: Read ESLint report (preview)
       id: lint_summary
       run: |
-        echo 'summary<<EOF' >> $GITHUB_OUTPUT
-        head -n 20 eslint-tests.txt >> $GITHUB_OUTPUT
-        echo 'EOF' >> $GITHUB_OUTPUT
+        # Only read if the file exists, to prevent errors
+        if [ -f "eslint-tests.txt" ]; then
+          echo 'summary<<EOF' >> $GITHUB_OUTPUT
+          head -n 20 eslint-tests.txt >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+        else
+          echo 'summary<<EOF' >> $GITHUB_OUTPUT
+          echo 'ESLint report not generated or found.' >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+        fi
 
     #---------------------------------------------------
     # 9 – Generate Suite→Spec Mermaid chart (flowchart.png)
@@ -316,8 +301,8 @@ jobs:
         set -e
         REPORT_FILE=playwright-report-pr/results.json # FIXED: Path to results.json
         if [ ! -f "$REPORT_FILE" ]; then
-          echo "Error: Playwright report file not found at $REPORT_FILE for flowchart generation."
-          exit 1
+          echo "Error: Playwright report file not found at $REPORT_FILE for flowchart generation. Skipping chart."
+          exit 0 # Exit successfully if report not found, but log message
         fi
         
         echo "graph TD" > flowchart.mmd
@@ -335,7 +320,7 @@ jobs:
           # Build unique, safe IDs by combining parent and child
           fileId=$(echo "$fileTitle" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
           suiteId=$(echo "${fileTitle}_${suiteTitle}" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
-          specId=$(echo "${fileTitle}_${suiteTitle}_${specTitle}" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
+          specId=$(echo "${fileTitle}_${suiteTitle}_${specTitle}" | tr -c 'A-Za-Z0-9' '_' | sed 's/^_*\|_*$//g')
 
           # File node
           if ! grep -q "^  ${fileId}\[" flowchart.mmd; then
@@ -363,7 +348,7 @@ jobs:
       run: cat flowchart.mmd
 
     - name: Upload test-flow chart
-      if: always()
+      if: always() && fileExists('flowchart.png') # Only upload if the file exists
       uses: actions/upload-artifact@v4
       with:
         name: test-flow-chart
