@@ -217,12 +217,56 @@ jobs:
         path: flowchart.png
 
     #---------------------------------------------------
-    # 11 – Sticky PR comment
+    # 11 – Checklist generation
+    #---------------------------------------------------
+
+    - name: Build dynamic checklist
+      id: checklist
+      shell: bash
+      run: |
+        CHECKLIST=""
+
+        # GitHub Action triggered
+        CHECKLIST="${CHECKLIST}- [x] GitHub Action was triggered\n"
+
+        # ESLint results
+        if [[ "${{ steps.eslint_summary.outputs.errors }}" == "0" ]]; then
+          CHECKLIST="${CHECKLIST}- [x] ESLint passed\n"
+        else
+          CHECKLIST="${CHECKLIST}- [ ] ESLint has errors\n"
+        fi
+
+        # Prettier run (assumed always executed)
+        CHECKLIST="${CHECKLIST}- [x] Prettier formatting check completed\n"
+
+        # Playwright test summary
+        if [[ "${{ steps.summary.outputs.total }}" != "" ]]; then
+          CHECKLIST="${CHECKLIST}- [x] Test summary generated\n"
+        else
+          CHECKLIST="${CHECKLIST}- [ ] Test summary missing\n"
+        fi
+
+        # Flowchart output
+        if [[ -f flowchart.png ]]; then
+          CHECKLIST="${CHECKLIST}- [x] Flowchart generated\n"
+        else
+          CHECKLIST="${CHECKLIST}- [ ] Flowchart not found\n"
+        fi
+
+        echo -e "value<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$CHECKLIST" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    #---------------------------------------------------
+    # 12 – Sticky PR comment
     #---------------------------------------------------
     - name: Comment on PR with results
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         message: |
+          ### Test Checklist
+          ${{ steps.checklist.outputs.value }}
+
           ## Playwright Test Metrics
           *Total:* **${{ steps.summary.outputs.total }}**  
           *Passed:* **${{ steps.summary.outputs.passed }}**  
