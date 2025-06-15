@@ -72,7 +72,7 @@ jobs:
     - name: Save PR test files
       run: |
         mkdir -p tests_pr_backup/
-        cp -r tests/ tests_pr_backup/ # Copy tests directory and its contents
+        cp -r tests/* tests_pr_backup/ # Copy contents, not the directory itself
         ls -la tests_pr_backup/ # Debugging: verify backup content
 
     ## NEW STEP: Checkout Main branch for "before" tests
@@ -95,7 +95,7 @@ jobs:
       run: |
         git reset --hard ${{ github.event.pull_request.head.ref }} # Reset to PR branch's state
         # Now, replace the 'tests/' directory with the backup
-        rm -rf tests/
+        rm -rf tests/ # Remove current tests/ directory
         mv tests_pr_backup/ tests/ # Move the backup directory to become the new tests/
         ls -la tests/ # Debugging: verify restored content
 
@@ -276,7 +276,6 @@ jobs:
       with:
         name: eslint-test-report
         path: eslint-tests.txt
-        # If the file might not exist (e.g., if the previous step failed), use if: success() || failure() for this upload
 
     - name: Read ESLint report (preview)
       id: lint_summary
@@ -348,14 +347,14 @@ jobs:
       run: cat flowchart.mmd
 
     - name: Upload test-flow chart
-      if: always() && fileExists('flowchart.png') # Only upload if the file exists
+      if: always() # Removed fileExists: This ensures the step runs and actions/upload-artifact will warn if file is missing.
       uses: actions/upload-artifact@v4
       with:
         name: test-flow-chart
         path: flowchart.png
 
     #---------------------------------------------------
-    # 10 – Sticky PR comment -
+    # 10 – Sticky PR comment
     #---------------------------------------------------
     - name: Comment on PR with results
       uses: marocchino/sticky-pull-request-comment@v2
