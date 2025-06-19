@@ -33,12 +33,13 @@ jobs:
       run: npm install
 
     # ── Lint (Prettier + ESLint) – inline via reviewdog ────────────
-    #     • NOT strict → step exits 0 even with ESLint errors
     - name: Lint, Prettier & ESLint
+      if: github.event_name == 'pull_request'
       env:
         REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: node scripts/lint.js
       continue-on-error: true
+
 
     # ── Playwright test run (writes playwright-metrics.json) ───────
     - name: Playwright tests
