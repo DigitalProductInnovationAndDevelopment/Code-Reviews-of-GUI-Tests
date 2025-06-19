@@ -1,119 +1,88 @@
 #!/usr/bin/env node
 /**
- * summary-comment.js
- *
- * Creates or refreshes a single sticky “GUI Test Review” comment on a PR.
- * It shows:
- *   · Playwright overall result
- *   · Counts for Prettier & ESLint (details stay in inline reviewdog comments)
- *   · Collapsible checklist
- *   · Link to the static dashboard
- *
- * Relies on these artefacts in ARTIFACTS_DIR (default: artifacts):
- *   - playwright-summary.json
- *   - lint-summary.json
- *   - checklist.md
- *
- * Environment variables expected (set by the workflow):
- *   · GITHUB_TOKEN
- *   · GITHUB_EVENT_PATH
- *   · ARTIFACTS_DIR        (e.g. gui-artifacts)
- *   · WEB_REPORT_URL       (dashboard URL)
+ * Fancy sticky PR comment – no collapsible sections, immediate info.
  */
-
 const fs = require('fs');
 const path = require('path');
 const { Octokit } = require('@octokit/core');
 
-/* ── helpers ─────────────────────────────────────────────── */
-const j = (p, d = {}) => {
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return d; }
-};
-const badge = (txt, ok) =>
-  ok
-    ? `![✓](https://img.shields.io/badge/${encodeURIComponent(txt)}-brightgreen?style=flat-square)`
-    : `![✗](https://img.shields.io/badge/${encodeURIComponent(txt)}-red?style=flat-square)`;
-
-/* ── env & GitHub context ───────────────────────────────── */
+/* env & ctx ---------------------------------------------------- */
 const token = process.env.GITHUB_TOKEN;
-if (!token) { console.error('GITHUB_TOKEN missing'); process.exit(1); }
+const evt   = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,'utf8'));
+if (!evt.pull_request) process.exit(0);
 
-const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-if (!event.pull_request) { console.log('Not a PR event – skipping comment.'); process.exit(0); }
+const owner = evt.repository.owner.login;
+const repo  = evt.repository.name;
+const pr    = evt.pull_request.number;
 
-const owner = event.repository.owner.login;
-const repo  = event.repository.name;
-const prNum = event.pull_request.number;
+const ART   = process.env.ARTIFACTS_DIR || 'artifacts';
+const URL   = process.env.WEB_REPORT_URL  || '';
 
-/* ── artefacts ──────────────────────────────────────────── */
-const ART = process.env.ARTIFACTS_DIR || 'artifacts';
-const play  = j(path.join(ART, 'playwright-summary.json'));
-const lint  = j(path.join(ART, 'lint-summary.json'));
-const checklist = fs.readFileSync(path.join(ART, 'checklist.md'), 'utf8');
-const url   = process.env.WEB_REPORT_URL || '';
+/* data --------------------------------------------------------- */
+const j     = f => JSON.parse(fs.readFileSync(path.join(ART,f),'utf8'));
+const play  = j('playwright-summary.json');
+const lint  = j('lint-summary.json');
+const checklist = fs.readFileSync(path.join(ART,'checklist.md'),'utf8');
 
-const prett = lint.prettier ?? { filesWithIssues: 0 };
-const esl   = lint.eslint   ?? { errors: 0, warnings: 0 };
+const p = lint.prettier;
+const e = lint.eslint;
 
-/* ── comment body ───────────────────────────────────────── */
+/* shields ------------------------------------------------------ */
+const badge = (txt,color) =>
+  `<img alt="${txt}" src="https://img.shields.io/badge/${encodeURIComponent(txt)}-${color}?style=for-the-badge">`;
+
+const header = [
+  badge(`Playwright ${play.passed}/${play.total}`, play.failed? 'd32f2f' : '4caf50'),
+  badge(`Prettier ${p.filesWithIssues} file${p.filesWithIssues!==1?'s':''}`, p.filesWithIssues?'f57f17':'4caf50'),
+  badge(`ESLint ${e.errors} error${e.errors!==1?'s':''}`, e.errors?'d32f2f':'4caf50')
+].join(' ');
+
+/* markdown body ------------------------------------------------ */
 const body = `
-# 🔍 GUI Test Review
+${header}
 
-${badge(`Playwright ${play.passed}/${play.total}`, play.failed === 0)}
-${badge(`Prettier ${prett.filesWithIssues} file${prett.filesWithIssues !== 1 ? 's' : ''}`, prett.filesWithIssues === 0)}
-${badge(`ESLint ${esl.errors} error${esl.errors !== 1 ? 's' : ''}`, esl.errors === 0)}
+### Test Metrics
+| Total | Passed | Failed | Skipped | Pass-rate | Duration |
+|-------|-------:|-------:|--------:|----------:|---------:|
+| ${play.total} | ${play.passed} | ${play.failed} | ${play.skipped} | ${play.pass_rate}% | ${play.duration} ms |
 
-<details>
-<summary>▶ Show details</summary>
+### Prettier
+* **Files:** ${p.filesWithIssues}
+* **Fixes needed:** ${p.totalChanges}
 
-| | Count |
-|---|---|
-| **Passed** | ${play.passed} |
-| **Failed** | ${play.failed} |
-| **Skipped** | ${play.skipped} |
-| **Duration** | ${play.duration} ms |
+### ESLint
+* **Errors:** ${e.errors}
+* **Warnings:** ${e.warnings}
 
-</details>
+${URL && `**[Open Full Dashboard ↗](${URL})**`}
 
-${url && `👉 **[Open the full dashboard ↗](${url})**`}
-
-<details>
-<summary>Checklist</summary>
+---
 
 ${checklist}
-</details>
 
-_This comment is updated automatically on every push._
-`;
+_Automated comment – updates on every push._`;
 
-/* ── create / update sticky comment ─────────────────────── */
+/* octokit ------------------------------------------------------ */
 const octokit = new Octokit({ auth: token });
 
 (async () => {
-  /* list comments on the PR */
   const { data: comments } = await octokit.request(
     'GET /repos/{owner}/{repo}/issues/{issue_number}/comments',
-    { owner, repo, issue_number: prNum }
+    { owner, repo, issue_number: pr }
   );
 
-  const sticky = comments.find(
-    c => c.user.type === 'Bot' && c.body.startsWith('# 🔍 GUI Test Review')
-  );
-
+  const sticky = comments.find(c=>c.user.type==='Bot'&&c.body.includes('### Test Metrics'));
   if (sticky) {
     await octokit.request(
       'PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}',
       { owner, repo, comment_id: sticky.id, body }
     );
-    console.log('🔄  Updated GUI-test summary comment.');
+    console.log('🔄  Comment updated');
   } else {
     await octokit.request(
       'POST /repos/{owner}/{repo}/issues/{issue_number}/comments',
-      { owner, repo, issue_number: prNum, body }
+      { owner, repo, issue_number: pr, body }
     );
-    console.log('💬  Created GUI-test summary comment.');
+    console.log('💬  Comment created');
   }
-})().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+})();
