@@ -35,15 +35,12 @@ jobs:
     - name: Lint (Prettier + ESLint) with reviewdog
       env:
         REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: node scripts/lint.js --strict        # exit-code 1 if ESLint errors
-      continue-on-error: true                   # but keep pipeline alive
+      run: node scripts/lint.js --strict
+      continue-on-error: true   # keep pipeline going even if ESLint fails here
 
-    # ── Playwright tests (HTML + JSON) ─────────────────────────────
+    # ── Playwright tests (HTML + JSON via config) ──────────────────
     - name: Playwright tests
-      run: |
-        npx playwright test --reporter=list,json,html \
-          --output playwright-report \
-          --reporter-options jsonFile=playwright-report/summary.json
+      run: npx playwright test --output playwright-report
 
     # ── Flow-chart, checklist, static site generation ─────────────
     - name: Generate flow-chart
