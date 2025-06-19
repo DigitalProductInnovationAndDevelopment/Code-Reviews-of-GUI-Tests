@@ -6,10 +6,10 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
 ####################################################################
 # 1) Build, lint, test and create artefacts                        #
 ####################################################################
+jobs:
   review-assistant:
     runs-on: ubuntu-latest
     permissions:
@@ -17,56 +17,54 @@ jobs:
       pull-requests: write
 
     steps:
-    # ── checkout & Node ────────────────────────────────────────────
-    - uses: actions/checkout@v4
-      with: { fetch-depth: 0 }
+      # checkout & Node
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
 
-    - uses: actions/setup-node@v4
-      with: { node-version: 18 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 18 }
 
-    # ── reviewdog binary ───────────────────────────────────────────
-    - uses: reviewdog/action-setup@v1
-      with: { reviewdog_version: latest }
+      # reviewdog binary
+      - uses: reviewdog/action-setup@v1
+        with: { reviewdog_version: latest }
 
-    # ── dependencies ───────────────────────────────────────────────
-    - name: Install NPM dependencies
-      run: npm install
+      # dependencies
+      - name: Install NPM dependencies
+        run: npm install
 
-    # ── Lint (Prettier + ESLint) – inline via reviewdog ────────────
-    - name: Lint, Prettier & ESLint
-      if: github.event_name == 'pull_request'
-      env:
-        REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: node scripts/lint.js
-      continue-on-error: true
+      # Lint (Prettier + ESLint) – inline via reviewdog
+      - name: Lint, Prettier & ESLint
+        if: github.event_name == 'pull_request'
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/lint.js
+        continue-on-error: true
 
+      # Playwright tests
+      - name: Playwright tests
+        run: node scripts/playwright-test.js
 
-    # ── Playwright test run (writes playwright-metrics.json) ───────
-    - name: Playwright tests
-      run: node scripts/playwright-test.js
+      # Flow-chart & dashboard
+      - name: Generate flow-chart
+        run: node scripts/generate-flowchart.js
 
-    # ── Flow-chart PNG & HTML dashboard generation ────────────────
-    - name: Generate flow-chart
-      run: node scripts/generate-flowchart.js
+      - name: Build checklist
+        run: node scripts/checklist.js
 
-    - name: Build checklist
-      run: node scripts/checklist.js
+      - name: Build static HTML report
+        run: node scripts/generate-webpage.js
 
-    - name: Build static HTML report
-      run: node scripts/generate-webpage.js
+      # badge text for PR summary
+      - name: Create test-summary badge
+        run: |
+          jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
+            artifacts/playwright-summary.json > artifacts/test-summary.txt
 
-    # ── Build Playwright badge text for PR comment ───────────────────
-    - name: Create test-summary badge
-      run: |
-        jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
-          artifacts/playwright-summary.json > artifacts/test-summary.txt
-
-
-    # ── Upload all artefacts (reports + summaries) ────────────────
-    - uses: actions/upload-artifact@v4
-      with:
-        name: gui-artifacts
-        path: artifacts/
+      # Upload artefacts (flattened)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-artifacts
+          path: artifacts/*        # ← files only, no extra folder
 
 ####################################################################
 # 2) Publish the HTML dashboard via GitHub Pages                   #
@@ -83,14 +81,14 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
-    - uses: actions/download-artifact@v4
-      with: { name: gui-artifacts, path: gui-artifacts }
+      - uses: actions/download-artifact@v4
+        with: { name: gui-artifacts, path: gui-artifacts }
 
-    - uses: actions/upload-pages-artifact@v3
-      with: { path: gui-artifacts/web-report }
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: gui-artifacts/web-report }
 
-    - id: deploy
-      uses: actions/deploy-pages@v4
+      - id: deploy
+        uses: actions/deploy-pages@v4
 
 ####################################################################
 # 3) Sticky PR comment – summary & links                           #
@@ -105,13 +103,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ▶ add Node + install deps so @octokit/core is available
       - uses: actions/setup-node@v4
-        with:
-          node-version: 18
+        with: { node-version: 18 }
 
       - name: Install JS dependencies (Octokit, marked, etc.)
-        run: npm install             # uses package.json in repo root
+        run: npm install
 
       - uses: actions/download-artifact@v4
         with:
@@ -121,7 +117,6 @@ jobs:
       - name: Post / update GUI-test summary comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACTS_DIR: gui-artifacts/artifacts 
+          ARTIFACTS_DIR: gui-artifacts          # ← flattened path
           WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
         run: node scripts/summary-comment.js
-
