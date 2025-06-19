@@ -5,15 +5,15 @@ test.beforeEach(async ({ page }) => {
 });
 
 const TODO_ITEMS = [
-  'buy some cheese',
-  'feed the cat',
+  "buy some cheese",
+  'feed the cat',    
   'book a doctors appointment'
 ] as const;
 
 test.describe('New Todo', () => {
   test('should allow me to add todo items', async ({ page }) => {
     // create a new todo locator
-    const newTodo = page.getByPlaceholder('What needs to be done?');     
+    const newTodo = page.getByPlaceholder('What needs to be done?');
 
     // Create 1st todo.
     await newTodo.fill(TODO_ITEMS[0]);
