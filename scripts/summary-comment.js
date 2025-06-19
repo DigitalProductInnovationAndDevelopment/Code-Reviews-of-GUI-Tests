@@ -2,52 +2,47 @@
 /**
  * summary-comment.js
  *
- * Creates or updates a “sticky” PR comment that summarises:
+ * Posts or updates a single “GUI Test Review” comment on a PR.
+ * The comment aggregates:
  *   • Playwright metrics
- *   • ESLint + Prettier results
- *   • (optionally) a link to the published HTML dashboard
- *
- * Reads JSON summaries from ./artifacts, which the workflow
- * downloads before invoking this script.
+ *   • Prettier + ESLint summaries
+ *   • Flow-diagram / dashboard link
+ *   • Checklist
  */
 
 const fs = require('fs');
 const path = require('path');
 const { Octokit } = require('@octokit/core');
 
-// ── helpers ────────────────────────────────────────────────────────────
-function readJson(fp, fallback = {}) {
+/* ─── helpers ─────────────────────────────────────────────────────── */
+const readJSON = (fp, fallback = {}) => {
   try { return JSON.parse(fs.readFileSync(fp, 'utf8')); }
   catch { return fallback; }
-}
-function icon(ok, warn = false) { return ok ? '✅' : warn ? '⚠️' : '❌'; }
+};
+const icon = (ok, warn = false) => (ok ? '✅' : warn ? '⚠️' : '❌');
 
-// ── GitHub context ─────────────────────────────────────────────────────
+/* ─── GitHub context ──────────────────────────────────────────────── */
 const token = process.env.GITHUB_TOKEN;
-if (!token) {
-  console.error('GITHUB_TOKEN is missing');
-  process.exit(1);
-}
-const octokit = new Octokit({ auth: token });
+if (!token) { console.error('GITHUB_TOKEN missing'); process.exit(1); }
 
 const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-if (!event.pull_request) {
-  console.error('Not a pull_request event – aborting.');
-  process.exit(0);
-}
-const { owner, name: repo } = event.repository;
-const prNumber = event.pull_request.number;
+if (!event.pull_request) { console.log('Not a PR event; skipping comment.'); process.exit(0); }
 
-// ── load summaries produced by previous steps ──────────────────────────
+const owner = event.repository.owner.login;
+const repo  = event.repository.name;
+const pr    = event.number;
+
+/* ─── load artefact summaries ─────────────────────────────────────── */
 const ART = 'artifacts';
-const play  = readJson(path.join(ART, 'playwright-summary.json'));
-const eslint = readJson(path.join(ART, 'eslint-summary.json'));
-const prett  = readJson(path.join(ART, 'prettier-summary.json'));
+const play   = readJSON(path.join(ART, 'playwright-summary.json'));
+const eslint = readJSON(path.join(ART, 'eslint-summary.json'));
+const prett  = readJSON(path.join(ART, 'prettier-summary.json'));
+const checklist = readJSON(path.join(ART, 'checklist.json')).md || '';
 
-// optional: injected by workflow
+/* URL to the live dashboard, injected by the workflow */
 const webUrl = process.env.WEB_REPORT_URL;
 
-// ── compose comment body ───────────────────────────────────────────────
+/* ─── compose comment body ────────────────────────────────────────── */
 const body = `
 # 🔍 GUI Test Review Report
 
@@ -55,8 +50,8 @@ const body = `
 | Metric | Value | Status |
 | ------ | ----- | ------ |
 | **Total Tests** | ${play.total   ?? 0} | |
-| **Passed**      | ${play.passed  ?? 0} | ${icon((play.passed  ?? 0) === (play.total ?? 0), (play.failed ?? 0) === 0)} |
-| **Failed**      | ${play.failed  ?? 0} | ${icon((play.failed  ?? 0) === 0)} |
+| **Passed**      | ${play.passed  ?? 0} | ${icon((play.passed ?? 0) === (play.total ?? 0), (play.failed ?? 0) === 0)} |
+| **Failed**      | ${play.failed  ?? 0} | ${icon((play.failed ?? 0) === 0)} |
 | **Skipped**     | ${play.skipped ?? 0} | ${icon((play.skipped ?? 0) === 0, true)} |
 | **Pass Rate**   | ${play.pass_rate ?? 0}% | ${icon((play.pass_rate ?? 0) >= 95, (play.pass_rate ?? 0) >= 80)} |
 | **Duration**    | ${play.duration ?? 0} ms | |
@@ -76,7 +71,7 @@ const body = `
 | Metric | Count | Status |
 | ------ | ----- | ------- |
 | **Files**    | ${eslint.total_files ?? 0} | |
-| **Errors**   | ${eslint.errors      ?? 0} | ${icon((eslint.errors   ?? 0) === 0)} |
+| **Errors**   | ${eslint.errors      ?? 0} | ${icon((eslint.errors ?? 0) === 0)} |
 | **Warnings** | ${eslint.warnings    ?? 0} | ${icon((eslint.warnings ?? 0) === 0, true)} |
 | **Fixable**  | 🔴 ${eslint.fixable_errors ?? 0} / 🟡 ${eslint.fixable_warnings ?? 0} | |
 
@@ -90,26 +85,31 @@ ${eslint.problematic_files ?? 'None'}
 ---
 
 ## 📊 Test Flow Diagram
-${
-  webUrl
-    ? `👉 **[Open the full HTML report&nbsp;↗](${webUrl})**`
-    : 'Visual diagram is attached as workflow artifact **gui-artifacts/flowchart.png**.'
-}
+${webUrl ? `👉 **[Open the full HTML dashboard ↗](${webUrl})**`
+         : 'Flowchart is attached as workflow artefact.'}
+
+---
+
+## ✅ Checklist
+${checklist}
 
 ---
 
 _Automated comment generated by the GUI Test Review workflow._
 `;
 
-// ── create / update sticky comment ─────────────────────────────────────
+/* ─── create or update the sticky comment ─────────────────────────── */
+const octokit = new Octokit({ auth: token });
+
 (async () => {
   const { data: comments } = await octokit.request(
     'GET /repos/{owner}/{repo}/issues/{issue_number}/comments',
-    { owner, repo, issue_number: prNumber }
+    { owner, repo, issue_number: pr }
   );
 
   const existing = comments.find(
-    (c) => c.user.type === 'Bot' && c.body.startsWith('# 🔍 GUI Test Review Report')
+    c => c.user.type === 'Bot' &&
+         c.body.startsWith('# 🔍 GUI Test Review Report')
   );
 
   if (existing) {
@@ -121,11 +121,11 @@ _Automated comment generated by the GUI Test Review workflow._
   } else {
     await octokit.request(
       'POST /repos/{owner}/{repo}/issues/{issue_number}/comments',
-      { owner, repo, issue_number: prNumber, body }
+      { owner, repo, issue_number: pr, body }
     );
     console.log('💬 Created GUI-test summary comment.');
   }
-})().catch((err) => {
+})().catch(err => {
   console.error(err);
   process.exit(1);
 });

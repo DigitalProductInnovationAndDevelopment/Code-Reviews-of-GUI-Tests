@@ -1,99 +1,92 @@
 #!/usr/bin/env node
-/**
- * scripts/generate-webpage.js
- *
- * Builds artifacts/web-report/index.html (plus flowchart.png copy).
- * Pure synchronous FS calls → no need for top-level await or async IIFE.
- */
-
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
+const marked = require('marked');           // add to devDependencies
 
 const ART = 'artifacts';
 const OUT = path.join(ART, 'web-report');
 fs.mkdirSync(OUT, { recursive: true });
 
-function readJSON(fp, fallback = {}) {
-  try { return JSON.parse(fs.readFileSync(fp, 'utf8')); }
-  catch { return fallback; }
+/* ── helpers ───────────────────────────────────────────────────────── */
+const r = (fp, d = {}) => {
+  try { return JSON.parse(fs.readFileSync(path.join(ART, fp), 'utf8')); }
+  catch { return d; }
+};
+const htmlEscape = (s) => s.replace(/[&<>"']/g,(c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+/* ── data ──────────────────────────────────────────────────────────── */
+const play   = r('playwright-summary.json');
+const eslint = r('eslint-tests.json', []);
+const prettierPatch = fs.existsSync(path.join(ART,'prettier.patch'))
+  ? fs.readFileSync(path.join(ART,'prettier.patch'),'utf8')
+  : '';
+const checklistMD = fs.existsSync(path.join(ART,'checklist.md'))
+  ? fs.readFileSync(path.join(ART,'checklist.md'),'utf8')
+  : '';
+
+/* ── ESLint → rows ─────────────────────────────────────────────────── */
+const eslintRows = eslint.flatMap(file =>
+  file.messages.map(m => ({
+    file: path.basename(file.filePath),
+    line: m.line,
+    rule: m.ruleId,
+    sev : m.severity === 2 ? 'error' : 'warn',
+    msg : m.message
+  }))
+);
+
+/* ── copy assets ───────────────────────────────────────────────────── */
+for (const f of ['flowchart.png']) {
+  const src = path.join(ART, f);
+  if (fs.existsSync(src)) fs.copyFileSync(src, path.join(OUT, f));
 }
+if (fs.existsSync(path.join(ART,'playwright-report')))
+  fs.cpSync(path.join(ART,'playwright-report'), path.join(OUT,'playwright-report'), { recursive:true });
 
-const play  = readJSON(path.join(ART, 'playwright-summary.json'));
-const eslint = readJSON(path.join(ART, 'eslint-summary.json'));
-const prett  = readJSON(path.join(ART, 'prettier-summary.json'));
-
-const imgSrc = path.join(ART, 'flowchart.png');
-const imgDest = path.join(OUT, 'flowchart.png');
-if (fs.existsSync(imgSrc)) fs.copyFileSync(imgSrc, imgDest);
-
-const icon = (ok, warn = false) => ok ? '✅' : warn ? '⚠️' : '❌';
-
-const html = /* html */`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>GUI Test Review Report</title>
+/* ── build HTML ────────────────────────────────────────────────────── */
+const html = /*html*/`
+<!DOCTYPE html><html lang="en"><meta charset="UTF-8">
+<title>GUI-Test Dashboard</title>
 <style>
- body{font:16px/1.5 system-ui,Roboto,Helvetica,Arial,sans-serif;margin:2rem;max-width:1080px}
- h1,h2{color:#1976D2;margin-top:2.5rem}
- table{border-collapse:collapse;width:100%;margin:1rem 0}
- th,td{border:1px solid #ddd;padding:.6rem;text-align:left}
+ body{font:15px/1.6 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:1.8rem;max-width:1200px}
+ h1,h2{color:#1976D2}
+ table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:0.95rem}
+ th,td{border:1px solid #ccc;padding:.5rem .6rem;text-align:left}
  th{background:#E3F2FD}
- tr:nth-child(even){background:#fafafa}
- .center{text-align:center}
- img{max-width:100%;height:auto;border:1px solid #ccc;border-radius:8px}
+ code{background:#f3f3f3;padding:2px 4px;font-size:90%}
+ pre{background:#f7f7f7;padding:1rem;overflow:auto;border:1px solid #ddd}
+ .error{color:#c62828;font-weight:bold}.warn{color:#ef6c00}
+ img{border:1px solid #ccc;border-radius:6px;margin:1rem 0}
 </style>
-</head>
 <body>
-<h1>🔍 GUI Test Review Report</h1>
+<h1>🔍 GUI-Test Dashboard</h1>
 
-<h2>✅ Test Execution Summary</h2>
+<h2>Test Summary</h2>
 <table>
-<tr><th>Metric</th><th>Value</th><th>Status</th></tr>
-<tr><td><strong>Total Tests</strong></td><td>${play.total ?? 0}</td><td></td></tr>
-<tr><td><strong>Passed</strong></td><td>${play.passed ?? 0}</td><td>${icon((play.passed ?? 0)===(play.total ?? 0),(play.failed ?? 0)===0)}</td></tr>
-<tr><td><strong>Failed</strong></td><td>${play.failed ?? 0}</td><td>${icon((play.failed ?? 0)===0)}</td></tr>
-<tr><td><strong>Skipped</strong></td><td>${play.skipped ?? 0}</td><td>${icon((play.skipped ?? 0)===0,true)}</td></tr>
-<tr><td><strong>Pass Rate</strong></td><td>${play.pass_rate ?? 0}%</td><td>${icon((play.pass_rate ?? 0)>=95,(play.pass_rate ?? 0)>=80)}</td></tr>
-<tr><td><strong>Duration</strong></td><td>${play.duration ?? 0} ms</td><td></td></tr>
+<tr><th>Total</th><td>${play.total??0}</td><th>Passed</th><td>${play.passed??0}</td>
+    <th>Failed</th><td>${play.failed??0}</td><th>Skipped</th><td>${play.skipped??0}</td></tr>
+<tr><th>Pass&nbsp;Rate</th><td>${play.pass_rate??0}%</td>
+    <th>Duration</th><td colspan="5">${play.duration??0}&nbsp;ms</td></tr>
 </table>
+<p>📄 Full HTML runner report: <a href="playwright-report/index.html">open&nbsp;↗</a></p>
 
-<h2>🎨 Code Style (Prettier)</h2>
-<table>
-<tr><th>Check</th><th>Result</th></tr>
-<tr><td><strong>Style Issues</strong></td><td>${prett.has_issues ? '❌ Found' : '✅ None'}</td></tr>
-<tr><td><strong>Files Affected</strong></td><td>${prett.files_with_issues ?? 0}</td></tr>
-<tr><td><strong>Total Changes</strong></td><td>${prett.total_changes ?? 0}</td></tr>
-</table>
+<h2>Prettier Suggestions</h2>
+${prettierPatch ? `<pre>${htmlEscape(prettierPatch)}</pre>` : '<p>No issues 🎉</p>'}
 
-<h2>📋 Code Quality (ESLint)</h2>
-<table>
-<tr><th>Metric</th><th>Count</th><th>Status</th></tr>
-<tr><td><strong>Files</strong></td><td>${eslint.total_files ?? 0}</td><td></td></tr>
-<tr><td><strong>Errors</strong></td><td>${eslint.errors ?? 0}</td><td>${icon((eslint.errors ?? 0)===0)}</td></tr>
-<tr><td><strong>Warnings</strong></td><td>${eslint.warnings ?? 0}</td><td>${icon((eslint.warnings ?? 0)===0,true)}</td></tr>
-<tr><td><strong>Fixable (Errors / Warnings)</strong></td><td>🔴 ${eslint.fixable_errors ?? 0} / 🟡 ${eslint.fixable_warnings ?? 0}</td><td></td></tr>
-</table>
+<h2>ESLint Findings</h2>
+${eslintRows.length
+  ? `<table><tr><th>sev</th><th>rule</th><th>file</th><th>line</th><th>message</th></tr>${
+      eslintRows.map(r=>`<tr><td class="${r.sev}">${r.sev}</td><td>${r.rule}</td><td>${r.file}</td><td>${r.line}</td><td>${htmlEscape(r.msg)}</td></tr>`).join('')
+    }</table>`
+  : '<p>No issues 🎉</p>'}
 
-<p><strong>Top Rules:</strong><br>
-${eslint.error_rules ?? 'None'}<br>
-${eslint.warning_rules ?? 'None'}</p>
+<h2>Flowchart</h2>
+<img src="flowchart.png" style="width:100%" alt="Playwright flowchart">
 
-<p><strong>Files Needing Attention:</strong><br>
-${eslint.problematic_files ?? 'None'}</p>
+<h2>Checklist</h2>
+${marked.parse(checklistMD)}
 
-<h2>📊 Test Flow Diagram</h2>
-<div class="center">
-${fs.existsSync(imgDest) ? '<img src="flowchart.png" alt="Flowchart">' : '<em>No diagram generated</em>'}
-</div>
-
-<p style="margin-top:3rem;font-size:.9rem;color:#555">
-  _Static report generated by the GUI Test Review workflow._
-</p>
-</body>
-</html>
+<hr><p style="font-size:90%;color:#555">Generated ${new Date().toISOString()}</p>
 `;
-
-fs.writeFileSync(path.join(OUT, 'index.html'), html, 'utf8');
-console.log(`📝 Web report written → ${path.relative('.', OUT)}/index.html`);
+fs.writeFileSync(path.join(OUT,'index.html'),html,'utf8');
+console.log('📝 Dashboard rebuilt at web-report/index.html');

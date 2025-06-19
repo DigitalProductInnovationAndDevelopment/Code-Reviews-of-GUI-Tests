@@ -14,7 +14,7 @@ fs.mkdirSync(ART, { recursive: true });
 let prettierLog = '';
 try {
   prettierLog = execSync(
-    'npx prettier --check "**/*.{js,ts,tsx,jsx,json,yml,yaml,md}"',
+    'npx prettier --check "tests/**/*.{js,ts,tsx,jsx,json,yml,yaml,md}"',
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
   );
 } catch (err) {
@@ -27,7 +27,7 @@ let totalChanges = 0;
 
 if (hasIssues) {
   execSync(
-    'npx prettier --write "**/*.{js,ts,tsx,jsx,json,yml,yaml,md}"',
+    'npx prettier --write "tests/**/*.{js,ts,tsx,jsx,json,yml,yaml,md}"',
     { stdio: 'inherit' }
   );
   const patch = execSync('git diff -U0 --no-color', { encoding: 'utf8' });

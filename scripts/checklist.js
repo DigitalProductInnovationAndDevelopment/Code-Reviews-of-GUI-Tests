@@ -36,6 +36,7 @@ else { checklist.push('- [ ] Flowchart created'); warning = true; }
 
 const out = checklist.join('\n') + '\n';
 fs.writeFileSync(`${ART}/checklist.md`, out);
+fs.writeFileSync(`${ART}/checklist.json`, JSON.stringify({ md: out }, null, 2));
 
 console.log(out);
 if (warning) process.exitCode = 0;   // never fail build
