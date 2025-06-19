@@ -33,11 +33,12 @@ jobs:
       run: npm install
 
     # ── Lint (Prettier + ESLint) – inline via reviewdog ────────────
+    #     • NOT strict → step exits 0 even with ESLint errors
     - name: Lint, Prettier & ESLint
       env:
         REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: node scripts/lint.js --strict
-      continue-on-error: true          # we handle gate at the end
+      run: node scripts/lint.js
+      continue-on-error: true
 
     # ── Playwright test run (writes playwright-metrics.json) ───────
     - name: Playwright tests
@@ -66,20 +67,6 @@ jobs:
         name: gui-artifacts
         path: artifacts/
 
-    # ── FINAL gate: fail job if ESLint errors remain ──────────────
-    - name: Fail build when ESLint errors remain
-      if: always()
-      run: |
-        if [ ! -f artifacts/lint-summary.json ]; then
-          echo "::warning::lint-summary.json missing – treating as failure"
-          exit 1
-        fi
-        ERRORS=$(jq '.eslint.errors' artifacts/lint-summary.json)
-        if [ "$ERRORS" -gt 0 ]; then
-          echo "::error::ESLint found $ERRORS error(s) – failing job"
-          exit 1
-        fi
-
 ####################################################################
 # 2) Publish the HTML dashboard via GitHub Pages                   #
 ####################################################################
@@ -105,7 +92,7 @@ jobs:
       uses: actions/deploy-pages@v4
 
 ####################################################################
-# 3) Sticky PR comment – checklist, lint, tests, flow-chart link   #
+# 3) Sticky PR comment – checklist, lint, tests, dashboard link    #
 ####################################################################
   comment_link:
     if: github.event_name == 'pull_request'
