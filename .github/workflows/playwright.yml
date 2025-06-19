@@ -7,10 +7,10 @@ on:
   pull_request:
     branches: [main]
 
+jobs:
 ####################################################################
 # 1) Build, lint, test and create artefacts                        #
 ####################################################################
-jobs:
   review-assistant:
     runs-on: ubuntu-latest
     permissions:
@@ -18,47 +18,72 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    # ── checkout & Node ────────────────────────────────────────────
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 18
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 18
 
-      - name: Install reviewdog
-        uses: reviewdog/action-setup@v1
-        with:
-          reviewdog_version: latest
+    # ── reviewdog CLI ──────────────────────────────────────────────
+    - uses: reviewdog/action-setup@v1
+      with:
+        reviewdog_version: latest
 
-      - name: Install NPM dependencies
-        run: npm install
+    # ── dependencies ───────────────────────────────────────────────
+    - name: Install NPM dependencies
+      run: npm install
 
-      # Linting, formatting, ESLint metrics
-      - name: Lint, Prettier & ESLint
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/lint.js
+    # ── Lint (Prettier + ESLint) ──────────────────────────────────
+    - name: Lint, Prettier & ESLint
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: node scripts/lint.js --strict
+      continue-on-error: true         # keep pipeline alive for later steps
 
-      # Playwright test run
-      - name: Playwright tests
-        run: node scripts/playwright-test.js
+    # ── Playwright test run (creates playwright-metrics.json) ─────
+    - name: Playwright tests
+      run: |
+        # list reporter for CLI output + json reporter that writes the file
+        npx playwright test \
+          --reporter=list,json=playwright-metrics.json \
+          --output playwright-report
+        # scripts/playwright-test.js expects that file to exist
 
-      # Flow-chart PNG & HTML dashboard
-      - name: Generate flow-chart
-        run: node scripts/generate-flowchart.js
+    # ── Flow-chart PNG & HTML dashboard ───────────────────────────
+    - name: Generate flow-chart
+      run: node scripts/generate-flowchart.js
 
-      - name: Build checklist
-        run: node scripts/checklist.js
+    - name: Build checklist
+      run: node scripts/checklist.js
 
-      - name: Build static HTML report
-        run: node scripts/generate-webpage.js
+    - name: Build static HTML report
+      run: node scripts/generate-webpage.js
 
-      # Collect everything
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gui-artifacts
-          path: artifacts/
+    # ── Badge text for PR summary comment ─────────────────────────
+    - name: Create test-summary badge
+      if: always()
+      run: |
+        jq -r '"Total: \(.stats.total) | Passed: \(.stats.passed) | Failed: \(.stats.failed) | Skipped: \(.stats.skipped)"' \
+          playwright-metrics.json > artifacts/test-summary.txt
+
+    # ── Upload artefacts (reports + summaries) ────────────────────
+    - uses: actions/upload-artifact@v4
+      with:
+        name: gui-artifacts
+        path: artifacts/
+
+    # ── FINAL gate: fail job if ESLint errors remain ──────────────
+    - name: Fail build when ESLint errors remain
+      if: always()
+      run: |
+        ERRORS=$(jq '.eslint.errors' artifacts/lint-summary.json)
+        if [ "$ERRORS" -gt 0 ]; then
+          echo "::error::ESLint found $ERRORS error(s) – failing job"
+          exit 1
+        fi
 
 ####################################################################
 # 2) Publish the HTML dashboard via GitHub Pages                   #
@@ -68,27 +93,27 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pages: write
-      id-token: write         
+      id-token: write
 
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
-      - name: Download artefacts
-        uses: actions/download-artifact@v4
-        with:
-          name: gui-artifacts
-          path: gui-artifacts
+    - name: Download artefacts
+      uses: actions/download-artifact@v4
+      with:
+        name: gui-artifacts
+        path: gui-artifacts
 
-      - name: Upload Pages artefact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: gui-artifacts/web-report   
+    - name: Upload Pages artefact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: gui-artifacts/web-report
 
-      - name: Deploy to GitHub Pages
-        id: deploy
-        uses: actions/deploy-pages@v4
+    - name: Deploy to GitHub Pages
+      id: deploy
+      uses: actions/deploy-pages@v4
 
 ####################################################################
 # 3) Sticky PR comment with comment-identifier                     #
@@ -101,19 +126,25 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Checkout (required by the action)
-        uses: actions/checkout@v4
+    - name: Checkout (required by the action)
+      uses: actions/checkout@v4
 
-      - name: Post / update link to HTML dashboard
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          edit-mode: replace
-          comment-id: gui-test-review
-          body: |
-            👋 **Hello!**
+    - name: Download artefacts
+      uses: actions/download-artifact@v4
+      with:
+        name: gui-artifacts
+        path: gui-artifacts
 
-            Your GUI-test results are ready:  
-            **[📊 View the latest dashboard ↗](https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html)**
+    - name: Post / update link to HTML dashboard
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        issue-number: ${{ github.event.pull_request.number }}
+        edit-mode: replace
+        comment-id: gui-test-review
+        body: |
+          👋 **Hello!**
 
-            _This comment is automatically updated on every push._
+          Your GUI-test results are ready:  
+          **[📊 View the latest dashboard ↗](https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html)**
+
+          _This comment is automatically updated on every push._
