@@ -104,6 +104,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ▶ add Node + install deps so @octokit/core is available
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install JS dependencies (Octokit, marked, etc.)
+        run: npm install             # uses package.json in repo root
+
       - uses: actions/download-artifact@v4
         with:
           name: gui-artifacts
@@ -115,3 +123,4 @@ jobs:
           ARTIFACTS_DIR: gui-artifacts
           WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
         run: node scripts/summary-comment.js
+
