@@ -29,17 +29,22 @@ const pill = (text,color) => `<span class="pill" style="background:${color}">${t
 const card = (title,inner) => `<div class="card"><h2>${title}</h2>${inner}</div>`;
 
 /* cards -------------------------------------------------------- */
+/* --- Prettier card --- */
 const prettierCard = card('Prettier',
-  prett.filesWithIssues
-    ? pill(`${prett.filesWithIssues} file${prett.filesWithIssues!==1?'s':''}`,'#d32f2f') +
-      pill(`${prett.totalChanges} place${prett.totalChanges!==1?'s':''}`,'#f57f17') +
-      `<ul>${prett.files.map(f=>`<li>${f}</li>`).join('')}</ul>`
+  p.filesWithIssues
+    ? pill(`${p.filesWithIssues} file${p.filesWithIssues!==1?'s':''}`,'#d32f2f')+
+      pill(`${p.totalChanges} place${p.totalChanges!==1?'s':''}`,'#f57f17')+
+      `<ul>${p.files.map(f=>`<li>${f}</li>`).join('')}</ul>`+
+      `<details><summary>Diff sample (first 20 lines)</summary>${pre(p.sample)}</details>`
     : pill('No issues','#388e3c'));
 
+/* --- ESLint card --- */
 const eslintCard = card('ESLint',
-  (esl.errors || esl.warnings)
-    ? pill(`${esl.errors} ✖`,'#d32f2f') + pill(`${esl.warnings} ⚠`,'#f57f17') +
-      (esl.first ? `<p style="margin-top:.5em;font-size:.9em">${esl.first}</p>` : '')
+  (e.errors||e.warnings)
+    ? pill(`${e.errors} ✖`,'#d32f2f')+pill(`${e.warnings} ⚠`,'#f57f17')+
+      pill(`${e.fixableErrors} fixable`,'#1976d2')+
+      pill(`${e.fixableWarnings} autofix`,'#1976d2')+
+      (e.first?`<pre>${e.first}</pre>`:'')
     : pill('Clean','#388e3c'));
 
 const playCard = card('Playwright',
