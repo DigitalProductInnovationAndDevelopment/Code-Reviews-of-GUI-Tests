@@ -121,7 +121,7 @@ jobs:
       - name: Post / update GUI-test summary comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACTS_DIR: gui-artifacts
+          ARTIFACTS_DIR: gui-artifacts/artifacts 
           WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
         run: node scripts/summary-comment.js
 
