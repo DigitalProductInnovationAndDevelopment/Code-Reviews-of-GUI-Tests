@@ -92,7 +92,7 @@ jobs:
       uses: actions/deploy-pages@v4
 
 ####################################################################
-# 3) Sticky PR comment – checklist, lint, tests, dashboard link    #
+# 3) Sticky PR comment – summary & links                           #
 ####################################################################
   comment_link:
     if: github.event_name == 'pull_request'
@@ -102,43 +102,16 @@ jobs:
       pull-requests: write
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - uses: actions/download-artifact@v4
-      with: { name: gui-artifacts, path: gui-artifacts }
+      - uses: actions/download-artifact@v4
+        with:
+          name: gui-artifacts
+          path: gui-artifacts
 
-    # ── Extract lint & test numbers for the comment ───────────────
-    - id: lint
-      run: |
-        PRETTIER=$(jq '.prettier.filesWithIssues' gui-artifacts/lint-summary.json)
-        ERR=$(jq '.eslint.errors' gui-artifacts/lint-summary.json)
-        WARN=$(jq '.eslint.warnings' gui-artifacts/lint-summary.json)
-        FIRST=$(jq -r '.eslint.first // empty' gui-artifacts/lint-summary.json)
-        echo "prettier=$PRETTIER"  >> "$GITHUB_OUTPUT"
-        echo "errors=$ERR"         >> "$GITHUB_OUTPUT"
-        echo "warnings=$WARN"      >> "$GITHUB_OUTPUT"
-        echo "first=$FIRST"        >> "$GITHUB_OUTPUT"
-
-    - id: tests
-      run: |
-        BADGE=$(cat gui-artifacts/test-summary.txt)
-        echo "badge=$BADGE" >> "$GITHUB_OUTPUT"
-
-    # ── Post / update sticky PR comment ───────────────────────────
-    - uses: peter-evans/create-or-update-comment@v4
-      with:
-        issue-number: ${{ github.event.pull_request.number }}
-        edit-mode: replace
-        comment-id: gui-test-review
-        body: |
-          👋 **Hello!**
-
-          ### CI Summary
-          * **Playwright:** ${{ steps.tests.outputs.badge }}
-          * **Prettier:**  ${{ steps.lint.outputs.prettier }} file(s) need formatting
-          * **ESLint:**    ${{ steps.lint.outputs.errors }} error(s), ${{ steps.lint.outputs.warnings }} warning(s)${{ steps.lint.outputs.first && format('\n  *First error*: %s', steps.lint.outputs.first) }}
-          * **Checklist, Flow-chart & full reports:** see dashboard
-
-          **[📊 View the latest dashboard ↗](https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html)**
-
-          _Inline reviewdog comments & this summary update on every push._
+      - name: Post / update GUI-test summary comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACTS_DIR: gui-artifacts
+          WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
+        run: node scripts/summary-comment.js
