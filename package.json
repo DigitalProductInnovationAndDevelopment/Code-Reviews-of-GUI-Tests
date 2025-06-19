@@ -3,23 +3,33 @@
   "version": "1.0.0",
   "description": "Prototype to address the challenge of reviewing GUI tests",
   "main": "index.js",
+
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "lint": "eslint . --ext .js,.ts --format unix || true"
+    "lint":        "node scripts/lint.js",
+    "test:gui":    "node scripts/playwright-test.js",
+    "flowchart":   "node scripts/generate-flowchart.js",
+    "checklist":   "node scripts/checklist.js",
+    "review":      "node scripts/summary-comment.js",
+    "dev":         "npm run lint && npm run test:gui && npm run flowchart && npm run checklist"
   },
+
   "repository": {
     "type": "git",
     "url": "git+https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "bugs": {
     "url": "https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/issues"
   },
   "homepage": "https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests#readme",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+
   "devDependencies": {
     "@playwright/test": "^1.52.0",
-    "eslint": "^8.0.0"
+    "eslint": "^8.0.0",
+    "prettier": "^3.3.2",                 
+    "@octokit/core": "^5.0.0",            
+    "@mermaid-js/mermaid-cli": "10.6.1"   
   }
 }
