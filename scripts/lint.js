@@ -6,7 +6,6 @@
 
 const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
-const path = require('path');
 
 const IS_PR =
   process.env.GITHUB_EVENT_NAME === 'pull_request' ||
@@ -14,37 +13,31 @@ const IS_PR =
 
 const capture = cmd => execSync(cmd, { encoding: 'utf8' }).trim();
 
-/* ─────────────── Prettier ─────────────── */
 function runPrettier() {
   console.log('\n▶ Prettier (write → diff → reviewdog)');
-
-  // 1. Format files in-place
+  // Write/fix in-place, get diff
   execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
-
-  // 2. Diff with context
   const diff = capture('git diff -- tests || true');
   const files = diff ? capture('git diff --name-only -- tests').split('\n').filter(Boolean) : [];
   const totalChanges = (diff.match(/^[+-](?![+-]{3})/gm) || []).length;
 
-  // 3. Reviewdog suggestions (PR context only)
+  // Inline suggestions (only in PR context)
   if (diff && IS_PR) {
-    spawnSync(
+    const rd = spawnSync(
       'reviewdog',
       [
         '-f=diff',
         '-name=prettier',
-        '-reporter=github-pr-suggest', // “Apply suggestion” button!
+        '-reporter=github-pr-suggest', // "Apply suggestion" button!
         '-filter-mode=nofilter',
-        '-tee',
         '-level=info',
         '-fail-on-error=false'
       ],
       { input: diff, stdio: ['pipe', 'inherit', 'inherit'], encoding: 'utf8' }
     );
+    if (rd.error) throw rd.error;
   }
-
-  // 4. Clean working tree for later steps
-  execSync('git checkout -- .');
+  execSync('git checkout -- .'); // Reset for next steps
 
   return {
     filesWithIssues: files.length,
@@ -54,16 +47,14 @@ function runPrettier() {
   };
 }
 
-/* ─────────────── ESLint ─────────────── */
 function runESLint() {
   console.log('\n▶ ESLint');
   let raw = '';
   try {
     raw = capture('npx eslint tests --ext .js,.ts,.tsx -f json');
   } catch (e) {
-    raw = e.stdout.toString(); // exit-1 → problems found
+    raw = e.stdout?.toString() || '';
   }
-
   const results = raw ? JSON.parse(raw) : [];
   let errors = 0,
     warnings = 0,
@@ -73,12 +64,12 @@ function runESLint() {
     files = new Set();
 
   results.forEach(f => {
-    if (f.messages.length) files.add(path.basename(f.filePath));
+    if (f.messages.length) files.add(f.filePath);
     f.messages.forEach(m => {
       if (m.severity === 2) {
         errors++;
         if (m.fix) fixErr++;
-        if (!first) first = `${m.ruleId || 'unknown-rule'} in ${path.basename(f.filePath)}:${m.line}`;
+        if (!first) first = `${m.ruleId || 'unknown-rule'} in ${f.filePath}:${m.line}`;
       } else if (m.severity === 1) {
         warnings++;
         if (m.fix) fixWarn++;
@@ -87,17 +78,17 @@ function runESLint() {
   });
 
   if (raw && IS_PR) {
-    spawnSync(
+    const rd = spawnSync(
       'reviewdog',
       [
         '-f=eslint',
         '-name=eslint',
         '-reporter=github-pr-review',
-        '-filter-mode=nofilter',
-        '-tee'
+        '-filter-mode=nofilter'
       ],
       { input: raw, stdio: ['pipe', 'inherit', 'inherit'], encoding: 'utf8' }
     );
+    if (rd.error) throw rd.error;
   }
 
   return {
@@ -110,11 +101,9 @@ function runESLint() {
   };
 }
 
-/* ─────────────── Run both & write summary ─────────────── */
 const prettier = runPrettier();
 const eslint = runESLint();
 
 fs.mkdirSync('artifacts', { recursive: true });
 fs.writeFileSync('artifacts/lint-summary.json', JSON.stringify({ prettier, eslint }, null, 2));
-
 console.log('📝 artifacts/lint-summary.json written');
