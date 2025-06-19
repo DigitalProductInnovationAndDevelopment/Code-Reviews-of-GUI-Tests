@@ -61,6 +61,7 @@ jobs:
         jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
           artifacts/playwright-summary.json > artifacts/test-summary.txt
 
+
     # ── Upload all artefacts (reports + summaries) ────────────────
     - uses: actions/upload-artifact@v4
       with:
