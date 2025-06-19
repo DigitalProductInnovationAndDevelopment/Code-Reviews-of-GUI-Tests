@@ -91,14 +91,23 @@ try {
   prettier = runPrettier();   // may throw → still handled by finally
   eslint   = runESLint();
 } finally {
-  fs.mkdirSync(ART_DIR, { recursive: true });
+  fs.mkdirSync('artifacts', { recursive: true });
   fs.writeFileSync(
-    `${ART_DIR}/lint-summary.json`,
-    JSON.stringify({ prettier, eslint }, null, 2),
-  );
-  fs.writeFileSync(
-    `${ART_DIR}/lint-summary.txt`,
-    `Prettier: ${prettier.filesWithIssues} file(s) need formatting\n` +
-    `ESLint:   ${eslint.errors} error(s), ${eslint.warnings} warning(s)\n`,
+    'artifacts/lint-summary.json',
+    JSON.stringify(
+      {
+        prettier: {
+          filesWithIssues: prettier.filesWithIssues,
+          files: changedFiles,                           // NEW
+          sample: diff.split('\n').slice(0, 20).join('\n') // NEW
+        },
+        eslint: {
+          files:   eslint.files,
+          errors:  eslint.errors,
+          warnings: eslint.warnings,
+          first:   eslint.first
+        }
+      }, null, 2),
   );
 }
+

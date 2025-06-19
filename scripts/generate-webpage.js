@@ -74,16 +74,21 @@ ${marked.parse(checklistMD)}
 <table>
  <tr><th>Files with issues</th><td>${prettier.filesWithIssues}</td></tr>
 </table>
-${prettier.filesWithIssues === 0
-  ? '<p>No formatting suggestions 🎉</p>'
-  : '<p>See inline reviewdog comments for exact diffs.</p>'}
+${prettier.filesWithIssues
+  ? `<p>Files:</p><ul>${prettier.files.map(f=>`<li>${f}</li>`).join('')}</ul>
+     <h3>Sample diff (first 20 lines)</h3><pre>${esc(prettier.sample)}</pre>`
+  : '<p>No formatting suggestions 🎉</p>'}
 
 <h2>ESLint Overview (tests/**)</h2>
 <table>
- <tr><th>Files</th><td>${eslint.files ?? '–'}</td>
+ <tr><th>Files</th><td>${eslint.files}</td>
      <th>Errors</th><td>${eslint.errors}</td>
      <th>Warnings</th><td>${eslint.warnings}</td></tr>
 </table>
+${eslint.first
+  ? `<p><b>First error:</b> ${eslint.first}</p>`
+  : ''}
+
 
 <h2>Playwright Summary</h2>
 <table>
