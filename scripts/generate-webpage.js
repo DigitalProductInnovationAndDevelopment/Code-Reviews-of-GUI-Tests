@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
  * Builds artifacts/web-report/index.html
+ *  • Checklist
+ *  • Prettier, ESLint, Playwright summaries
+ *  • Flow-chart image + link to full Playwright report
  */
 
 const fs   = require('fs');
@@ -11,27 +14,40 @@ const ART = 'artifacts';
 const OUT = path.join(ART, 'web-report');
 fs.mkdirSync(OUT, { recursive: true });
 
-const j = (f,d={}) => {
-  try { return JSON.parse(fs.readFileSync(path.join(ART,f),'utf8')); }
+/* helpers ------------------------------------------------------- */
+const j = (f, d = {}) => {
+  try { return JSON.parse(fs.readFileSync(path.join(ART, f), 'utf8')); }
   catch { return d; }
 };
-const escape = s => s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const escape = s =>
+  s.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[c]));
 
-/* load data */
-const checklistMD = fs.existsSync(path.join(ART,'checklist.md'))
-  ? fs.readFileSync(path.join(ART,'checklist.md'),'utf8')
+/* load data ----------------------------------------------------- */
+const checklistMD = fs.existsSync(path.join(ART, 'checklist.md'))
+  ? fs.readFileSync(path.join(ART, 'checklist.md'), 'utf8')
   : '';
 const prettier = j('prettier-summary.json');
 const eslint   = j('eslint-summary.json');
-const play     = j('playwright-summary.json');
+const playRaw  = j('playwright-summary.json');
 
-/* copy static assets */
-if (fs.existsSync(path.join(ART,'flowchart.png')))
-  fs.copyFileSync(path.join(ART,'flowchart.png'), path.join(OUT,'flowchart.png'));
-if (fs.existsSync(path.join(ART,'playwright-report')))
-  fs.cpSync(path.join(ART,'playwright-report'), path.join(OUT,'playwright-report'), { recursive:true });
+/* normalise Playwright fields ---------------------------------- */
+const play = (() => {
+  const passed  = playRaw.passed      ?? playRaw.expected   ?? 0;
+  const failed  = playRaw.failed      ?? playRaw.unexpected ?? 0;
+  const skipped = playRaw.skipped     ?? 0;
+  const total   = playRaw.total       ?? passed + failed + skipped;
+  const rate    = playRaw.pass_rate   ?? (total ? +(passed/total*100).toFixed(2) : 0);
+  const dur     = playRaw.duration    ?? 0;
+  return { total, passed, failed, skipped, rate, dur };
+})();
 
-/* HTML */
+/* copy assets --------------------------------------------------- */
+if (fs.existsSync(path.join(ART, 'flowchart.png')))
+  fs.copyFileSync(path.join(ART, 'flowchart.png'), path.join(OUT, 'flowchart.png'));
+if (fs.existsSync(path.join(ART, 'playwright-report')))
+  fs.cpSync(path.join(ART, 'playwright-report'), path.join(OUT, 'playwright-report'), { recursive: true });
+
+/* HTML ---------------------------------------------------------- */
 const html = /*html*/`
 <!DOCTYPE html><meta charset="UTF-8"><title>GUI-Test Dashboard</title>
 <style>
@@ -50,8 +66,8 @@ ${marked.parse(checklistMD)}
 
 <h2>Prettier Overview (tests/**)</h2>
 <table>
-<tr><th>Files with issues</th><td>${prettier.files_with_issues}</td>
-    <th>Total suggested changes</th><td>${prettier.total_changes}</td></tr>
+ <tr><th>Files with issues</th><td>${prettier.files_with_issues}</td>
+     <th>Total suggested changes</th><td>${prettier.total_changes}</td></tr>
 </table>
 ${prettier.sample_patch
   ? `<h3>Example (first ${prettier.sample_patch.split('\\n').length} lines)</h3>
@@ -60,21 +76,21 @@ ${prettier.sample_patch
 
 <h2>ESLint Overview (tests/**)</h2>
 <table>
-<tr><th>Files</th><td>${eslint.total_files}</td>
-    <th>Errors</th><td>${eslint.errors}</td>
-    <th>Warnings</th><td>${eslint.warnings}</td></tr>
-<tr><th>Fixable Errors</th><td>${eslint.fixable_errors}</td>
-    <th>Fixable Warnings</th><td>${eslint.fixable_warnings}</td></tr>
+ <tr><th>Files</th><td>${eslint.total_files}</td>
+     <th>Errors</th><td>${eslint.errors}</td>
+     <th>Warnings</th><td>${eslint.warnings}</td></tr>
+ <tr><th>Fixable Errors</th><td>${eslint.fixable_errors}</td>
+     <th>Fixable Warnings</th><td>${eslint.fixable_warnings}</td></tr>
 </table>
 
 <h2>Playwright Summary</h2>
 <table>
-<tr><th>Total</th><td>${play.total ?? 0}</td>
-    <th>Passed</th><td>${play.passed ?? play.expected ?? 0}</td>
-    <th>Failed</th><td>${play.failed ?? play.unexpected ?? 0}</td>
-    <th>Skipped</th><td>${play.skipped ?? 0}</td></tr>
-<tr><th>Pass&nbsp;Rate</th><td>${play.pass_rate ?? 0}%</td>
-    <th>Duration</th><td colspan="5">${play.duration ?? 0}&nbsp;ms</td></tr>
+ <tr><th>Total</th><td>${play.total}</td>
+     <th>Passed</th><td>${play.passed}</td>
+     <th>Failed</th><td>${play.failed}</td>
+     <th>Skipped</th><td>${play.skipped}</td></tr>
+ <tr><th>Pass&nbsp;Rate</th><td>${play.rate}%</td>
+     <th>Duration</th><td colspan="5">${play.dur}&nbsp;ms</td></tr>
 </table>
 <p>📄 <a href="playwright-report/index.html">Open the full Playwright HTML report ↗</a></p>
 
@@ -84,5 +100,5 @@ ${prettier.sample_patch
 <hr><p style="font-size:90%;color:#555">Generated ${new Date().toISOString()}</p>
 `;
 
-fs.writeFileSync(path.join(OUT,'index.html'), html, 'utf8');
+fs.writeFileSync(path.join(OUT, 'index.html'), html, 'utf8');
 console.log('📝 Dashboard regenerated → web-report/index.html');

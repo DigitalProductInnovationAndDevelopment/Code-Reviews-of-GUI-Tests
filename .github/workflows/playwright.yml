@@ -54,12 +54,14 @@ jobs:
     - name: Build static HTML report
       run: node scripts/generate-webpage.js
 
-    # ── Create Playwright badge text for PR comment ───────────────
+    # ── Build Playwright badge text for PR comment ───────────────────
     - name: Create test-summary badge
       if: always()
       run: |
-        jq -r '"Total: \(.stats.total) | Passed: \(.stats.passed) | Failed: \(.stats.failed) | Skipped: \(.stats.skipped)"' \
-          playwright-metrics.json > artifacts/test-summary.txt
+        jq -r '
+          "Total: \(.stats.total) | Passed: \(.stats.expected) | Failed: \(.stats.unexpected) | Skipped: \(.stats.skipped)"
+        ' playwright-metrics.json > artifacts/test-summary.txt
+
 
     # ── Upload all artefacts (reports + summaries) ────────────────
     - uses: actions/upload-artifact@v4
