@@ -1,9 +1,9 @@
 name: GUI Test Review
 
 on:
-  pull_request_target:       # ← this event is the key!
-    branches: [main]
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
 
 jobs:
@@ -16,7 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-        # pull_request_target: this will check out the base branch HEAD by default
 
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
@@ -30,6 +29,7 @@ jobs:
       - name: Lint, Prettier & ESLint
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: node scripts/lint.js
         continue-on-error: true
 
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: gui-artifacts
-          path: artifacts/*          # <- upload flat!
+          path: artifacts/*
 
   deploy-report:
     needs: build-test
@@ -76,7 +76,7 @@ jobs:
         uses: actions/deploy-pages@v4
 
   comment_link:
-    if: github.event_name == 'pull_request_target'
+    if: github.event_name == 'pull_request'
     needs: deploy-report
     runs-on: ubuntu-latest
     permissions:
