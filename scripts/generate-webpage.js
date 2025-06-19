@@ -1,45 +1,54 @@
 #!/usr/bin/env node
 /**
- * Fancy static dashboard – cards, pill badges, diff samples.
+ * generate-webpage.js
+ *
+ * Builds a static dashboard at artifacts/web-report/index.html
+ *   · Playwright card
+ *   · Prettier card  (files, places, diff sample)
+ *   · ESLint card    (errors, warnings, fixables, first error)
+ *   · Flow-chart image (optional)
+ *   · Checklist card (rendered Markdown)
  */
 
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 const marked = require('marked');
 
+/* ─── paths ──────────────────────────────────────────────────── */
 const ART = 'artifacts';
 const OUT = path.join(ART, 'web-report');
 fs.mkdirSync(OUT, { recursive: true });
 
-/* helpers ------------------------------------------------------- */
-const readJSON = f => JSON.parse(fs.readFileSync(path.join(ART, f), 'utf8'));
+/* ─── helper functions ───────────────────────────────────────── */
+const readJSON = file => JSON.parse(fs.readFileSync(path.join(ART, file), 'utf8'));
 const pill = (txt, color) =>
   `<span class="pill" style="background:${color}">${txt}</span>`;
 const card = (title, inner) =>
   `<div class="card"><h2>${title}</h2>${inner}</div>`;
-const pre = s => `<pre>${s}</pre>`;
+const pre  = txt => `<pre>${txt}</pre>`;
 
-/* load artefacts ------------------------------------------------ */
+/* ─── load artefacts ─────────────────────────────────────────── */
 const lint = readJSON('lint-summary.json');
 const p = lint.prettier;
 const e = lint.eslint;
 const play = readJSON('playwright-summary.json');
-const checklist = fs.readFileSync(path.join(ART, 'checklist.md'), 'utf8');
+const checklistMD = fs.readFileSync(path.join(ART, 'checklist.md'), 'utf8');
 
-/* copy raw assets (HTML report, flowchart) ---------------------- */
+/* ─── copy raw assets ────────────────────────────────────────── */
 if (fs.existsSync(path.join(ART, 'playwright-report')))
   fs.cpSync(
     path.join(ART, 'playwright-report'),
     path.join(OUT, 'playwright-report'),
     { recursive: true }
   );
+
 if (fs.existsSync(path.join(ART, 'flowchart.png')))
   fs.copyFileSync(
     path.join(ART, 'flowchart.png'),
     path.join(OUT, 'flowchart.png')
   );
 
-/* ── Prettier card ───────────────────────────────────────────── */
+/* ─── build cards ────────────────────────────────────────────── */
 const prettierCard = card(
   'Prettier',
   p.filesWithIssues
@@ -58,7 +67,6 @@ const prettierCard = card(
     : pill('No issues', '#388e3c')
 );
 
-/* ── ESLint card ─────────────────────────────────────────────── */
 const eslintCard = card(
   'ESLint',
   e.errors || e.warnings
@@ -66,11 +74,12 @@ const eslintCard = card(
         pill(`${e.warnings} ⚠`, '#f57f17') +
         pill(`${e.fixableErrors} fixable`, '#1976d2') +
         pill(`${e.fixableWarnings} autofix`, '#1976d2') +
-        (e.first ? `<pre>${e.first}</pre>` : '')
+        (e.first
+          ? `<details><summary>First error</summary>${pre(e.first)}</details>`
+          : '')
     : pill('Clean', '#388e3c')
 );
 
-/* ── Playwright card ─────────────────────────────────────────── */
 const playCard = card(
   'Playwright',
   pill(`${play.passed}/${play.total} passed`, '#388e3c') +
@@ -80,7 +89,6 @@ const playCard = card(
      <p><a href="playwright-report/index.html">Open full HTML report ↗</a></p>`
 );
 
-/* ── Flow-chart card (optional) ──────────────────────────────── */
 const flowCard = fs.existsSync(path.join(OUT, 'flowchart.png'))
   ? card(
       'Flow-chart',
@@ -88,18 +96,20 @@ const flowCard = fs.existsSync(path.join(OUT, 'flowchart.png'))
     )
   : '';
 
-/* ── Checklist card ──────────────────────────────────────────── */
-const checklistCard = card('Checklist', marked.parse(checklist));
+const checklistCard = card('Checklist', marked.parse(checklistMD));
 
-/* HTML shell --------------------------------------------------- */
-const html = `<!DOCTYPE html><meta charset="utf-8"><title>GUI-Test Dashboard</title>
+/* ─── HTML shell  ────────────────────────────────────────────── */
+const html = /* html */ `
+<!DOCTYPE html><meta charset="utf-8">
+<title>GUI-Test Dashboard</title>
 <style>
 body{font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#fafafa;margin:0;padding:2rem}
 h1{font-size:2rem;margin-bottom:1.2rem}
 .card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:1.3rem;margin-bottom:1.3rem}
-.pill{display:inline-block;border-radius:9999px;padding:.17em .65em;font-size:12px;color:#fff;margin-right:.4em}
-pre{background:#2d2d2d;color:#f8f8f2;padding:1rem;border-radius:8px;overflow:auto;font-size:13px}
+.pill{display:inline-block;border-radius:9999px;padding:.18em .68em;font-size:12px;color:#fff;margin-right:.4em}
+pre{background:#2d2d2d;color:#f8f8f2;padding:1rem;border-radius:8px;overflow:auto;font-size:13px;margin-top:.6em}
 ul{margin:.6em 0 0 1.1em}
+details{margin-top:.6em}
 </style>
 
 <h1>🔍 GUI-Test Dashboard</h1>
@@ -114,6 +124,6 @@ ${checklistCard}
   Generated ${new Date().toLocaleString()}
 </footer>`;
 
-/* write page --------------------------------------------------- */
+/* ─── write page ─────────────────────────────────────────────── */
 fs.writeFileSync(path.join(OUT, 'index.html'), html, 'utf8');
 console.log('✨ Fancy dashboard written → web-report/index.html');
