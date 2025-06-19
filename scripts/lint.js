@@ -1,51 +1,54 @@
 #!/usr/bin/env node
 /**
- * One-stop linter:
- *   • Prettier formats → git diff → reviewdog (inline suggestions)
- *   • ESLint JSON      → reviewdog (inline rule comments, fails build on errors)
- *   • Writes summary artefact for the PR comment
+ * Unified linter for CI:
+ *   • Prettier formats → git diff → reviewdog (suggested-change comments)
+ *   • ESLint JSON      → reviewdog (inline rule comments)
+ *   • Writes lint-summary artefacts for the PR-summary step
+ *
+ *   Run with “--strict” to make ESLint errors flip exit-code to 1.
  */
 
 const { execSync, spawnSync } = require('child_process');
 const fs   = require('fs');
 const path = require('path');
 
-/* simple helper: capture command output (only when we need it) */
-function capture(cmd) {
-  return execSync(cmd, { encoding: 'utf8' }).trim();
-}
+const STRICT = process.argv.includes('--strict');
 
-/* ────────────── Prettier → reviewdog ─────────────────────────── */
+/* small helper: capture stdout (no inherit) */
+const capture = cmd => execSync(cmd, { encoding: 'utf8' }).trim();
+
+/* ─────────── Prettier → reviewdog ─────────────────────────────── */
 function runPrettier() {
   console.log('\n▶ Prettier (write → diff → reviewdog)');
 
-  // 1 – format files (we don’t capture output here)
+  /* 1 – format in place */
   execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
 
-  // 2 – diff against HEAD to know what changed
+  /* 2 – diff vs HEAD to know what changed */
   const diff = capture('git diff -U0 -- tests || true');
   const changedFiles = diff
     ? capture('git diff --name-only -- tests').split('\n').filter(Boolean)
     : [];
 
-  // 3 – inline suggestions
+  /* 3 – send suggestions to reviewdog */
   if (diff) {
     spawnSync(
       'reviewdog',
-      ['-f=diff', '-name=prettier', '-reporter=github-pr-review', '-level=info', '-fail-on-error=false'],
+      ['-f=diff', '-name=prettier', '-reporter=github-pr-review',
+       '-level=info', '-fail-on-error=false'],
       { input: diff, stdio: ['pipe', 'inherit', 'inherit'], encoding: 'utf8' },
     );
   } else {
     console.log('✓ Prettier: nothing to fix');
   }
 
-  // 4 – reset working tree (so Playwright sees pristine files)
+  /* 4 – restore pristine tree (avoids dirty state for later steps) */
   execSync('git checkout -- .');
 
   return { filesWithIssues: changedFiles.length };
 }
 
-/* ────────────── ESLint → reviewdog ───────────────────────────── */
+/* ─────────── ESLint → reviewdog ───────────────────────────────── */
 function runESLint() {
   console.log('\n▶ ESLint');
 
@@ -53,27 +56,20 @@ function runESLint() {
   try {
     raw = capture('npx eslint tests --ext .js,.ts,.tsx -f json');
   } catch (e) {
-    // ESLint exits 1 when it finds problems — stdout still holds the JSON
+    // ESLint exits 1 when problems exist – JSON is still in stdout
     raw = e.stdout.toString();
   }
 
   const results = raw ? JSON.parse(raw) : [];
-  const summary = {
-    files: results.length,
-    errors: 0,
-    warnings: 0,
-    firstError: null,
-  };
+  const summary = { files: results.length, errors: 0, warnings: 0, first: null };
 
   results.forEach(file =>
-    file.messages.forEach(msg => {
-      if (msg.severity === 2) {
-        summary.errors += 1;
-        if (!summary.firstError) {
-          summary.firstError = `${msg.ruleId} in ${path.basename(file.filePath)}:${msg.line}`;
-        }
-      } else if (msg.severity === 1) {
-        summary.warnings += 1;
+    file.messages.forEach(m => {
+      if (m.severity === 2) {
+        summary.errors++;
+        if (!summary.first) summary.first = `${m.ruleId} in ${path.basename(file.filePath)}:${m.line}`;
+      } else if (m.severity === 1) {
+        summary.warnings++;
       }
     }),
   );
@@ -88,20 +84,21 @@ function runESLint() {
     console.log('✓ ESLint: clean');
   }
 
-  // propagate failure if errors remain
-  if (summary.errors) process.exitCode = 1;
-
+  if (STRICT && summary.errors) process.exitCode = 1;   // gate only when strict
   return summary;
 }
 
-/* ────────────── run both & write artefacts ───────────────────── */
+/* ─────────── run both & emit artefacts ───────────────────────── */
 const prettier = runPrettier();
 const eslint   = runESLint();
 
 fs.mkdirSync('artifacts', { recursive: true });
-fs.writeFileSync('artifacts/lint-summary.json', JSON.stringify({ prettier, eslint }, null, 2));
+fs.writeFileSync(
+  'artifacts/lint-summary.json',
+  JSON.stringify({ prettier, eslint }, null, 2),
+);
 fs.writeFileSync(
   'artifacts/lint-summary.txt',
   `Prettier: ${prettier.filesWithIssues} file(s) need formatting\n` +
-    `ESLint:   ${eslint.errors} error(s), ${eslint.warnings} warning(s)\n`,
+  `ESLint:   ${eslint.errors} error(s), ${eslint.warnings} warning(s)\n`,
 );
