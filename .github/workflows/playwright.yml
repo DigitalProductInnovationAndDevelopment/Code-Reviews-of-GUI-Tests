@@ -1,5 +1,5 @@
 # .github/workflows/gui-test-review.yml
-name: GUI Test Review with Enhanced Metrics (v2)
+name: GUI Test Review
 
 on:
   push:
@@ -109,7 +109,7 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           edit-mode: replace
-          comment-identifier: gui-test-review
+          comment-id: gui-test-review
           body: |
             👋 **Hello!**
 

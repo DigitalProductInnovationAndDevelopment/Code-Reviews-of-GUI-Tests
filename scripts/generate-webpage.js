@@ -1,92 +1,98 @@
 #!/usr/bin/env node
-const fs = require('fs');
+/**
+ * Builds artifacts/web-report/index.html
+ *  • Checklist at top
+ *  • Prettier metrics + single sample
+ *  • ESLint metrics
+ *  • Playwright summary + link to full HTML report
+ *  • Flowchart image wrapped in <a> for zoom/open
+ */
+
+const fs   = require('fs');
 const path = require('path');
-const marked = require('marked');           // add to devDependencies
+const marked = require('marked');             // devDependency
 
 const ART = 'artifacts';
 const OUT = path.join(ART, 'web-report');
 fs.mkdirSync(OUT, { recursive: true });
 
-/* ── helpers ───────────────────────────────────────────────────────── */
-const r = (fp, d = {}) => {
-  try { return JSON.parse(fs.readFileSync(path.join(ART, fp), 'utf8')); }
-  catch { return d; }
-};
-const htmlEscape = (s) => s.replace(/[&<>"']/g,(c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+/* helpers */
+const j = (f,d={}) => { try{return JSON.parse(fs.readFileSync(path.join(ART,f),'utf8'));}catch{return d;} };
+const escapeHtml = s => s.replace(/[&<>"']/g, c => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  "'": '&#39;',
+  '"': '&quot;'
+}[c]));
 
-/* ── data ──────────────────────────────────────────────────────────── */
-const play   = r('playwright-summary.json');
-const eslint = r('eslint-tests.json', []);
-const prettierPatch = fs.existsSync(path.join(ART,'prettier.patch'))
-  ? fs.readFileSync(path.join(ART,'prettier.patch'),'utf8')
-  : '';
+/* data */
 const checklistMD = fs.existsSync(path.join(ART,'checklist.md'))
   ? fs.readFileSync(path.join(ART,'checklist.md'),'utf8')
   : '';
+const prettier = j('prettier-summary.json');
+const eslint   = j('eslint-summary.json');
+const play     = j('playwright-summary.json');
 
-/* ── ESLint → rows ─────────────────────────────────────────────────── */
-const eslintRows = eslint.flatMap(file =>
-  file.messages.map(m => ({
-    file: path.basename(file.filePath),
-    line: m.line,
-    rule: m.ruleId,
-    sev : m.severity === 2 ? 'error' : 'warn',
-    msg : m.message
-  }))
-);
-
-/* ── copy assets ───────────────────────────────────────────────────── */
-for (const f of ['flowchart.png']) {
-  const src = path.join(ART, f);
-  if (fs.existsSync(src)) fs.copyFileSync(src, path.join(OUT, f));
-}
+/* copy assets */
+if (fs.existsSync(path.join(ART,'flowchart.png')))
+  fs.copyFileSync(path.join(ART,'flowchart.png'), path.join(OUT,'flowchart.png'));
 if (fs.existsSync(path.join(ART,'playwright-report')))
-  fs.cpSync(path.join(ART,'playwright-report'), path.join(OUT,'playwright-report'), { recursive:true });
+  fs.cpSync(path.join(ART,'playwright-report'), path.join(OUT,'playwright-report'),{recursive:true});
 
-/* ── build HTML ────────────────────────────────────────────────────── */
+/* HTML */
 const html = /*html*/`
-<!DOCTYPE html><html lang="en"><meta charset="UTF-8">
+<!DOCTYPE html><meta charset="UTF-8">
 <title>GUI-Test Dashboard</title>
 <style>
  body{font:15px/1.6 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:1.8rem;max-width:1200px}
  h1,h2{color:#1976D2}
- table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:0.95rem}
+ table{border-collapse:collapse;margin:1rem 0;width:100%}
  th,td{border:1px solid #ccc;padding:.5rem .6rem;text-align:left}
  th{background:#E3F2FD}
- code{background:#f3f3f3;padding:2px 4px;font-size:90%}
- pre{background:#f7f7f7;padding:1rem;overflow:auto;border:1px solid #ddd}
- .error{color:#c62828;font-weight:bold}.warn{color:#ef6c00}
- img{border:1px solid #ccc;border-radius:6px;margin:1rem 0}
+ code,pre{font-family:SFMono-Regular,Consolas,Menlo,monospace}
+ pre{background:#f7f7f7;border:1px solid #ddd;padding:1rem;overflow:auto;font-size:90%}
+ img{border:1px solid #ccc;border-radius:6px;margin:1rem 0;width:100%}
 </style>
-<body>
 <h1>🔍 GUI-Test Dashboard</h1>
 
-<h2>Test Summary</h2>
+<h2>Checklist</h2>
+${marked.parse(checklistMD)}
+
+<h2>Prettier Overview (tests/**)</h2>
+<table>
+<tr><th>Files with issues</th><td>${prettier.files_with_issues}</td>
+    <th>Total suggested changes</th><td>${prettier.total_changes}</td></tr>
+</table>
+${prettier.sample_patch
+  ? `<h3>Example (first ${prettier.sample_patch.split('\\n').length} lines)</h3>
+     <pre>${escapeHtml(prettier.sample_patch)}</pre>`
+  : '<p>No formatting suggestions 🎉</p>'}
+
+<h2>ESLint Overview (tests/**)</h2>
+<table>
+<tr><th>Files</th><td>${eslint.total_files}</td>
+    <th>Errors</th><td>${eslint.errors}</td>
+    <th>Warnings</th><td>${eslint.warnings}</td></tr>
+<tr><th>Fixable Errors</th><td>${eslint.fixable_errors}</td>
+    <th>Fixable Warnings</th><td>${eslint.fixable_warnings}</td></tr>
+</table>
+
+<h2>Playwright Summary</h2>
 <table>
 <tr><th>Total</th><td>${play.total??0}</td><th>Passed</th><td>${play.passed??0}</td>
     <th>Failed</th><td>${play.failed??0}</td><th>Skipped</th><td>${play.skipped??0}</td></tr>
 <tr><th>Pass&nbsp;Rate</th><td>${play.pass_rate??0}%</td>
     <th>Duration</th><td colspan="5">${play.duration??0}&nbsp;ms</td></tr>
 </table>
-<p>📄 Full HTML runner report: <a href="playwright-report/index.html">open&nbsp;↗</a></p>
-
-<h2>Prettier Suggestions</h2>
-${prettierPatch ? `<pre>${htmlEscape(prettierPatch)}</pre>` : '<p>No issues 🎉</p>'}
-
-<h2>ESLint Findings</h2>
-${eslintRows.length
-  ? `<table><tr><th>sev</th><th>rule</th><th>file</th><th>line</th><th>message</th></tr>${
-      eslintRows.map(r=>`<tr><td class="${r.sev}">${r.sev}</td><td>${r.rule}</td><td>${r.file}</td><td>${r.line}</td><td>${htmlEscape(r.msg)}</td></tr>`).join('')
-    }</table>`
-  : '<p>No issues 🎉</p>'}
+<p>📄 <a href="playwright-report/index.html">Open the full Playwright HTML report ↗</a></p>
 
 <h2>Flowchart</h2>
-<img src="flowchart.png" style="width:100%" alt="Playwright flowchart">
+<a href="flowchart.png" target="_blank" title="Open full-size flowchart">
+  <img src="flowchart.png" alt="Flowchart">
+</a>
 
-<h2>Checklist</h2>
-${marked.parse(checklistMD)}
+<hr><p style="font-size:90%;color:#555">Generated ${new Date().toISOString()}</p>`;
 
-<hr><p style="font-size:90%;color:#555">Generated ${new Date().toISOString()}</p>
-`;
-fs.writeFileSync(path.join(OUT,'index.html'),html,'utf8');
-console.log('📝 Dashboard rebuilt at web-report/index.html');
+fs.writeFileSync(path.join(OUT,'index.html'), html, 'utf8');
+console.log('📝 Dashboard regenerated → web-report/index.html');
