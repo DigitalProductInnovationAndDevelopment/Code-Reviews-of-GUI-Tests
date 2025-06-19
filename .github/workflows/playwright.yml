@@ -5,46 +5,44 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  pull_request_target:
+    branches: [main]
 
-####################################################################
-# 1) Build, lint, test and create artefacts                        #
-####################################################################
 jobs:
-  review-assistant:
+####################################################################
+# 1) Build, lint, test, artefacts – runs for push *and* PR events  #
+####################################################################
+  build-test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
 
     steps:
-      # checkout & Node
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
 
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
 
-      # reviewdog binary
       - uses: reviewdog/action-setup@v1
         with: { reviewdog_version: latest }
 
-      # dependencies
       - name: Install NPM dependencies
         run: npm install
 
-      # Lint (Prettier + ESLint) – inline via reviewdog
+      # ── Lint (inline comments only in PR context) ──────────────
       - name: Lint, Prettier & ESLint
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request_target'
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/lint.js
         continue-on-error: true
 
-      # Playwright tests
+      # ── Playwright + artefacts ─────────────────────────────────
       - name: Playwright tests
         run: node scripts/playwright-test.js
 
-      # Flow-chart & dashboard
       - name: Generate flow-chart
         run: node scripts/generate-flowchart.js
 
@@ -54,28 +52,26 @@ jobs:
       - name: Build static HTML report
         run: node scripts/generate-webpage.js
 
-      # badge text for PR summary
       - name: Create test-summary badge
         run: |
           jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
             artifacts/playwright-summary.json > artifacts/test-summary.txt
 
-      # Upload artefacts (flattened)
+      # ── Upload artefacts *flattened* ───────────────────────────
       - uses: actions/upload-artifact@v4
         with:
           name: gui-artifacts
-          path: artifacts/*        # ← files only, no extra folder
+          path: artifacts/*               # ← NO extra folder
 
 ####################################################################
-# 2) Publish the HTML dashboard via GitHub Pages                   #
+# 2) Publish dashboard (push + PR)                                #
 ####################################################################
   deploy-report:
-    needs: review-assistant
+    needs: build-test
     runs-on: ubuntu-latest
     permissions:
       pages: write
       id-token: write
-
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -91,10 +87,10 @@ jobs:
         uses: actions/deploy-pages@v4
 
 ####################################################################
-# 3) Sticky PR comment – summary & links                           #
+# 3) Sticky PR comment (only for PRs)                              #
 ####################################################################
   comment_link:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request_target'
     needs: deploy-report
     runs-on: ubuntu-latest
     permissions:
@@ -106,7 +102,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
 
-      - name: Install JS dependencies (Octokit, marked, etc.)
+      - name: Install JS deps (Octokit, marked)
         run: npm install
 
       - uses: actions/download-artifact@v4
@@ -117,6 +113,6 @@ jobs:
       - name: Post / update GUI-test summary comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACTS_DIR: gui-artifacts          # ← flattened path
+          ARTIFACTS_DIR: gui-artifacts       # flattened
           WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
         run: node scripts/summary-comment.js
