@@ -1,42 +1,40 @@
 #!/usr/bin/env node
 /**
- * Produces a Markdown checklist that mirrors the original
- * bash logic and stores it at /artifacts/checklist.md
+ * Generates a Markdown checklist and stores:
+ *   • artifacts/checklist.md  (human-readable)
+ *   • artifacts/checklist.json { md: … }  (for summary-comment.js)
+ *
+ * A box is checked when the corresponding tool RAN,
+ * regardless of whether it found issues.
  */
-const fs = require('fs');
+
+const fs   = require('fs');
 const path = require('path');
 
-const ART = 'artifacts';
-const checklist = [];
-let warning = false;
+const ART  = 'artifacts';
+fs.mkdirSync(ART, { recursive: true });
 
-function exists(p) { return fs.existsSync(p); }
+const have = p => fs.existsSync(path.join(ART, p));
 
-checklist.push('- [x] GitHub Action triggered');
+/* artefact booleans ------------------------------------------- */
+const hasPlay   = have('playwright-summary.json');
+const hasLint   = have('lint-summary.json');          // contains both ESLint & Prettier
+const hasFlow   = have('flowchart.png');
+const hasBadge  = have('test-summary.txt');
 
-if (exists(`${ART}/playwright-summary.json`))
-  checklist.push('- [x] Playwright tests completed successfully');
-else { checklist.push('- [ ] Playwright tests completed successfully'); warning = true; }
+/* checklist ---------------------------------------------------- */
+const lines = [];
+lines.push('- [x] GitHub Action triggered');
+lines.push(`- [${hasPlay ? 'x' : ' '}] Playwright tests completed`);
+lines.push(`- [${hasLint ? 'x' : ' '}] ESLint executed`);
+lines.push(`- [${hasLint ? 'x' : ' '}] Prettier check completed`);
+lines.push(`- [${hasBadge ? 'x' : ' '}] Test summary generated`);
+lines.push(`- [${hasFlow  ? 'x' : ' '}] Flowchart created`);
 
-if (exists(`${ART}/eslint-tests.json`))
-  checklist.push('- [x] ESLint executed without issues');
-else { checklist.push('- [ ] ESLint executed without issues'); warning = true; }
+const md = lines.join('\n') + '\n';
 
-if (exists(`${ART}/prettier-summary.json`))
-  checklist.push('- [x] Prettier check completed');
-else { checklist.push('- [ ] Prettier check completed'); warning = true; }
+/* write artefacts --------------------------------------------- */
+fs.writeFileSync(path.join(ART, 'checklist.md'),   md);
+fs.writeFileSync(path.join(ART, 'checklist.json'), JSON.stringify({ md }, null, 2));
 
-if (exists(`${ART}/playwright-summary.json`))
-  checklist.push('- [x] Test summary generated');
-else { checklist.push('- [ ] Test summary generated'); warning = true; }
-
-if (exists(`${ART}/flowchart.png`))
-  checklist.push('- [x] Flowchart created');
-else { checklist.push('- [ ] Flowchart created'); warning = true; }
-
-const out = checklist.join('\n') + '\n';
-fs.writeFileSync(`${ART}/checklist.md`, out);
-fs.writeFileSync(`${ART}/checklist.json`, JSON.stringify({ md: out }, null, 2));
-
-console.log(out);
-if (warning) process.exitCode = 0;   // never fail build
+console.log(md);

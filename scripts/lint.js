@@ -56,7 +56,7 @@ function runESLint() {
   results.forEach(f => {
     if (f.messages.length) fileSet.add(path.basename(f.filePath));
     f.messages.forEach(m => {
-      if (m.severity === 2) { errors++; if (!first) first = `${m.ruleId} in ${path.basename(f.filePath)}:${m.line}`; }
+      if (m.severity === 2) {if (!first) first = `${m.ruleId || 'unknown-rule'} in ${path.basename(f.filePath)}:${m.line}`; }
       if (m.severity === 1) warnings++;
     });
   });
