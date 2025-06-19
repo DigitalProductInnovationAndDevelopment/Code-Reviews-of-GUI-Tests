@@ -58,10 +58,8 @@ jobs:
     - name: Create test-summary badge
       if: always()
       run: |
-        jq -r '
-          "Total: \(.stats.total) | Passed: \(.stats.expected) | Failed: \(.stats.unexpected) | Skipped: \(.stats.skipped)"
-        ' playwright-metrics.json > artifacts/test-summary.txt
-
+        jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
+          artifacts/playwright-summary.json > artifacts/test-summary.txt
 
     # ── Upload all artefacts (reports + summaries) ────────────────
     - uses: actions/upload-artifact@v4
