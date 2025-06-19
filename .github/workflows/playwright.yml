@@ -1,4 +1,3 @@
-# .github/workflows/gui-test-review.yml
 name: GUI Test Review
 
 on:
@@ -20,38 +19,31 @@ jobs:
     steps:
     # ── checkout & Node ────────────────────────────────────────────
     - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      with: { fetch-depth: 0 }
 
     - uses: actions/setup-node@v4
-      with:
-        node-version: 18
+      with: { node-version: 18 }
 
-    # ── reviewdog CLI ──────────────────────────────────────────────
+    # ── reviewdog binary ───────────────────────────────────────────
     - uses: reviewdog/action-setup@v1
-      with:
-        reviewdog_version: latest
+      with: { reviewdog_version: latest }
 
     # ── dependencies ───────────────────────────────────────────────
     - name: Install NPM dependencies
       run: npm install
 
-    # ── Lint (Prettier + ESLint) ──────────────────────────────────
+    # ── Lint (Prettier + ESLint) – inline via reviewdog ────────────
     - name: Lint, Prettier & ESLint
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: node scripts/lint.js --strict
-      continue-on-error: true         # keep pipeline alive for later steps
+      continue-on-error: true          # we handle gate at the end
 
-    # ── Playwright test run (creates playwright-metrics.json) ─────
-      # Playwright test run
+    # ── Playwright test run (writes playwright-metrics.json) ───────
     - name: Playwright tests
-      env:
-        PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-metrics.json
       run: node scripts/playwright-test.js
 
-
-    # ── Flow-chart PNG & HTML dashboard ───────────────────────────
+    # ── Flow-chart PNG & HTML dashboard generation ────────────────
     - name: Generate flow-chart
       run: node scripts/generate-flowchart.js
 
@@ -61,14 +53,14 @@ jobs:
     - name: Build static HTML report
       run: node scripts/generate-webpage.js
 
-    # ── Badge text for PR summary comment ─────────────────────────
+    # ── Create Playwright badge text for PR comment ───────────────
     - name: Create test-summary badge
       if: always()
       run: |
         jq -r '"Total: \(.stats.total) | Passed: \(.stats.passed) | Failed: \(.stats.failed) | Skipped: \(.stats.skipped)"' \
           playwright-metrics.json > artifacts/test-summary.txt
 
-    # ── Upload artefacts (reports + summaries) ────────────────────
+    # ── Upload all artefacts (reports + summaries) ────────────────
     - uses: actions/upload-artifact@v4
       with:
         name: gui-artifacts
@@ -78,6 +70,10 @@ jobs:
     - name: Fail build when ESLint errors remain
       if: always()
       run: |
+        if [ ! -f artifacts/lint-summary.json ]; then
+          echo "::warning::lint-summary.json missing – treating as failure"
+          exit 1
+        fi
         ERRORS=$(jq '.eslint.errors' artifacts/lint-summary.json)
         if [ "$ERRORS" -gt 0 ]; then
           echo "::error::ESLint found $ERRORS error(s) – failing job"
@@ -99,23 +95,17 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
-    - name: Download artefacts
-      uses: actions/download-artifact@v4
-      with:
-        name: gui-artifacts
-        path: gui-artifacts
+    - uses: actions/download-artifact@v4
+      with: { name: gui-artifacts, path: gui-artifacts }
 
-    - name: Upload Pages artefact
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: gui-artifacts/web-report
+    - uses: actions/upload-pages-artifact@v3
+      with: { path: gui-artifacts/web-report }
 
-    - name: Deploy to GitHub Pages
-      id: deploy
+    - id: deploy
       uses: actions/deploy-pages@v4
 
 ####################################################################
-# 3) Sticky PR comment with comment-identifier                     #
+# 3) Sticky PR comment – checklist, lint, tests, flow-chart link   #
 ####################################################################
   comment_link:
     if: github.event_name == 'pull_request'
@@ -125,17 +115,30 @@ jobs:
       pull-requests: write
 
     steps:
-    - name: Checkout (required by the action)
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-    - name: Download artefacts
-      uses: actions/download-artifact@v4
-      with:
-        name: gui-artifacts
-        path: gui-artifacts
+    - uses: actions/download-artifact@v4
+      with: { name: gui-artifacts, path: gui-artifacts }
 
-    - name: Post / update link to HTML dashboard
-      uses: peter-evans/create-or-update-comment@v4
+    # ── Extract lint & test numbers for the comment ───────────────
+    - id: lint
+      run: |
+        PRETTIER=$(jq '.prettier.filesWithIssues' gui-artifacts/lint-summary.json)
+        ERR=$(jq '.eslint.errors' gui-artifacts/lint-summary.json)
+        WARN=$(jq '.eslint.warnings' gui-artifacts/lint-summary.json)
+        FIRST=$(jq -r '.eslint.first // empty' gui-artifacts/lint-summary.json)
+        echo "prettier=$PRETTIER"  >> "$GITHUB_OUTPUT"
+        echo "errors=$ERR"         >> "$GITHUB_OUTPUT"
+        echo "warnings=$WARN"      >> "$GITHUB_OUTPUT"
+        echo "first=$FIRST"        >> "$GITHUB_OUTPUT"
+
+    - id: tests
+      run: |
+        BADGE=$(cat gui-artifacts/test-summary.txt)
+        echo "badge=$BADGE" >> "$GITHUB_OUTPUT"
+
+    # ── Post / update sticky PR comment ───────────────────────────
+    - uses: peter-evans/create-or-update-comment@v4
       with:
         issue-number: ${{ github.event.pull_request.number }}
         edit-mode: replace
@@ -143,7 +146,12 @@ jobs:
         body: |
           👋 **Hello!**
 
-          Your GUI-test results are ready:  
+          ### CI Summary
+          * **Playwright:** ${{ steps.tests.outputs.badge }}
+          * **Prettier:**  ${{ steps.lint.outputs.prettier }} file(s) need formatting
+          * **ESLint:**    ${{ steps.lint.outputs.errors }} error(s), ${{ steps.lint.outputs.warnings }} warning(s)${{ steps.lint.outputs.first && format('\n  *First error*: %s', steps.lint.outputs.first) }}
+          * **Checklist, Flow-chart & full reports:** see dashboard
+
           **[📊 View the latest dashboard ↗](https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html)**
 
-          _This comment is automatically updated on every push._
+          _Inline reviewdog comments & this summary update on every push._
