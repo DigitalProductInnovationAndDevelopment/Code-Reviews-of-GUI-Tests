@@ -1,41 +1,44 @@
 #!/usr/bin/env node
 /**
- * Unified linter
- *   ▸ Runs Prettier and ESLint
- *   ▸ Sends diffs to reviewdog so inline “Apply suggestion” buttons appear
- *   ▸ Writes artifacts/lint-summary.json for the dashboard & PR comment
+ * Runs Prettier and ESLint, posts inline suggestions via reviewdog on PRs,
+ * always writes artifacts/lint-summary.json.
  */
 
 const { execSync, spawnSync } = require('child_process');
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 
-const IS_PR = process.env.GITHUB_EVENT_NAME === 'pull_request';
+const IS_PR =
+  process.env.GITHUB_EVENT_NAME === 'pull_request' ||
+  process.env.GITHUB_EVENT_NAME === 'pull_request_target';
+
 const capture = cmd => execSync(cmd, { encoding: 'utf8' }).trim();
 
-/* ──────────────────────────  Prettier  ───────────────────────── */
+/* ─────────────── Prettier ─────────────── */
 function runPrettier() {
   console.log('\n▶ Prettier (write → diff → reviewdog)');
 
   // 1. Format files in-place
   execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
 
-  // 2. Diff with context so reviewdog can create code-suggestions
-  const diff   = capture('git diff -- tests || true');
-  const files  = diff ? capture('git diff --name-only -- tests').split('\n').filter(Boolean) : [];
+  // 2. Diff with context
+  const diff = capture('git diff -- tests || true');
+  const files = diff ? capture('git diff --name-only -- tests').split('\n').filter(Boolean) : [];
   const totalChanges = (diff.match(/^[+-](?![+-]{3})/gm) || []).length;
 
-  // 3. Reviewdog suggestions (only on PRs)
+  // 3. Reviewdog suggestions (PR context only)
   if (diff && IS_PR) {
     spawnSync(
       'reviewdog',
-      ['-f=diff',
-       '-name=prettier',
-       '-reporter=github-pr-suggest',      // ← quick-fix buttons
-       '-filter-mode=nofilter',
-       '-tee',
-       '-level=info',
-       '-fail-on-error=false'],
+      [
+        '-f=diff',
+        '-name=prettier',
+        '-reporter=github-pr-suggest', // “Apply suggestion” button!
+        '-filter-mode=nofilter',
+        '-tee',
+        '-level=info',
+        '-fail-on-error=false'
+      ],
       { input: diff, stdio: ['pipe', 'inherit', 'inherit'], encoding: 'utf8' }
     );
   }
@@ -51,18 +54,23 @@ function runPrettier() {
   };
 }
 
-/* ──────────────────────────  ESLint  ─────────────────────────── */
+/* ─────────────── ESLint ─────────────── */
 function runESLint() {
   console.log('\n▶ ESLint');
   let raw = '';
   try {
     raw = capture('npx eslint tests --ext .js,.ts,.tsx -f json');
   } catch (e) {
-    raw = e.stdout.toString();               // exit-1 → problems found
+    raw = e.stdout.toString(); // exit-1 → problems found
   }
 
   const results = raw ? JSON.parse(raw) : [];
-  let errors = 0, warnings = 0, fixErr = 0, fixWarn = 0, first = '', files = new Set();
+  let errors = 0,
+    warnings = 0,
+    fixErr = 0,
+    fixWarn = 0,
+    first = '',
+    files = new Set();
 
   results.forEach(f => {
     if (f.messages.length) files.add(path.basename(f.filePath));
@@ -81,11 +89,13 @@ function runESLint() {
   if (raw && IS_PR) {
     spawnSync(
       'reviewdog',
-      ['-f=eslint',
-       '-name=eslint',
-       '-reporter=github-pr-review',
-       '-filter-mode=nofilter',
-       '-tee'],
+      [
+        '-f=eslint',
+        '-name=eslint',
+        '-reporter=github-pr-review',
+        '-filter-mode=nofilter',
+        '-tee'
+      ],
       { input: raw, stdio: ['pipe', 'inherit', 'inherit'], encoding: 'utf8' }
     );
   }
@@ -100,14 +110,11 @@ function runESLint() {
   };
 }
 
-/* ───────────────────  Run both & write summary  ─────────────── */
+/* ─────────────── Run both & write summary ─────────────── */
 const prettier = runPrettier();
-const eslint   = runESLint();
+const eslint = runESLint();
 
 fs.mkdirSync('artifacts', { recursive: true });
-fs.writeFileSync(
-  'artifacts/lint-summary.json',
-  JSON.stringify({ prettier, eslint }, null, 2)
-);
+fs.writeFileSync('artifacts/lint-summary.json', JSON.stringify({ prettier, eslint }, null, 2));
 
 console.log('📝 artifacts/lint-summary.json written');

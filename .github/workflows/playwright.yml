@@ -1,14 +1,11 @@
 name: GUI Test Review
 
 on:
+  pull_request_target:       # ← this event is the key!
+    branches: [main]
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
-####################################################################
-# 1) Build, lint, test and create artefacts                        #
-####################################################################
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -17,57 +14,47 @@ jobs:
       pull-requests: write
 
     steps:
-    # ── Checkout & Node ──────────────────────────────────────────
-    - uses: actions/checkout@v4
-      with: { fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+        # pull_request_target: this will check out the base branch HEAD by default
 
-    - uses: actions/setup-node@v4
-      with: { node-version: 18 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 18 }
 
-    # ── Reviewdog binary ────────────────────────────────────────
-    - uses: reviewdog/action-setup@v1
-      with: { reviewdog_version: latest }
+      - uses: reviewdog/action-setup@v1
+        with: { reviewdog_version: latest }
 
-    # ── Dependencies ────────────────────────────────────────────
-    - name: Install NPM dependencies
-      run: npm install
+      - name: Install NPM dependencies
+        run: npm install
 
-    # ── Lint (Prettier + ESLint) – reviewdog suggestions on PRs ─
-    - name: Lint, Prettier & ESLint
-      env:
-        REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: node scripts/lint.js
-      continue-on-error: true
+      - name: Lint, Prettier & ESLint
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/lint.js
+        continue-on-error: true
 
-    # ── Playwright tests ────────────────────────────────────────
-    - name: Playwright tests
-      run: node scripts/playwright-test.js
+      - name: Playwright tests
+        run: node scripts/playwright-test.js
 
-    # ── Flow-chart & dashboard ─────────────────────────────────
-    - name: Generate flow-chart
-      run: node scripts/generate-flowchart.js
+      - name: Generate flow-chart
+        run: node scripts/generate-flowchart.js
 
-    - name: Build checklist
-      run: node scripts/checklist.js
+      - name: Build checklist
+        run: node scripts/checklist.js
 
-    - name: Build static HTML report
-      run: node scripts/generate-webpage.js
+      - name: Build static HTML report
+        run: node scripts/generate-webpage.js
 
-    # ── Badge text for PR comment ───────────────────────────────
-    - name: Create test-summary badge
-      run: |
-        jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
-          artifacts/playwright-summary.json > artifacts/test-summary.txt
+      - name: Create test-summary badge
+        run: |
+          jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
+            artifacts/playwright-summary.json > artifacts/test-summary.txt
 
-    # ── Upload artefacts (flattened) ────────────────────────────
-    - uses: actions/upload-artifact@v4
-      with:
-        name: gui-artifacts
-        path: artifacts/*          # ← upload files, not the folder
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-artifacts
+          path: artifacts/*          # <- upload flat!
 
-####################################################################
-# 2) Publish HTML dashboard via GitHub Pages                       #
-####################################################################
   deploy-report:
     needs: build-test
     runs-on: ubuntu-latest
@@ -88,11 +75,8 @@ jobs:
       - id: deploy
         uses: actions/deploy-pages@v4
 
-####################################################################
-# 3) Sticky PR comment – summary & links                           #
-####################################################################
   comment_link:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request_target'
     needs: deploy-report
     runs-on: ubuntu-latest
     permissions:
@@ -115,6 +99,6 @@ jobs:
       - name: Post / update GUI-test summary comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACTS_DIR: gui-artifacts        # flattened path
+          ARTIFACTS_DIR: gui-artifacts
           WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
         run: node scripts/summary-comment.js
