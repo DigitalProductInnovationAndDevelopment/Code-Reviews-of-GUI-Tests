@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 /**
  * Builds artifacts/web-report/index.html
- *  • Checklist
- *  • Prettier, ESLint, Playwright summaries
- *  • Flowchart + link to full Playwright HTML report
  */
 
 const fs   = require('fs');
@@ -14,11 +11,13 @@ const ART = 'artifacts';
 const OUT = path.join(ART, 'web-report');
 fs.mkdirSync(OUT, { recursive: true });
 
-/* helpers */
-const j = (f,d={}) => { try { return JSON.parse(fs.readFileSync(path.join(ART,f),'utf8')); } catch { return d; } };
+const j = (f,d={}) => {
+  try { return JSON.parse(fs.readFileSync(path.join(ART,f),'utf8')); }
+  catch { return d; }
+};
 const escape = s => s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 
-/* data */
+/* load data */
 const checklistMD = fs.existsSync(path.join(ART,'checklist.md'))
   ? fs.readFileSync(path.join(ART,'checklist.md'),'utf8')
   : '';
@@ -26,11 +25,11 @@ const prettier = j('prettier-summary.json');
 const eslint   = j('eslint-summary.json');
 const play     = j('playwright-summary.json');
 
-/* copy assets */
+/* copy static assets */
 if (fs.existsSync(path.join(ART,'flowchart.png')))
   fs.copyFileSync(path.join(ART,'flowchart.png'), path.join(OUT,'flowchart.png'));
 if (fs.existsSync(path.join(ART,'playwright-report')))
-  fs.cpSync(path.join(ART,'playwright-report'), path.join(OUT,'playwright-report'),{recursive:true});
+  fs.cpSync(path.join(ART,'playwright-report'), path.join(OUT,'playwright-report'), { recursive:true });
 
 /* HTML */
 const html = /*html*/`
