@@ -44,13 +44,12 @@ jobs:
       continue-on-error: true         # keep pipeline alive for later steps
 
     # ── Playwright test run (creates playwright-metrics.json) ─────
+      # Playwright test run
     - name: Playwright tests
-      run: |
-        # list reporter for CLI output + json reporter that writes the file
-        npx playwright test \
-          --reporter=list,json=playwright-metrics.json \
-          --output playwright-report
-        # scripts/playwright-test.js expects that file to exist
+      env:
+        PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-metrics.json
+      run: node scripts/playwright-test.js
+
 
     # ── Flow-chart PNG & HTML dashboard ───────────────────────────
     - name: Generate flow-chart
