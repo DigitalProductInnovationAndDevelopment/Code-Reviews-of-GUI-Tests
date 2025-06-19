@@ -1,30 +1,22 @@
 #!/usr/bin/env node
 /**
  * Builds artifacts/web-report/index.html
- *  • Checklist at top
- *  • Prettier metrics + single sample
- *  • ESLint metrics
- *  • Playwright summary + link to full HTML report
- *  • Flowchart image wrapped in <a> for zoom/open
+ *  • Checklist
+ *  • Prettier, ESLint, Playwright summaries
+ *  • Flowchart + link to full Playwright HTML report
  */
 
 const fs   = require('fs');
 const path = require('path');
-const marked = require('marked');             // devDependency
+const marked = require('marked');
 
 const ART = 'artifacts';
 const OUT = path.join(ART, 'web-report');
 fs.mkdirSync(OUT, { recursive: true });
 
 /* helpers */
-const j = (f,d={}) => { try{return JSON.parse(fs.readFileSync(path.join(ART,f),'utf8'));}catch{return d;} };
-const escapeHtml = s => s.replace(/[&<>"']/g, c => ({
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  "'": '&#39;',
-  '"': '&quot;'
-}[c]));
+const j = (f,d={}) => { try { return JSON.parse(fs.readFileSync(path.join(ART,f),'utf8')); } catch { return d; } };
+const escape = s => s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 
 /* data */
 const checklistMD = fs.existsSync(path.join(ART,'checklist.md'))
@@ -42,15 +34,13 @@ if (fs.existsSync(path.join(ART,'playwright-report')))
 
 /* HTML */
 const html = /*html*/`
-<!DOCTYPE html><meta charset="UTF-8">
-<title>GUI-Test Dashboard</title>
+<!DOCTYPE html><meta charset="UTF-8"><title>GUI-Test Dashboard</title>
 <style>
  body{font:15px/1.6 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:1.8rem;max-width:1200px}
  h1,h2{color:#1976D2}
  table{border-collapse:collapse;margin:1rem 0;width:100%}
  th,td{border:1px solid #ccc;padding:.5rem .6rem;text-align:left}
  th{background:#E3F2FD}
- code,pre{font-family:SFMono-Regular,Consolas,Menlo,monospace}
  pre{background:#f7f7f7;border:1px solid #ddd;padding:1rem;overflow:auto;font-size:90%}
  img{border:1px solid #ccc;border-radius:6px;margin:1rem 0;width:100%}
 </style>
@@ -66,7 +56,7 @@ ${marked.parse(checklistMD)}
 </table>
 ${prettier.sample_patch
   ? `<h3>Example (first ${prettier.sample_patch.split('\\n').length} lines)</h3>
-     <pre>${escapeHtml(prettier.sample_patch)}</pre>`
+     <pre>${escape(prettier.sample_patch)}</pre>`
   : '<p>No formatting suggestions 🎉</p>'}
 
 <h2>ESLint Overview (tests/**)</h2>
@@ -80,19 +70,20 @@ ${prettier.sample_patch
 
 <h2>Playwright Summary</h2>
 <table>
-<tr><th>Total</th><td>${play.total??0}</td><th>Passed</th><td>${play.passed??0}</td>
-    <th>Failed</th><td>${play.failed??0}</td><th>Skipped</th><td>${play.skipped??0}</td></tr>
-<tr><th>Pass&nbsp;Rate</th><td>${play.pass_rate??0}%</td>
-    <th>Duration</th><td colspan="5">${play.duration??0}&nbsp;ms</td></tr>
+<tr><th>Total</th><td>${play.total ?? 0}</td>
+    <th>Passed</th><td>${play.passed ?? play.expected ?? 0}</td>
+    <th>Failed</th><td>${play.failed ?? play.unexpected ?? 0}</td>
+    <th>Skipped</th><td>${play.skipped ?? 0}</td></tr>
+<tr><th>Pass&nbsp;Rate</th><td>${play.pass_rate ?? 0}%</td>
+    <th>Duration</th><td colspan="5">${play.duration ?? 0}&nbsp;ms</td></tr>
 </table>
 <p>📄 <a href="playwright-report/index.html">Open the full Playwright HTML report ↗</a></p>
 
 <h2>Flowchart</h2>
-<a href="flowchart.png" target="_blank" title="Open full-size flowchart">
-  <img src="flowchart.png" alt="Flowchart">
-</a>
+<a href="flowchart.png" target="_blank"><img src="flowchart.png" alt="Flowchart"></a>
 
-<hr><p style="font-size:90%;color:#555">Generated ${new Date().toISOString()}</p>`;
+<hr><p style="font-size:90%;color:#555">Generated ${new Date().toISOString()}</p>
+`;
 
 fs.writeFileSync(path.join(OUT,'index.html'), html, 'utf8');
 console.log('📝 Dashboard regenerated → web-report/index.html');
