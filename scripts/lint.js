@@ -1,97 +1,112 @@
 #!/usr/bin/env node
 /**
- * Runs Prettier + ESLint only on /tests/** and
- *   • feeds Prettier patch to reviewdog (PR inline comments)
- *   • writes concise JSON summaries for the dashboard
- * Never fails the build.
+ * One-stop linter:
+ *   • formats code with Prettier → sends diff to reviewdog (inline “suggested-change” comments)
+ *   • runs ESLint → streams JSON to reviewdog (inline rule comments, fails build on remaining errors)
+ *   • writes a machine-readable summary to artifacts/lint-summary.json
+ *
+ * reviewdog must already be on $PATH (done by the workflow’s action-setup step).
  */
 
-const { execSync } = require('child_process');
-const fs   = require('fs');
+const { execSync, spawnSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 
-const ART = path.resolve('artifacts');
-fs.mkdirSync(ART, { recursive: true });
-
-/*───────────────────────────────*
- * 1) PRETTIER (tests/**)        *
- *───────────────────────────────*/
-const GLOB = 'tests/**/*.{js,ts,tsx,jsx,json,yml,yaml,md}';
-let prettierLog = '';
-
-try {
-  prettierLog = execSync(`npx prettier --check "${GLOB}"`, {
-    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']
-  });
-} catch (err) {
-  prettierLog = (err.stdout || '') + (err.stderr || '');
+/* helper ───────────────────────────────────────────────────────────────*/
+function sh(cmd, opts = {}) {
+  return execSync(cmd, { stdio: 'pipe', encoding: 'utf8', ...opts }).trim();
 }
 
-const hasIssues = /Code style issues found in/.test(prettierLog);
-let filesWithIssues = (prettierLog.match(/Code style issues found in/g) || []).length;
-let totalChanges = 0;
-let samplePatch  = '';
+/* Prettier ─────────────────────────────────────────────────────────────*/
+function runPrettier() {
+  console.log('\n▶ Prettier (write → diff → reviewdog)');
+  // 1 format in-place
+  sh('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
 
-if (hasIssues) {
-  /* format so we can diff */
-  execSync(`npx prettier --write "${GLOB}"`, { stdio: 'inherit' });
-  const patch = execSync('git diff -U0 --no-color', { encoding: 'utf8' });
-  fs.writeFileSync(path.join(ART, 'prettier.patch'), patch);
-  totalChanges = (patch.match(/^@@/gm) || []).length;
-  /* one ≤20-line example for the dashboard */
-  samplePatch = patch.split('\n').slice(0, 20).join('\n');
+  // 2 collect diff + list of changed files
+  const diff = sh('git diff -U0 -- tests || true');
+  const changedFiles = diff
+    ? sh('git diff --name-only -- tests').split('\n').filter(Boolean)
+    : [];
 
-  /* PR inline comments via reviewdog (only when token present) */
-  if (process.env.GITHUB_EVENT_NAME === 'pull_request' && process.env.GITHUB_TOKEN) {
-    try {
-      execSync(
-        'cat artifacts/prettier.patch | reviewdog -f=diff ' +
-          '-name="prettier" -reporter=github-pr-review -level=warning',
-        {
-          stdio: 'inherit',
-          env: {
-            ...process.env,
-            REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN
-          }
-        }
-      );
-    } catch {
-      console.warn('reviewdog returned non-zero (ignored)');
+  // 3 reviewdog (if there’s anything to comment)
+  if (diff) {
+    spawnSync(
+      'reviewdog',
+      [
+        '-f=diff',
+        '-name=prettier',
+        '-reporter=github-pr-review',
+        '-level=info',
+        '-fail-on-error=false',
+      ],
+      { input: diff, stdio: ['pipe', 'inherit', 'inherit'], encoding: 'utf8' },
+    );
+  } else {
+    console.log('✓ Prettier: nothing to fix');
+  }
+
+  // 4 restore working tree so CI artefacts stay clean
+  sh('git checkout -- .');
+
+  return { filesWithIssues: changedFiles.length };
+}
+
+/* ESLint ───────────────────────────────────────────────────────────────*/
+function runESLint() {
+  console.log('\n▶ ESLint');
+  let eslintJSON = '';
+  try {
+    eslintJSON = sh(
+      'npx eslint tests --ext .js,.ts,.tsx -f json',
+      { stdio: 'pipe' },
+    );
+  } catch (e) {
+    eslintJSON = e.stdout; // exit-code 1 means “lint errors found”
+  }
+
+  const results = eslintJSON ? JSON.parse(eslintJSON) : [];
+  const summary = {
+    files: results.length,
+    errors: 0,
+    warnings: 0,
+    firstError: null,
+  };
+
+  for (const file of results) {
+    for (const msg of file.messages) {
+      if (msg.severity === 2) summary.errors += 1;
+      if (msg.severity === 1) summary.warnings += 1;
+      if (!summary.firstError && msg.severity === 2) {
+        summary.firstError = `${msg.ruleId} in ${path.basename(file.filePath)}:${msg.line}`;
+      }
     }
   }
+
+  if (results.length) {
+    spawnSync(
+      'reviewdog',
+      ['-f=eslint', '-name=eslint', '-reporter=github-pr-review'],
+      { input: eslintJSON, stdio: ['pipe', 'inherit', 'inherit'], encoding: 'utf8' },
+    );
+  } else {
+    console.log('✓ ESLint: clean');
+  }
+
+  // reviewdog’s own exit status mirrors “errors remain?”
+  if (summary.errors) process.exitCode = 1;
+
+  return summary;
 }
 
+/* Run both & write artefact ───────────────────────────────────────────*/
+const prettier = runPrettier();
+const eslint = runESLint();
+
+fs.mkdirSync('artifacts', { recursive: true });
+fs.writeFileSync('artifacts/lint-summary.json', JSON.stringify({ prettier, eslint }, null, 2));
 fs.writeFileSync(
-  path.join(ART, 'prettier-summary.json'),
-  JSON.stringify(
-    { has_issues: hasIssues, files_with_issues: filesWithIssues,
-      total_changes: totalChanges, sample_patch: samplePatch },
-    null, 2)
+  'artifacts/lint-summary.txt',
+  `Prettier: ${prettier.filesWithIssues} file(s) need formatting\n` +
+    `ESLint:   ${eslint.errors} error(s), ${eslint.warnings} warning(s)\n`,
 );
-
-/*───────────────────────────────*
- * 2) ESLINT (tests/**)          *
- *───────────────────────────────*/
-console.log('\n🔍 Running ESLint on /tests/**…');
-execSync(
-  `npx eslint "tests/**/*.{js,ts,tsx}" -f json    -o ${ART}/eslint-tests.json  || true`,
-  { shell: true, stdio: 'inherit' }
-);
-execSync(
-  `npx eslint "tests/**/*.{js,ts,tsx}" -f stylish -o ${ART}/eslint-stylish.txt || true`,
-  { shell: true, stdio: 'inherit' }
-);
-
-const eslintReport = JSON.parse(fs.readFileSync(`${ART}/eslint-tests.json`, 'utf8'));
-const totals = {
-  total_files: eslintReport.length,
-  errors: eslintReport.reduce((s, f) => s + f.errorCount, 0),
-  warnings: eslintReport.reduce((s, f) => s + f.warningCount, 0),
-  fixable_errors: eslintReport.reduce((s, f) => s + f.fixableErrorCount, 0),
-  fixable_warnings: eslintReport.reduce((s, f) => s + f.fixableWarningCount, 0)
-};
-
-fs.writeFileSync(`${ART}/eslint-summary.json`, JSON.stringify(totals, null, 2));
-
-console.log('\n✨ lint.js finished (never fails build).');
-process.exit(0);

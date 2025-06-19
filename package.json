@@ -5,12 +5,19 @@
   "main": "index.js",
 
   "scripts": {
-    "lint":        "node scripts/lint.js",
-    "test:gui":    "node scripts/playwright-test.js",
+
+    "format:check": "prettier --check \"tests/**/*.{js,ts,tsx,json}\"",
+    "format:write": "prettier --write \"tests/**/*.{js,ts,tsx,json}\"",
+    "lint:eslint":  "eslint tests --format=json -o artifacts/eslint.json",
+
+    "lint": "npm run format:check && npm run lint:eslint",
+
+    "test:gui":    "playwright test",
     "flowchart":   "node scripts/generate-flowchart.js",
     "checklist":   "node scripts/checklist.js",
     "review":      "node scripts/summary-comment.js",
-    "dev":         "npm run lint && npm run test:gui && npm run flowchart && npm run checklist"
+
+    "dev": "npm run lint && npm run test:gui && npm run flowchart && npm run checklist"
   },
 
   "repository": {
@@ -28,9 +35,10 @@
   "devDependencies": {
     "@playwright/test": "^1.52.0",
     "eslint": "^8.0.0",
-    "prettier": "^3.3.2",                 
-    "@octokit/core": "^5.0.0",            
-    "@mermaid-js/mermaid-cli": "10.6.1",   
-    "marked": "15.0.12"  
+    "prettier": "^3.3.2",
+    "@octokit/core": "^5.0.0",
+    "@mermaid-js/mermaid-cli": "10.6.1",
+    "marked": "15.0.12",
+    "jq": "^1.6.0"                       
   }
 }

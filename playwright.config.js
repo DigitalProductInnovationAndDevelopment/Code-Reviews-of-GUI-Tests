@@ -10,7 +10,8 @@ module.exports = defineConfig({
     ignoreHTTPSErrors: true,
   },
   reporter: [
-    ['json', { outputFile: 'playwright-metrics.json' }],
-    ['html', { outputFile: 'report.html', open: 'never' }],
+    ['list'],                                         // CLI output
+    ['json', { outputFile: 'playwright-report/summary.json' }],
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
   ],
 });
