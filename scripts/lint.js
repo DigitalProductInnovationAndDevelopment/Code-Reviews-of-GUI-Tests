@@ -90,24 +90,25 @@ let eslint   = { errors: 0, warnings: 0, first: null };
 try {
   prettier = runPrettier();   // may throw → still handled by finally
   eslint   = runESLint();
-} finally {
+}finally {
   fs.mkdirSync('artifacts', { recursive: true });
+
+  // prettierObj & eslintObj came from runPrettier / runESLint returns
   fs.writeFileSync(
     'artifacts/lint-summary.json',
     JSON.stringify(
       {
-        prettier: {
-          filesWithIssues: prettier.filesWithIssues,
-          files: changedFiles,                           // NEW
-          sample: diff.split('\n').slice(0, 20).join('\n') // NEW
+        prettier: {                 // ← now includes filenames & sample
+          filesWithIssues: prettierObj.filesWithIssues,
+          files:           prettierObj.files,
+          sample:          prettierObj.sample
         },
-        eslint: {
-          files:   eslint.files,
-          errors:  eslint.errors,
-          warnings: eslint.warnings,
-          first:   eslint.first
-        }
-      }, null, 2),
+        eslint: eslintObj           // {files, errors, warnings, first}
+      },
+      null,
+      2
+    )
   );
 }
+
 
