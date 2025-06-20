@@ -29,8 +29,8 @@ jobs:
         run: |
           echo "Checking Prettier issues..."
           
-          # Run prettier and capture output
-          npx prettier --check 'tests/**/*.{js,ts,tsx,json}' 2>&1 | tee prettier-check.log || true
+          # Run prettier and capture output (excluding node_modules)
+          npx prettier --check 'tests/**/*.{js,ts,tsx,json}' --ignore-path .gitignore 2>&1 | tee prettier-check.log || true
           
           # Count files with issues
           FILES_WITH_ISSUES=$(grep -c "^\[warn\]" prettier-check.log || echo "0")
@@ -62,8 +62,8 @@ jobs:
         run: |
           echo "Checking ESLint issues..."
           
-          # Run ESLint with compact format to count issues
-          npx eslint 'tests/**/*.{js,ts,tsx}' --format compact 2>&1 | tee eslint-check.log || true
+          # Run ESLint with compact format to count issues (excluding node_modules)
+          npx eslint 'tests/**/*.{js,ts,tsx}' --format compact --ignore-path .gitignore 2>&1 | tee eslint-check.log || true
           
           # Extract error and warning counts
           ERRORS=$(grep -oE "[0-9]+ error" eslint-check.log | grep -oE "[0-9]+" | awk '{s+=$1} END {print s}' || echo "0")
@@ -96,9 +96,11 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prettier_flags: 'tests/**/*.{js,ts,tsx,json}'
-          reporter: github-pr-review     # Inline comments
-          filter_mode: added             # Only on new/changed lines
+          reporter: github-pr-check      # Creates check run with annotations
+          filter_mode: nofilter          # Don't filter by diff
           level: warning
+          fail_on_error: false           # Ensure it doesn't fail
+          reviewdog_flags: '-fail-level=never'  # Never fail
       
       # Run ESLint with reviewdog ONLY if within limits
       - name: ESLint with inline annotations (within limit)
@@ -108,9 +110,11 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           eslint_flags: 'tests/**/*.{js,ts,tsx}'
-          reporter: github-pr-review     # Inline comments
-          filter_mode: added             # Only on new/changed lines
+          reporter: github-pr-check      # Creates check run with annotations
+          filter_mode: nofilter          # Don't filter by diff
           level: warning
+          fail_on_error: false           # Ensure it doesn't fail
+          reviewdog_flags: '-fail-level=never'  # Never fail
       
       # ───── SUMMARY COMMENT FOR ALL CASES ─────
       - name: Post summary comment
@@ -134,7 +138,7 @@ jobs:
             if (prettierHasIssues) {
               comment += '### 🎨 Prettier Formatting\n';
               if (prettierWithinLimit) {
-                comment += `Found formatting issues (see inline comments above).\n\n`;
+                comment += `Found formatting issues (check the Files Changed tab for annotations).\n\n`;
               } else {
                 comment += `⚠️ **Too many formatting issues to display inline (${prettierIssues}+ issues)**\n\n`;
                 comment += '**Please fix these locally by running:**\n';
@@ -146,7 +150,7 @@ jobs:
             if (eslintHasIssues) {
               comment += '### 🔍 ESLint\n';
               if (eslintWithinLimit) {
-                comment += `Found ${eslintErrors} error(s) and ${eslintWarnings} warning(s) (see inline comments above).\n\n`;
+                comment += `Found ${eslintErrors} error(s) and ${eslintWarnings} warning(s) (check the Files Changed tab for annotations).\n\n`;
               } else {
                 comment += `⚠️ **Too many ESLint issues to display inline**\n`;
                 comment += `- ${eslintErrors} error(s)\n`;
