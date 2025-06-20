@@ -1,57 +1,105 @@
 name: GUI Test Review
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 jobs:
   build-test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
-      checks: write          # needed for the Prettier action
-
+      checks: write
     steps:
       # ───── basic setup ─────
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
-
       - name: Install NPM dependencies
         run: npm ci
-
-
-# ───── LINT & INLINE COMMENTS ─────
-      #- name: Install TypeScript ESLint deps
-      #  run: npm install --no-save eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin
-
-      # --- Prettier annotations ---
-      - name: Prettier (tests dir → Checks)
+      
+      # ───── LINT & INLINE COMMENTS ─────
+      # Option 1: Run Prettier without reviewdog for large PRs
+      - name: Run Prettier Check
+        id: prettier-check
+        continue-on-error: true
+        run: |
+          # Check if PR has too many files
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            PR_FILES=$(gh pr view ${{ github.event.pull_request.number }} --json files --jq '.files | length')
+            echo "PR has $PR_FILES changed files"
+            echo "file_count=$PR_FILES" >> $GITHUB_OUTPUT
+            
+            if [ $PR_FILES -gt 250 ]; then
+              echo "Too many files for reviewdog, running Prettier directly"
+              npx prettier --check 'tests/**/*.{js,ts,tsx,json}' || echo "prettier_failed=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      
+      # Use reviewdog only for smaller PRs
+      - name: Prettier with reviewdog (small PRs)
+        if: steps.prettier-check.outputs.file_count <= 250 || github.event_name == 'push'
         continue-on-error: true
         uses: EPMatt/reviewdog-action-prettier@v1.2.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prettier_flags: 'tests/**/*.{js,ts,tsx,json}'
-          reporter: github-pr-check      # ← uses Checks API
-          filter_mode: nofilter          # ← diff no longer fetched
+          reporter: github-check          # Use github-check instead of github-pr-check
+          filter_mode: nofilter
           level: warning
-
-      - name: ESLint via reviewdog
+      
+      # Option 2: Use ESLint directly for large PRs
+      - name: Run ESLint Check
+        id: eslint-check
+        continue-on-error: true
+        run: |
+          if [ "${{ steps.prettier-check.outputs.file_count }}" -gt "250" ] && [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "Running ESLint directly due to large PR"
+            npx eslint 'tests/**/*.{js,ts,tsx}' --format stylish || echo "eslint_failed=true" >> $GITHUB_OUTPUT
+          fi
+      
+      # Use reviewdog for ESLint only on smaller PRs
+      - name: ESLint with reviewdog (small PRs)
+        if: steps.prettier-check.outputs.file_count <= 250 || github.event_name == 'push'
         continue-on-error: true
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           eslint_flags: 'tests/**/*.{js,ts,tsx}'
-          reporter: github-pr-review     # inline
-          filter_mode: added             # default; keeps you < 50
+          reporter: github-check          # Use github-check instead of github-pr-review
+          filter_mode: nofilter           # Change from 'added' to 'nofilter'
           level: warning
-
-
+      
+      # Create a summary comment for large PRs
+      - name: Comment on PR for large diffs
+        if: steps.prettier-check.outputs.file_count > 250 && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prettierFailed = '${{ steps.prettier-check.outputs.prettier_failed }}' === 'true';
+            const eslintFailed = '${{ steps.eslint-check.outputs.eslint_failed }}' === 'true';
+            
+            let comment = '## 📋 Linting Results for Large PR\n\n';
+            comment += `This PR contains ${{ steps.prettier-check.outputs.file_count }} changed files, which exceeds the limit for inline annotations.\n\n`;
+            
+            if (prettierFailed || eslintFailed) {
+              comment += '### ❌ Issues Found:\n';
+              if (prettierFailed) comment += '- Prettier formatting issues detected\n';
+              if (eslintFailed) comment += '- ESLint issues detected\n';
+              comment += '\nPlease run `npm run lint:fix` locally to fix these issues.';
+            } else {
+              comment += '### ✅ All checks passed!';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
