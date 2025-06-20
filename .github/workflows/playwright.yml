@@ -14,40 +14,40 @@ jobs:
       pull-requests: write
 
     steps:
+      # Checkout code
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
 
+      # Node setup
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
 
+      # reviewdog setup (fallback, not always sufficient, see next step)
       - uses: reviewdog/action-setup@v1
         with:
-          reviewdog_version: v0.17.3   # ← force known good version!
+          reviewdog_version: v0.17.3
 
-      - name: Print reviewdog version
-        run: reviewdog -version
+      # Force download official static reviewdog binary for full features
+      - name: Download reviewdog static binary (force suggest support)
+        run: |
+          curl -sSL -o reviewdog.tgz https://github.com/reviewdog/reviewdog/releases/download/v0.17.3/reviewdog_0.17.3_Linux_x86_64.tar.gz
+          tar -xzvf reviewdog.tgz
+          sudo mv reviewdog /usr/local/bin/reviewdog
+          reviewdog -version
 
+      # NPM install
       - name: Install NPM dependencies
         run: npm install
 
-      # ---- Prettier/ESLint Lint and Reviewdog (Node version) ----
-      - name: Lint, Prettier & ESLint (with reviewdog)
+      # ---- Prettier & ESLint Lint with reviewdog (inline, suggest) ----
+      - name: Lint, Prettier & ESLint (with reviewdog suggest)
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: node scripts/lint.js
         continue-on-error: true
 
-      # ---- Optional: Direct Prettier reviewdog test ----
-      - name: Prettier reviewdog test (direct)
-        run: |
-          npx prettier --write "tests/**/*.{js,ts,tsx,json}"
-          git diff -- tests > prettier.diff || true
-          reviewdog -version
-          cat prettier.diff | reviewdog -f=diff -name=prettier -reporter=github-pr-suggest -filter-mode=nofilter -level=info -fail-on-error=false
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      # ---- Playwright etc. ----
       - name: Playwright tests
         run: node scripts/playwright-test.js
 
