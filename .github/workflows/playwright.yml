@@ -26,26 +26,34 @@ jobs:
         run: npm install
 
 
-      # ───── LINT & FORMAT (INLINE COMMENTS) ─────
-      - name: Prettier (reviewdog)
-        uses: EPMatt/reviewdog-action-prettier@v1.2.0   # ← correct repo + version
+# ───── LINT & INLINE COMMENTS ─────
+      - name: Collect changed files
+        id: diff
+        run: |
+          echo "changed=$(git diff --name-only --diff-filter=AM $(git merge-base origin/main HEAD) -- tests | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
+      # Prettier ⤵︎
+      - name: Prettier (changed files, inline)
+        if: steps.diff.outputs.changed != ''
+        uses: EPMatt/reviewdog-action-prettier@v1.2.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          prettier_flags: 'tests/**/*.{js,ts,tsx,json}'
-          reporter: github-pr-review   # inline review comments
-          filter_mode: added           # comment only on lines changed by the PR
-          level: warning               # show as warnings
-        continue-on-error: true
+          prettier_flags: ${{ steps.diff.outputs.changed }}
+          reporter: github-pr-review
+          filter_mode: added
+          level: warning
 
-      - name: ESLint (reviewdog)
+      # ESLint ⤵︎
+      - name: ESLint (changed files, inline)
+        if: steps.diff.outputs.changed != ''
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          eslint_flags: 'tests/**/*.{js,ts,tsx}'
-          reporter: github-pr-review   # ✅ inline
+          eslint_flags: ${{ steps.diff.outputs.changed }}
+          reporter: github-pr-review
           filter_mode: added
           level: warning
-        continue-on-error: true
+
 
       - name: Lint, Prettier & ESLint summary
         run: node scripts/lint.js
