@@ -32,28 +32,25 @@ jobs:
         run: |
           echo "changed=$(git diff --name-only --diff-filter=AM $(git merge-base origin/main HEAD) -- tests | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
-      # Prettier ⤵︎
-      - name: Prettier (changed files, inline)
-        if: steps.diff.outputs.changed != ''
+      # Prettier
+      - name: Prettier (reviewdog)
         uses: EPMatt/reviewdog-action-prettier@v1.2.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prettier_flags: ${{ steps.diff.outputs.changed }}
-          reporter: github-pr-review
-          filter_mode: added
-          level: warning
+          reporter: github-pr-check      # ← change here
+          fail_on_error: false           # set to false to avoid failing the workflow on warnings
+          filter_mode: nofilter          # optional: show all issues in touched files
 
-      # ESLint ⤵︎
-      - name: ESLint (changed files, inline)
-        if: steps.diff.outputs.changed != ''
+      # ESLint
+      - name: ESLint (reviewdog)
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           eslint_flags: ${{ steps.diff.outputs.changed }}
-          reporter: github-pr-review
-          filter_mode: added
-          level: warning
-
+          reporter: github-pr-check      # ← change here
+          fail_level: warning
+          filter_mode: nofilter
 
       - name: Lint, Prettier & ESLint summary
         run: node scripts/lint.js
