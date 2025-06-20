@@ -24,10 +24,119 @@ jobs:
       - name: Install dependencies
         run: npm install
       
-      # Run your scripts for reporting first
+      # Run prettier and eslint checks for the comment
+      - name: Run Prettier check
+        id: prettier
+        run: |
+          # Run prettier check and capture output
+          PRETTIER_OUTPUT=$(npx prettier --check "tests/**/*.{js,ts,tsx,json}" 2>&1 || true)
+          
+          # Extract list of files with issues
+          FILES=$(echo "$PRETTIER_OUTPUT" | grep -oE "[^ ]+\.(js|ts|tsx|json)" | sort -u || echo "")
+          
+          # Count files with issues
+          if [ -n "$FILES" ]; then
+            FILE_COUNT=$(echo "$FILES" | wc -l)
+            echo "prettier_files=$FILE_COUNT" >> $GITHUB_OUTPUT
+            echo "prettier_file_list<<EOF" >> $GITHUB_OUTPUT
+            echo "$FILES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "Found $FILE_COUNT files with Prettier issues"
+          else
+            echo "prettier_files=0" >> $GITHUB_OUTPUT
+            echo "No Prettier issues found"
+          fi
+        continue-on-error: true
+      
+      - name: Run ESLint check
+        id: eslint
+        run: |
+          # Run ESLint and capture output
+          ESLINT_OUTPUT=$(npx eslint tests --ext .js,.ts,.tsx -f json || true)
+          
+          # Save for analysis
+          mkdir -p artifacts
+          echo "$ESLINT_OUTPUT" > artifacts/eslint-output.json
+          
+          # Count issues if we have valid JSON
+          if echo "$ESLINT_OUTPUT" | jq empty 2>/dev/null; then
+            TOTAL_ISSUES=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | length] | add')
+            ERROR_COUNT=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | .[] | select(.severity == 2)] | length')
+            WARNING_COUNT=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | .[] | select(.severity == 1)] | length')
+            
+            echo "eslint_errors=$ERROR_COUNT" >> $GITHUB_OUTPUT
+            echo "eslint_warnings=$WARNING_COUNT" >> $GITHUB_OUTPUT
+            echo "eslint_total=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
+            
+            echo "Found $TOTAL_ISSUES ESLint issues ($ERROR_COUNT errors, $WARNING_COUNT warnings)"
+          else
+            echo "eslint_errors=0" >> $GITHUB_OUTPUT
+            echo "eslint_warnings=0" >> $GITHUB_OUTPUT
+            echo "eslint_total=0" >> $GITHUB_OUTPUT
+            echo "No ESLint issues found or invalid output"
+          fi
+        continue-on-error: true
+      
+      # Setup reviewdog for inline comments
+      - uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: latest
+      
+      # Create limited inline annotations for Prettier using reviewdog
+      - name: Limited Prettier inline comments
+        if: github.event_name == 'pull_request' && steps.prettier.outputs.prettier_files != '0'
+        run: |
+          # Create dirs for temp files
+          mkdir -p temp_files
+          
+          # Get the first file from the list
+          FIRST_FILE=$(echo "${{ steps.prettier.outputs.prettier_file_list }}" | head -n 1)
+          echo "Creating inline comments for: $FIRST_FILE"
+          
+          # Generate formatted version
+          FORMATTED=$(npx prettier "$FIRST_FILE")
+          TEMP_FILE="temp_files/prettier_temp.formatted"
+          echo "$FORMATTED" > "$TEMP_FILE"
+          
+          # Generate diff
+          DIFF=$(diff -u "$FIRST_FILE" "$TEMP_FILE" || true)
+          
+          # Add proper git diff headers
+          DIFF=$(echo "$DIFF" | sed "1s|---|--- a/$FIRST_FILE|" | sed "2s|+++|+++ b/$FIRST_FILE|")
+          
+          # Extract only first 8 hunks from the diff to stay well under GitHub limits
+          DIFF_LIMITED=$(echo "$DIFF" | awk 'BEGIN{i=0} /^@@/{i++} i<=9' | head -n 200)
+          echo "$DIFF_LIMITED" > temp_files/prettier_diff_limited.patch
+          
+          # Run reviewdog with the limited diff
+          echo "$DIFF_LIMITED" | REVIEWDOG_GITHUB_API_TOKEN=${{ secrets.GITHUB_TOKEN }} reviewdog -f=diff -name=prettier -reporter=github-pr-review -filter-mode=nofilter -level=warning -fail-on-error=false
+        continue-on-error: true
+      
+      # Create limited inline annotations for ESLint
+      - name: Limited ESLint inline comments
+        if: github.event_name == 'pull_request' && steps.eslint.outputs.eslint_total != '0'
+        run: |
+          # Create dirs for temp files
+          mkdir -p temp_files/eslint_results
+          
+          # Extract the ESLint output from the previous step
+          cat artifacts/eslint-output.json > temp_files/eslint_results/all_issues.json
+          
+          # Extract a limited set of issues (5 errors and 5 warnings max)
+          jq '[.[].messages | .[] | select(.severity == 2)] | .[0:5]' temp_files/eslint_results/all_issues.json > temp_files/eslint_results/errors.json
+          jq '[.[].messages | .[] | select(.severity == 1)] | .[0:5]' temp_files/eslint_results/all_issues.json > temp_files/eslint_results/warnings.json
+          
+          # Create a file with the limited issues for reviewdog
+          jq -s '[ .[] | { filePath: "tests/demo-todo-app.spec.ts", messages: . } ]' temp_files/eslint_results/errors.json temp_files/eslint_results/warnings.json > temp_files/eslint_results/limited.json
+          
+          # Run reviewdog with the limited ESLint output
+          cat temp_files/eslint_results/limited.json | REVIEWDOG_GITHUB_API_TOKEN=${{ secrets.GITHUB_TOKEN }} reviewdog -f=eslint -name=eslint -reporter=github-pr-review -filter-mode=nofilter -level=warning -fail-on-error=false
+        continue-on-error: true
+      
+      # Run your original scripts for reporting
       - name: Run existing lint script for reporting
         run: |
-          # Create a simplified lint script that only generates reports
+          # Create a simplified lint script
           cat > scripts/lint-for-report.js << 'EOF'
           #!/usr/bin/env node
           const { execSync } = require('child_process');
@@ -127,50 +236,43 @@ jobs:
           fi
         continue-on-error: true
       
-      # Use alternative GitHub Actions for code quality
-      - name: Create code quality check PR comment
+      # Create a PR comment with the results of both checks and detailed list with hide/show
+      - name: Create PR comment
         uses: peter-evans/create-or-update-comment@v3
         if: github.event_name == 'pull_request'
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ## Code Quality Check Results
-            
-            Running code quality checks on the PR...
+            ## 🔍 Code Quality Check Results
             
             ### Prettier
             
-            ```bash
-            # Check formatting with:
-            npx prettier --check "tests/**/*.{js,ts,tsx,json}"
+            ${{ steps.prettier.outputs.prettier_files == '0' && '✅ No formatting issues found' || format('❌ Found **{0} files** with formatting issues. Showing first 8 issues as inline comments, rest are summarized here.', steps.prettier.outputs.prettier_files) }}
             
-            # Fix formatting with:
-            npx prettier --write "tests/**/*.{js,ts,tsx,json}"
+            <details>
+            <summary>Click to see all files with Prettier issues</summary>
+            
             ```
+            ${{ steps.prettier.outputs.prettier_file_list }}
+            ```
+            </details>
             
             ### ESLint
             
-            ```bash
-            # Check linting with:
-            npx eslint tests --ext .js,.ts,.tsx
+            ${{ steps.eslint.outputs.eslint_total == '0' && '✅ No linting issues found' || format('❌ Found **{0} issues** ({1} errors, {2} warnings). Showing first 10 issues as inline comments, rest are summarized here.', steps.eslint.outputs.eslint_total, steps.eslint.outputs.eslint_errors, steps.eslint.outputs.eslint_warnings) }}
             
-            # Fix auto-fixable issues with:
+            ### How to fix all issues
+            
+            ```bash
+            # Fix Prettier issues:
+            npx prettier --write "tests/**/*.{js,ts,tsx,json}"
+            
+            # Fix ESLint issues:
             npx eslint --fix tests --ext .js,.ts,.tsx
             ```
             
-            Please fix any code quality issues before merging!
-        continue-on-error: true
-      
-      # Use actionsx/prettier for explicit annotations
-      - name: Prettier Check
-        uses: actionsx/prettier@v2
-        with:
-          args: --check tests/**/*.{js,ts,tsx,json}
-        continue-on-error: true
-      
-      # Use eslint GitHub reporter
-      - name: ESLint Check
-        run: npx eslint tests --ext .js,.ts,.tsx --format=github
+            Please fix these issues before merging! You can run these commands locally to apply all the fixes automatically.
+          edit-mode: replace
         continue-on-error: true
       
       - uses: actions/upload-artifact@v4
