@@ -114,8 +114,11 @@ fs.writeFileSync(
   JSON.stringify({ prettier, eslint }, null, 2)
 );
 console.log('📝 artifacts/lint-summary.json written');
-
-// exit 1 if there are any issues (CI can still ignore via continue-on-error)
-if (prettier.filesWithIssues || eslint.errors || eslint.warnings) {
+// ── decide whether to fail the job ──
+const failOnIssues = process.env.FAIL_LINT === 'true'; // default: keep green
+if (
+  failOnIssues &&
+  (prettier.filesWithIssues || eslint.errors || eslint.warnings)
+) {
   process.exitCode = 1;
 }

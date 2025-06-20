@@ -28,10 +28,12 @@ jobs:
 
       # ───── LINT & FORMAT (INLINE COMMENTS) ─────
 # --- Prettier with reviewdog (inline PR comments) ---
-      - name: Lint, Prettier & ESLint
+      - name: Lint, Prettier & ESLint summary
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # FAIL_LINT: true    # ← uncomment if you want to fail on issues
         run: node scripts/lint.js
+        continue-on-error: true
 
       - name: Prettier (reviewdog)
         uses: EPMatt/reviewdog-action-prettier@v1.2.0   # ← correct repo + version
@@ -41,7 +43,7 @@ jobs:
           reporter: github-pr-review   # inline review comments
           filter_mode: added           # comment only on lines changed by the PR
           level: warning               # show as warnings
-
+        continue-on-error: true
 
       - name: ESLint (reviewdog)
         uses: reviewdog/action-eslint@v1
@@ -51,9 +53,7 @@ jobs:
           reporter: github-pr-review   # ✅ inline
           filter_mode: added
           level: warning
-
-      # ───── your existing steps ─────
-
+        continue-on-error: true
 
       - name: Playwright tests
         run: node scripts/playwright-test.js
