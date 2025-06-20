@@ -39,14 +39,14 @@ jobs:
         continue-on-error: true
 
       # ---- Optional: Direct Prettier reviewdog test ----
-      # - name: Prettier reviewdog test (direct)
-      #   run: |
-      #     npx prettier --write "tests/**/*.{js,ts,tsx,json}"
-      #     git diff -- tests > prettier.diff || true
-      #     reviewdog -version
-      #     cat prettier.diff | reviewdog -f=diff -name=prettier -reporter=github-pr-suggest -filter-mode=nofilter -level=info -fail-on-error=false
-      #   env:
-      #     REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prettier reviewdog test (direct)
+        run: |
+          npx prettier --write "tests/**/*.{js,ts,tsx,json}"
+          git diff -- tests > prettier.diff || true
+          reviewdog -version
+          cat prettier.diff | reviewdog -f=diff -name=prettier -reporter=github-pr-suggest -filter-mode=nofilter -level=info -fail-on-error=false
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Playwright tests
         run: node scripts/playwright-test.js
