@@ -42,7 +42,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           #prettier_flags: 'tests/**/*.{js,ts,tsx,json}'
-          reporter: github-pr-preview             # Checks tab + grey bars
+          reporter: github-pr-review
           filter_mode: nofilter                 # include lines outside PR diff
           level: warning
           workdir: tests
