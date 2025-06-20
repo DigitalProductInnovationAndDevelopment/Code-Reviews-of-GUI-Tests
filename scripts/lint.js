@@ -3,72 +3,57 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 
 // ────────────────────────────────
-// PRETTIER
+// PRETTIER  – rewrite → diff
 // ────────────────────────────────
 function runPrettier() {
-  console.log('\n▶ Prettier (--list-different → diff)');
+  console.log('\n▶ Prettier (--write → diff)');
 
-  // List files that would be re-formatted
-  let list = '';
-  try {
-    list = execSync(
-      'npx prettier --list-different "tests/**/*.{js,ts,tsx,json}"',
-      { encoding: 'utf8' }
-    );
-  } catch (e) {
-    // non-zero exit code means "there are differences"
-    list = e.stdout?.toString() || '';
-  }
+  // ➊ Rewrite anything that isn’t formatted
+  execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', {
+    stdio: 'inherit',
+  });
 
-  const files = list.split('\n').filter(Boolean);
-  let diff = '';
+  // ➋ Collect the diff (relative to HEAD)
+  const diff = execSync('git diff -- tests || true', { encoding: 'utf8' });
+  const files = diff
+    ? execSync('git diff --name-only -- tests', { encoding: 'utf8' })
+        .split('\n')
+        .filter(Boolean)
+    : [];
+  const totalChanges = (diff.match(/^[+-](?![+-]{3})/gm) || []).length;
 
-  // Build a unified diff for each offending file (for debugging artefacts)
-  for (const file of files) {
-    try {
-      const fileDiff = execSync(
-        // Prettier prints the formatted file to stdout;
-        // diff -u compares that stream against the original file.
-        `npx prettier "${file}" | diff -u --label "${file} (orig)" "${file}" -`,
-        { encoding: 'utf8' }
-      );
-      diff += fileDiff;
-    } catch (e) {
-      // diff exits 1 when files differ – capture its stdout
-      diff += e.stdout?.toString() || '';
-    }
-  }
-
-  // Save debugging artefacts
+  // ➌ Save artefacts for the summary-comment step
   fs.mkdirSync('artifacts', { recursive: true });
   fs.writeFileSync('artifacts/prettier-diff.txt', diff);
 
+  // ➍ Undo the rewrites so the working tree stays clean
+  execSync('git checkout -- .');
+
   return {
     filesWithIssues: files.length,
+    totalChanges,
     files,
     sample: diff.split('\n').slice(0, 20).join('\n'),
   };
 }
 
 // ────────────────────────────────
-// ESLINT
+// ESLINT  – JSON summary
 // ────────────────────────────────
 function runESLint() {
   console.log('\n▶ ESLint');
 
   let raw = '';
   try {
-    raw = execSync(
-      'npx eslint tests --ext .js,.ts,.tsx -f json',
-      { encoding: 'utf8' }
-    );
+    raw = execSync('npx eslint tests --ext .js,.ts,.tsx -f json', {
+      encoding: 'utf8',
+    });
   } catch (e) {
-    // eslint exits 1 on lint errors – capture its JSON output
+    // eslint exits 1 when it finds problems – capture its output
     raw = e.stdout?.toString() || '';
   }
 
   const results = raw ? JSON.parse(raw) : [];
-
   let errors = 0,
     warnings = 0,
     fixErr = 0,
@@ -90,7 +75,7 @@ function runESLint() {
     });
   });
 
-  // Save full ESLint output
+  // Save full ESLint output for debugging / summary comment
   fs.writeFileSync('artifacts/eslint-results.json', raw);
 
   return {
@@ -104,7 +89,7 @@ function runESLint() {
 }
 
 // ────────────────────────────────
-// MAIN
+// MAIN  – write combined summary
 // ────────────────────────────────
 const prettier = runPrettier();
 const eslint = runESLint();
@@ -114,11 +99,5 @@ fs.writeFileSync(
   JSON.stringify({ prettier, eslint }, null, 2)
 );
 console.log('📝 artifacts/lint-summary.json written');
-// ── decide whether to fail the job ──
-const failOnIssues = process.env.FAIL_LINT === 'true'; // default: keep green
-if (
-  failOnIssues &&
-  (prettier.filesWithIssues || eslint.errors || eslint.warnings)
-) {
-  process.exitCode = 1;
-}
+
+// keep pipeline green; remove exit-code 1

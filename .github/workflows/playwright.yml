@@ -29,9 +29,6 @@ jobs:
       # ───── LINT & FORMAT (INLINE COMMENTS) ─────
 # --- Prettier with reviewdog (inline PR comments) ---
       - name: Lint, Prettier & ESLint summary
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # FAIL_LINT: true    # ← uncomment if you want to fail on issues
         run: node scripts/lint.js
         continue-on-error: true
 
