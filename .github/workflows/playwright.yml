@@ -32,7 +32,10 @@ jobs:
 # ───── LINT & INLINE COMMENTS ─────
       #- name: Install TypeScript ESLint deps
       #  run: npm install --no-save eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin
-
+      - name: Setup reviewdog
+        uses: reviewdog/action-setup@v1
+        with: { reviewdog_version: latest }
+        
       # --- Prettier annotations ---
       - name: Prettier style check (reviewdog)
         shell: bash
