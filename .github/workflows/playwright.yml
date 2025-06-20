@@ -30,43 +30,62 @@ jobs:
         with: { reviewdog_version: latest }
       
       #---------------------------------------------------
-      # Prettier with reviewdog - improved approach
+      # Check for files with Prettier issues
       #---------------------------------------------------
-      - name: Prettier style check (reviewdog)
+      - name: Find files with Prettier issues
+        id: find_prettier_issues
+        shell: bash
+        run: |
+          # Check which files need formatting
+          PRETTIER_OUTPUT=$(npx prettier --check "tests/**/*.{js,ts,tsx,json}" 2>&1 || true)
+          FILES_WITH_ISSUES=$(echo "$PRETTIER_OUTPUT" | grep -oE "[^ ]+\.(js|ts|tsx|json)" | sort -u || echo "")
+          
+          # Save the list of files for later steps
+          if [ -n "$FILES_WITH_ISSUES" ]; then
+            echo "found_issues=true" >> $GITHUB_OUTPUT
+            echo "files_with_issues<<EOF" >> $GITHUB_OUTPUT
+            echo "$FILES_WITH_ISSUES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "Found files with Prettier issues:"
+            echo "$FILES_WITH_ISSUES"
+          else
+            echo "found_issues=false" >> $GITHUB_OUTPUT
+            echo "No Prettier issues found"
+          fi
+      
+      #---------------------------------------------------
+      # Process each file individually for better suggestions
+      #---------------------------------------------------
+      - name: Create Prettier suggestions
+        if: steps.find_prettier_issues.outputs.found_issues == 'true'
         shell: bash
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Check for files with Prettier issues first
-          PRETTIER_OUTPUT=$(npx prettier --check "tests/**/*.{js,ts,tsx,json}" 2>&1 || true)
-          FILES_WITH_ISSUES=$(echo "$PRETTIER_OUTPUT" | grep -oE "[^ ]+\.(js|ts|tsx|json)" | sort -u || echo "")
-          
-          if [ -n "$FILES_WITH_ISSUES" ]; then
-            echo "Files with Prettier issues:"
-            echo "$FILES_WITH_ISSUES"
+          # Process each file individually
+          echo "${{ steps.find_prettier_issues.outputs.files_with_issues }}" | while read FILE; do
+            echo "Processing $FILE..."
             
-            # Format the files to create the diff
-            npx prettier --write $FILES_WITH_ISSUES
+            # First create a formatted version to keep separately
+            npx prettier "$FILE" > "${FILE}.formatted"
             
-            # Use a more detailed diff format to show more context
-            git diff --unified=3 > prettier.patch || true
+            # Create a diff with better context
+            diff -u "$FILE" "${FILE}.formatted" > "${FILE}.diff" || true
             
-            # Count the number of issues (changed lines)
-            ISSUE_COUNT=$(cat prettier.patch | grep -E "^[+-][^+-]" | wc -l)
-            echo "Found $ISSUE_COUNT formatting issues in $FILES_WITH_ISSUES"
+            # Fix the diff headers for reviewdog
+            sed -i "1s|--- |--- a/|" "${FILE}.diff"
+            sed -i "2s|+++ |+++ b/|" "${FILE}.diff"
             
-            # Send the diff to reviewdog
-            cat prettier.patch | reviewdog -f=diff \
-                                         -name="prettier" \
+            # Send to reviewdog
+            cat "${FILE}.diff" | reviewdog -f=diff \
+                                         -name="prettier:$FILE" \
                                          -reporter=github-pr-review \
-                                         -filter-mode=nofilter \
+                                         -filter-mode=file \
                                          -level=warning
             
-            # Reset the changes for the rest of the workflow
-            git checkout -- .
-          else
-            echo "No Prettier issues found."
-          fi
+            # Clean up
+            rm -f "${FILE}.formatted" "${FILE}.diff"
+          done
       
       #---------------------------------------------------
       # ESLint with reviewdog
@@ -84,7 +103,7 @@ jobs:
             cat eslint-output.json | reviewdog -f=eslint \
                                               -name="eslint" \
                                               -reporter=github-pr-review \
-                                              -filter-mode=nofilter \
+                                              -filter-mode=file \
                                               -level=warning
           else
             echo "No ESLint issues found."
