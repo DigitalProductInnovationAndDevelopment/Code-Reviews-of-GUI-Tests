@@ -7,225 +7,140 @@ on:
     branches: [main]
 
 jobs:
-  check-code-quality:
+  build-test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
-    if: github.event_name == 'pull_request'
     
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
       
-      - name: Install dependencies
-        run: npm install
-      
-      # Set up reviewdog
+      #---------------------------------------------------
+      # Setup reviewdog
+      #---------------------------------------------------
       - uses: reviewdog/action-setup@v1
-        with:
-          reviewdog_version: latest
+        with: { reviewdog_version: latest }
       
-      - name: Create detailed Prettier report
-        id: prettier-report
+      #---------------------------------------------------
+      # Prettier with reviewdog for inline comments
+      #---------------------------------------------------
+      - name: Prettier check with reviewdog
+        shell: bash
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Find files with Prettier issues
-          FILES_WITH_ISSUES=$(npx prettier --check "tests/**/*.{js,ts,tsx,json}" 2>&1 | grep -oE "[^ ]+\.(js|ts|tsx|json)" || echo "")
-          
-          if [ -n "$FILES_WITH_ISSUES" ]; then
-            # Count files
-            FILE_COUNT=$(echo "$FILES_WITH_ISSUES" | wc -l)
-            echo "prettier_files=$FILE_COUNT" >> $GITHUB_OUTPUT
-            
-            # Create temp dir for reports
-            mkdir -p temp_prettier
-            
-            # Process each file
-            TOTAL_ISSUES=0
-            for FILE in $FILES_WITH_ISSUES; do
-              # Get prettier formatted version
-              FORMATTED=$(npx prettier "$FILE")
-              ORIGINAL=$(cat "$FILE")
-              
-              # Save formatted version
-              echo "$FORMATTED" > "temp_prettier/$FILE.formatted"
-              
-              # Create line-by-line diff for the file
-              DIFF_OUTPUT=$(diff -u "$FILE" "temp_prettier/$FILE.formatted" || true)
-              
-              # Count only actual changed lines (excluding context and metadata lines)
-              CHANGED_LINES=$(echo "$DIFF_OUTPUT" | grep -E "^[+-][^+-]" | wc -l)
-              TOTAL_ISSUES=$((TOTAL_ISSUES + CHANGED_LINES))
-              
-              echo "File $FILE has approximately $CHANGED_LINES formatting issues"
-              
-              # Add file headers for proper reviewdog diff format
-              FIXED_DIFF=$(echo "$DIFF_OUTPUT" | sed "1s|---|--- a/$FILE|" | sed "2s|+++|+++ b/$FILE|")
-              echo "$FIXED_DIFF" > "temp_prettier/$FILE.diff"
-              
-              # Run reviewdog on this file's diff to create inline comments
-              cat "temp_prettier/$FILE.diff" | REVIEWDOG_GITHUB_API_TOKEN=${{ secrets.GITHUB_TOKEN }} reviewdog -f=diff -name=prettier -reporter=github-pr-review -filter-mode=nofilter -level=warning -fail-on-error=false
-            done
-            
-            echo "prettier_issues=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
-            echo "Found $FILE_COUNT files with approximately $TOTAL_ISSUES Prettier issues"
-            
-            # Save file list
-            echo "$FILES_WITH_ISSUES" > temp_prettier/files.txt
-            echo "prettier_file_list<<EOF" >> $GITHUB_OUTPUT
-            cat temp_prettier/files.txt >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            
-            # Create the summary JSON for dashboard
-            mkdir -p artifacts
-            echo "{\"files\": $FILE_COUNT, \"issues\": $TOTAL_ISSUES, \"fileList\": [\"$(echo $FILES_WITH_ISSUES | sed 's/ /", "/g')\"]}" > artifacts/prettier-report.json
+          npx prettier --write "tests/**/*.{js,ts,tsx,json}"
+          git diff -U0 --no-color > prettier.patch || true
+          if [ -s prettier.patch ]; then
+            cat prettier.patch | reviewdog -f=diff \
+                                         -name="prettier" \
+                                         -reporter=github-pr-review \
+                                         -filter-mode=diff_context \
+                                         -level=warning
           else
-            echo "prettier_files=0" >> $GITHUB_OUTPUT
-            echo "prettier_issues=0" >> $GITHUB_OUTPUT
-            echo "No Prettier issues found"
-            
-            # Create empty report
-            mkdir -p artifacts
-            echo "{\"files\": 0, \"issues\": 0, \"fileList\": []}" > artifacts/prettier-report.json
+            echo "No Prettier issues found."
           fi
       
-      - name: Create detailed ESLint report
-        id: eslint-report
+      - name: Install NPM dependencies
+        run: npm install
+      
+      #---------------------------------------------------
+      # ESLint with reviewdog for inline comments
+      #---------------------------------------------------
+      - name: ESLint check with reviewdog
+        shell: bash
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Run ESLint and get JSON output
-          mkdir -p artifacts
-          ESLINT_OUTPUT=$(npx eslint tests --ext .js,.ts,.tsx -f json || true)
-          echo "$ESLINT_OUTPUT" > artifacts/eslint-results.json
+          # Run ESLint and output JSON
+          npx eslint tests --ext .js,.ts,.tsx -f json > eslint-output.json || true
           
-          # Check if output is valid JSON
-          if echo "$ESLINT_OUTPUT" | jq empty 2>/dev/null; then
-            # Count issues
-            TOTAL_ISSUES=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | length] | add')
-            ERROR_COUNT=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | .[] | select(.severity == 2)] | length')
-            WARNING_COUNT=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | .[] | select(.severity == 1)] | length')
+          # Check if there are any issues
+          if [ -s eslint-output.json ] && [ "$(cat eslint-output.json)" != "[]" ]; then
+            cat eslint-output.json | reviewdog -f=eslint \
+                                              -name="eslint" \
+                                              -reporter=github-pr-review \
+                                              -filter-mode=nofilter \
+                                              -level=warning
+          else
+            echo "No ESLint issues found."
+          fi
+      
+      #---------------------------------------------------
+      # Generate accurate counts for the dashboard
+      #---------------------------------------------------
+      - name: Generate accurate counts
+        id: count-issues
+        run: |
+          # Count Prettier issues
+          if [ -s prettier.patch ]; then
+            # Count only the actual changed lines (not context/metadata)
+            PRETTIER_CHANGES=$(cat prettier.patch | grep -E "^[+-][^+-]" | wc -l)
+            PRETTIER_FILES=$(git diff --name-only | grep -E "\.(js|ts|tsx|json)$" | wc -l)
+            echo "prettier_issues=$PRETTIER_CHANGES" >> $GITHUB_OUTPUT
+            echo "prettier_files=$PRETTIER_FILES" >> $GITHUB_OUTPUT
+            echo "Found $PRETTIER_FILES files with $PRETTIER_CHANGES Prettier issues"
+          else
+            echo "prettier_issues=0" >> $GITHUB_OUTPUT
+            echo "prettier_files=0" >> $GITHUB_OUTPUT
+            echo "No Prettier issues found"
+          fi
+          
+          # Count ESLint issues
+          if [ -s eslint-output.json ] && [ "$(cat eslint-output.json)" != "[]" ]; then
+            ESLINT_ERRORS=$(jq '[.[].messages | .[] | select(.severity == 2)] | length' eslint-output.json)
+            ESLINT_WARNINGS=$(jq '[.[].messages | .[] | select(.severity == 1)] | length' eslint-output.json)
+            ESLINT_TOTAL=$((ESLINT_ERRORS + ESLINT_WARNINGS))
+            ESLINT_FILES=$(jq '[.[].filePath] | unique | length' eslint-output.json)
             
-            echo "eslint_errors=$ERROR_COUNT" >> $GITHUB_OUTPUT
-            echo "eslint_warnings=$WARNING_COUNT" >> $GITHUB_OUTPUT
-            echo "eslint_total=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
+            echo "eslint_errors=$ESLINT_ERRORS" >> $GITHUB_OUTPUT
+            echo "eslint_warnings=$ESLINT_WARNINGS" >> $GITHUB_OUTPUT
+            echo "eslint_total=$ESLINT_TOTAL" >> $GITHUB_OUTPUT
+            echo "eslint_files=$ESLINT_FILES" >> $GITHUB_OUTPUT
             
-            # Count files with issues
-            FILE_COUNT=$(echo "$ESLINT_OUTPUT" | jq '[.[].filePath] | unique | length')
-            echo "eslint_files=$FILE_COUNT" >> $GITHUB_OUTPUT
-            
-            echo "Found $TOTAL_ISSUES ESLint issues ($ERROR_COUNT errors, $WARNING_COUNT warnings) in $FILE_COUNT files"
-            
-            # Create summary JSON
-            echo "{\"total\": $TOTAL_ISSUES, \"errors\": $ERROR_COUNT, \"warnings\": $WARNING_COUNT, \"files\": $FILE_COUNT}" > artifacts/eslint-report.json
-            
-            # Run reviewdog on the ESLint output to create inline comments
-            cat artifacts/eslint-results.json | REVIEWDOG_GITHUB_API_TOKEN=${{ secrets.GITHUB_TOKEN }} reviewdog -f=eslint -name=eslint -reporter=github-pr-review -filter-mode=nofilter -level=warning -fail-on-error=false
+            echo "Found $ESLINT_TOTAL ESLint issues ($ESLINT_ERRORS errors, $ESLINT_WARNINGS warnings) in $ESLINT_FILES files"
           else
             echo "eslint_errors=0" >> $GITHUB_OUTPUT
             echo "eslint_warnings=0" >> $GITHUB_OUTPUT
             echo "eslint_total=0" >> $GITHUB_OUTPUT
             echo "eslint_files=0" >> $GITHUB_OUTPUT
-            echo "No ESLint issues found or invalid output"
-            
-            # Create empty report
-            echo "{\"total\": 0, \"errors\": 0, \"warnings\": 0, \"files\": 0}" > artifacts/eslint-report.json
+            echo "No ESLint issues found"
           fi
       
-      # Create a custom lint-summary.json that includes the correct counts
-      - name: Create correct lint-summary.json
+      #---------------------------------------------------
+      # Create lint-summary.json for the dashboard
+      #---------------------------------------------------
+      - name: Create lint-summary.json
         run: |
           mkdir -p artifacts
           cat > artifacts/lint-summary.json << EOF
           {
             "prettier": {
-              "filesWithIssues": ${{ steps.prettier-report.outputs.prettier_files || 0 }},
-              "totalChanges": ${{ steps.prettier-report.outputs.prettier_issues || 0 }},
-              "files": $([ -n "${{ steps.prettier-report.outputs.prettier_file_list }}" ] && echo "[\"$(echo ${{ steps.prettier-report.outputs.prettier_file_list }} | sed 's/ /", "/g')\"]" || echo "[]")
+              "filesWithIssues": ${{ steps.count-issues.outputs.prettier_files || 0 }},
+              "totalChanges": ${{ steps.count-issues.outputs.prettier_issues || 0 }},
+              "files": []
             },
             "eslint": {
-              "files": ${{ steps.eslint-report.outputs.eslint_files || 0 }},
-              "errors": ${{ steps.eslint-report.outputs.eslint_errors || 0 }},
-              "warnings": ${{ steps.eslint-report.outputs.eslint_warnings || 0 }},
+              "files": ${{ steps.count-issues.outputs.eslint_files || 0 }},
+              "errors": ${{ steps.count-issues.outputs.eslint_errors || 0 }},
+              "warnings": ${{ steps.count-issues.outputs.eslint_warnings || 0 }},
               "fixableErrors": 0,
               "fixableWarnings": 0
             }
           }
           EOF
           
-          echo "Created correct lint-summary.json with proper counts"
+          echo "Created lint-summary.json with proper counts"
           cat artifacts/lint-summary.json
       
-      # Create PR comment
-      - name: Create PR comment
-        uses: peter-evans/create-or-update-comment@v3
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            ## 🔍 Code Quality Check Results
-            
-            ### Prettier
-            
-            ${{ steps.prettier-report.outputs.prettier_files == '0' && '✅ No formatting issues found' || format('❌ Found **{0} files** with approximately **{1} formatting issues**.', steps.prettier-report.outputs.prettier_files, steps.prettier-report.outputs.prettier_issues) }}
-            
-            ${{ steps.prettier-report.outputs.prettier_files != '0' && 'Check the "Files changed" tab to see inline suggestions for formatting issues.' || '' }}
-            
-            <details>
-            <summary>Click to see all files with Prettier issues</summary>
-            
-            ```
-            ${{ steps.prettier-report.outputs.prettier_file_list }}
-            ```
-            
-            Each file has multiple formatting issues. The most common issues are:
-            - Single quotes vs double quotes
-            - Trailing commas
-            - Indentation
-            - Line breaks
-            - Spacing around operators
-            
-            </details>
-            
-            ### ESLint
-            
-            ${{ steps.eslint-report.outputs.eslint_total == '0' && '✅ No linting issues found' || format('❌ Found **{0} issues** ({1} errors, {2} warnings).', steps.eslint-report.outputs.eslint_total, steps.eslint-report.outputs.eslint_errors, steps.eslint-report.outputs.eslint_warnings) }}
-            
-            ${{ steps.eslint-report.outputs.eslint_total != '0' && 'Check the "Files changed" tab to see inline suggestions for ESLint issues.' || '' }}
-            
-            ### How to fix all issues locally
-            
-            ```bash
-            # Fix Prettier issues:
-            npx prettier --write "tests/**/*.{js,ts,tsx,json}"
-            
-            # Fix ESLint issues:
-            npx eslint --fix tests --ext .js,.ts,.tsx
-            ```
-            
-            Please fix these issues before merging!
-          edit-mode: replace
-      
-      # Upload artifacts
-      - uses: actions/upload-artifact@v4
-        with:
-          name: lint-artifacts
-          path: |
-            artifacts/*
-            temp_prettier/*
-  
-  run-tests:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - uses: actions/setup-node@v4
-        with: { node-version: 18 }
-      
-      - name: Install dependencies
-        run: npm install
-      
-      # Run your tests and other steps
+      #---------------------------------------------------
+      # Run your other tests and steps
+      #---------------------------------------------------
       - name: Playwright tests
         run: node scripts/playwright-test.js
         continue-on-error: true
@@ -244,7 +159,6 @@ jobs:
       
       - name: Create test-summary badge
         run: |
-          mkdir -p artifacts
           if [ -f "artifacts/playwright-summary.json" ]; then
             jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
               artifacts/playwright-summary.json > artifacts/test-summary.txt
@@ -254,14 +168,49 @@ jobs:
           fi
         continue-on-error: true
       
-      # Upload test artifacts
+      #---------------------------------------------------
+      # Create PR comment with summary
+      #---------------------------------------------------
+      - name: Create PR comment
+        if: github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## 🔍 Code Quality Check Results
+            
+            ### Prettier
+            
+            ${{ steps.count-issues.outputs.prettier_files == '0' && '✅ No formatting issues found' || format('❌ Found **{0} files** with **{1} formatting issues**.', steps.count-issues.outputs.prettier_files, steps.count-issues.outputs.prettier_issues) }}
+            
+            ${{ steps.count-issues.outputs.prettier_files != '0' && 'Check the "Files changed" tab to see inline suggestions for formatting issues.' || '' }}
+            
+            ### ESLint
+            
+            ${{ steps.count-issues.outputs.eslint_total == '0' && '✅ No linting issues found' || format('❌ Found **{0} issues** ({1} errors, {2} warnings).', steps.count-issues.outputs.eslint_total, steps.count-issues.outputs.eslint_errors, steps.count-issues.outputs.eslint_warnings) }}
+            
+            ${{ steps.count-issues.outputs.eslint_total != '0' && 'Check the "Files changed" tab to see inline suggestions for ESLint issues.' || '' }}
+            
+            ### How to fix all issues locally
+            
+            ```bash
+            # Fix Prettier issues:
+            npx prettier --write "tests/**/*.{js,ts,tsx,json}"
+            
+            # Fix ESLint issues:
+            npx eslint --fix tests --ext .js,.ts,.tsx
+            ```
+            
+            Please fix these issues before merging!
+          edit-mode: replace
+      
       - uses: actions/upload-artifact@v4
         with:
-          name: test-artifacts
+          name: gui-artifacts
           path: artifacts/*
   
   deploy-report:
-    needs: [check-code-quality, run-tests]
+    needs: build-test
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -272,21 +221,11 @@ jobs:
     
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: lint-artifacts, path: lint-artifacts }
+        with: { name: gui-artifacts, path: gui-artifacts }
         continue-on-error: true
-      
-      - uses: actions/download-artifact@v4
-        with: { name: test-artifacts, path: test-artifacts }
-        continue-on-error: true
-      
-      - name: Combine artifacts
-        run: |
-          mkdir -p combined-artifacts
-          cp -r lint-artifacts/* combined-artifacts/ || true
-          cp -r test-artifacts/* combined-artifacts/ || true
       
       - uses: actions/upload-pages-artifact@v3
-        with: { path: combined-artifacts/web-report }
+        with: { path: gui-artifacts/web-report }
         continue-on-error: true
       
       - id: deploy
@@ -314,26 +253,14 @@ jobs:
       
       - uses: actions/download-artifact@v4
         with:
-          name: lint-artifacts
-          path: lint-artifacts
+          name: gui-artifacts
+          path: gui-artifacts
         continue-on-error: true
-      
-      - uses: actions/download-artifact@v4
-        with:
-          name: test-artifacts
-          path: test-artifacts
-        continue-on-error: true
-      
-      - name: Combine artifacts
-        run: |
-          mkdir -p artifacts
-          cp -r lint-artifacts/* artifacts/ || true
-          cp -r test-artifacts/* artifacts/ || true
       
       - name: Post / update GUI-test summary comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACTS_DIR: artifacts
+          ARTIFACTS_DIR: gui-artifacts
           WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
         run: node scripts/summary-comment.js
         continue-on-error: true
