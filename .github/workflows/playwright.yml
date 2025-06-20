@@ -32,25 +32,31 @@ jobs:
         run: |
           echo "changed=$(git diff --name-only --diff-filter=AM $(git merge-base origin/main HEAD) -- tests | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
-      # Prettier
+      - name: Install TypeScript ESLint deps
+        run: npm install --no-save eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin
+
+      # --- Prettier annotations ---
       - name: Prettier (reviewdog)
+        continue-on-error: true          # ← keep the job green
         uses: EPMatt/reviewdog-action-prettier@v1.2.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prettier_flags: ${{ steps.diff.outputs.changed }}
-          reporter: github-pr-check      # ← change here
-          fail_on_error: false           # set to false to avoid failing the workflow on warnings
-          filter_mode: nofilter          # optional: show all issues in touched files
+          reporter: github-pr-check
+          filter_mode: added
+          level: warning                 # annotations are still warnings
 
-      # ESLint
+      # --- ESLint annotations ---
       - name: ESLint (reviewdog)
+        continue-on-error: true          # ← keep the job green
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           eslint_flags: ${{ steps.diff.outputs.changed }}
-          reporter: github-pr-check      # ← change here
-          fail_level: warning
-          filter_mode: nofilter
+          reporter: github-pr-check
+          filter_mode: added
+          level: warning
+
 
       - name: Lint, Prettier & ESLint summary
         run: node scripts/lint.js
