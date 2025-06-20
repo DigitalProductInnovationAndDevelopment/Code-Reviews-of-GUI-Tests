@@ -24,15 +24,15 @@ jobs:
         run: npm install
       
       #---------------------------------------------------
-      # Setup reviewdog
+      # Setup reviewdog - this is critical
       #---------------------------------------------------
       - uses: reviewdog/action-setup@v1
         with: { reviewdog_version: latest }
       
       #---------------------------------------------------
-      # Run modified lint.js which includes reviewdog
+      # Run your lint.js script which includes reviewdog
       #---------------------------------------------------
-      - name: Run lint script for reporting and reviewdog
+      - name: Lint, Prettier & ESLint
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -68,34 +68,6 @@ jobs:
             echo "Total: 0 | Passed: 0 | Failed: 0 | Skipped: 0" > artifacts/test-summary.txt
           fi
         continue-on-error: true
-      
-      #---------------------------------------------------
-      # Create a PR comment with quick fix instructions
-      #---------------------------------------------------
-      - name: Create PR comment
-        if: github.event_name == 'pull_request'
-        uses: peter-evans/create-or-update-comment@v3
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            ## 🔍 Code Quality Check Results
-            
-            ### Prettier and ESLint 
-            
-            Due to GitHub annotation limits, only a limited number of issues are shown as inline comments.
-            
-            ### How to fix all issues
-            
-            ```bash
-            # Fix Prettier issues:
-            npx prettier --write "tests/**/*.{js,ts,tsx,json}"
-            
-            # Fix ESLint issues:
-            npx eslint --fix tests --ext .js,.ts,.tsx
-            ```
-            
-            Please fix these issues before merging!
-          edit-mode: replace
       
       - uses: actions/upload-artifact@v4
         with:
