@@ -15,19 +15,34 @@ function runPrettier() {
 
   if (diff && IS_PR) {
     execSync('reviewdog -version', { stdio: 'inherit' }); // Shows actual version used!
+    
+    // Fix: Use github-pr-review instead of github-pr-suggest
     const rd = spawnSync(
       'reviewdog',
       [
         '-f=diff',
         '-name=prettier',
-        '-reporter=github-pr-suggest', // ← must be "="
+        '-reporter=github-pr-review', // Changed from github-pr-suggest to github-pr-review
         '-filter-mode=nofilter',
         '-level=info',
         '-fail-on-error=false'
       ],
-      { input: diff, stdio: ['pipe', 'inherit', 'inherit'], encoding: 'utf8' }
+      { 
+        input: diff, 
+        stdio: ['pipe', 'inherit', 'inherit'], 
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          // Ensure the token is properly passed
+          REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
+        }
+      }
     );
-    if (rd.error) throw rd.error;
+    
+    if (rd.error) {
+      console.error('Reviewdog error:', rd.error);
+      // Continue anyway, don't throw the error
+    }
   }
   execSync('git checkout -- .'); // Clean up for next steps
 
@@ -70,17 +85,36 @@ function runESLint() {
   });
 
   if (raw && IS_PR) {
+    // Make sure we write the raw JSON to a file first for debugging purposes
+    fs.mkdirSync('artifacts', { recursive: true });
+    fs.writeFileSync('artifacts/eslint-results.json', raw);
+    
     const rd = spawnSync(
       'reviewdog',
       [
         '-f=eslint',
         '-name=eslint',
-        '-reporter=github-pr-review',
-        '-filter-mode=nofilter'
+        '-reporter=github-pr-review', // Ensure consistent reporter format
+        '-filter-mode=nofilter',
+        '-level=info', // Add level to match prettier settings
+        '-fail-on-error=false' // Add fail-on-error to match prettier settings
       ],
-      { input: raw, stdio: ['pipe', 'inherit', 'inherit'], encoding: 'utf8' }
+      { 
+        input: raw, 
+        stdio: ['pipe', 'inherit', 'inherit'], 
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          // Ensure the token is properly passed
+          REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
+        }
+      }
     );
-    if (rd.error) throw rd.error;
+    
+    if (rd.error) {
+      console.error('Reviewdog error:', rd.error);
+      // Continue anyway, don't throw the error
+    }
   }
 
   return {
