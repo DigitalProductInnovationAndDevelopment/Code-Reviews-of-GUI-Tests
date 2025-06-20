@@ -100,7 +100,6 @@ jobs:
           filter_mode: nofilter          # Don't filter by diff
           level: warning
           fail_on_error: false           # Ensure it doesn't fail
-          reviewdog_flags: '-fail-level=never'  # Never fail
       
       # Run ESLint with reviewdog ONLY if within limits
       - name: ESLint with inline annotations (within limit)
@@ -114,7 +113,6 @@ jobs:
           filter_mode: nofilter          # Don't filter by diff
           level: warning
           fail_on_error: false           # Ensure it doesn't fail
-          reviewdog_flags: '-fail-level=never'  # Never fail
       
       # ───── SUMMARY COMMENT FOR ALL CASES ─────
       - name: Post summary comment
