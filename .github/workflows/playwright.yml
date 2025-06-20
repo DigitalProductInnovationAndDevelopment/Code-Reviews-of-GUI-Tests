@@ -26,7 +26,7 @@ jobs:
 
 
       - name: Install NPM dependencies
-        run: npm install
+        run: npm ci
 
 
 # ───── LINT & INLINE COMMENTS ─────
@@ -34,23 +34,25 @@ jobs:
       #  run: npm install --no-save eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin
 
       # --- Prettier annotations ---
-      - name: Prettier (whole tests dir → Checks annotations)
-        continue-on-error: true                 # keep the job green
+      - name: Prettier (tests dir → inline review)
+        continue-on-error: true
         uses: EPMatt/reviewdog-action-prettier@v1.2.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prettier_flags: 'tests/**/*.{js,ts,tsx,json}'
-          reporter: github-pr-review
-          #filter_mode: nofilter                 # include lines outside PR diff
+          reporter: github-pr-review   # inline
+          filter_mode: added           # ← crucial
           level: warning
 
-      - name: ESLint via reviewdog action
-        continue-on-error: true  
+
+      - name: ESLint via reviewdog
+        continue-on-error: true
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           eslint_flags: 'tests/**/*.{js,ts,tsx}'
+          reporter: github-pr-review     # inline
+          filter_mode: added             # default; keeps you < 50
           level: warning
-          reporter: github-pr-review
-          filter_mode: nofilter
+
 
