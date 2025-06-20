@@ -24,32 +24,20 @@ jobs:
         run: npm install
       
       #---------------------------------------------------
-      # Run your original lint.js script for reports first
+      # Setup reviewdog
       #---------------------------------------------------
-      - name: Run lint script for reports
+      - uses: reviewdog/action-setup@v1
+        with: { reviewdog_version: latest }
+      
+      #---------------------------------------------------
+      # Run modified lint.js which includes reviewdog
+      #---------------------------------------------------
+      - name: Run lint script for reporting and reviewdog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/lint.js
         continue-on-error: true
-      
-      #---------------------------------------------------
-      # Use a dedicated Prettier action for annotations
-      #---------------------------------------------------
-      - name: Prettier check
-        uses: creyD/prettier_action@v4.3
-        with:
-          prettier_options: "--check tests/**/*.{js,ts,tsx,json}"
-          commit_options: ""  # Don't commit changes
-          only_changed: true
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-      
-      #---------------------------------------------------
-      # Run ESLint with GitHub format
-      #---------------------------------------------------
-      - name: ESLint with GitHub annotations
-        if: github.event_name == 'pull_request'
-        run: |
-          # Run ESLint with GitHub formatter
-          npx eslint tests --ext .js,.ts,.tsx --format=github || true
       
       #---------------------------------------------------
       # Run your other steps
