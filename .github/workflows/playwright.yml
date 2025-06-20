@@ -127,116 +127,50 @@ jobs:
           fi
         continue-on-error: true
       
-      # Let's use GitHub native annotations instead of reviewdog
-      - name: Prettier Check and Annotations
+      # Use alternative GitHub Actions for code quality
+      - name: Create code quality check PR comment
+        uses: peter-evans/create-or-update-comment@v3
         if: github.event_name == 'pull_request'
-        run: |
-          # Create dirs for temp files
-          mkdir -p temp_files
-          
-          # Find files with Prettier issues
-          PRETTIER_OUTPUT=$(npx prettier --check "tests/**/*.{js,ts,tsx,json}" 2>&1 || true)
-          echo "$PRETTIER_OUTPUT"
-          
-          # Extract the list of files with issues
-          FILES=$(echo "$PRETTIER_OUTPUT" | grep -oE "[^ ]+\.(js|ts|tsx|json)" | sort -u || echo "")
-          
-          if [ -n "$FILES" ]; then
-            echo "Files with Prettier issues:"
-            echo "$FILES"
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## Code Quality Check Results
             
-            # Count total issues
-            TOTAL_FILES=$(echo "$FILES" | wc -l)
+            Running code quality checks on the PR...
             
-            # For the first file, create fix suggestions
-            FIRST_FILE=$(echo "$FILES" | head -n 1)
-            if [ -n "$FIRST_FILE" ]; then
-              echo "Analyzing formatting issues in: $FIRST_FILE"
-              
-              # Create formatted version
-              FORMATTED=$(npx prettier "$FIRST_FILE")
-              ORIGINAL=$(cat "$FIRST_FILE")
-              
-              # Generate limited number of annotations (max 10)
-              ISSUES=0
-              LINE=1
-              ORIGINAL_LINES=()
-              FORMATTED_LINES=()
-              
-              # Read original file line by line
-              while IFS= read -r original_line; do
-                ORIGINAL_LINES+=("$original_line")
-              done <<< "$ORIGINAL"
-              
-              # Read formatted file line by line
-              while IFS= read -r formatted_line; do
-                FORMATTED_LINES+=("$formatted_line")
-              done <<< "$FORMATTED"
-              
-              # Compare line by line and create annotations
-              for i in "${!ORIGINAL_LINES[@]}"; do
-                if [ "$ISSUES" -ge 8 ]; then
-                  break  # Limit to 8 issues
-                fi
-                
-                if [ "${ORIGINAL_LINES[$i]}" != "${FORMATTED_LINES[$i]}" ]; then
-                  LINE_NUM=$((i+1))
-                  
-                  # Create GitHub annotation
-                  echo "::warning file=$FIRST_FILE,line=$LINE_NUM::Formatting issue - should be: ${FORMATTED_LINES[$i]}"
-                  
-                  ISSUES=$((ISSUES+1))
-                fi
-              done
-              
-              # Add a summary comment
-              if [ "$TOTAL_FILES" -gt 1 ]; then
-                REMAINING=$((TOTAL_FILES - 1))
-                
-                # Create a GitHub step summary
-                echo "## Prettier Issues" >> $GITHUB_STEP_SUMMARY
-                echo "Found **$TOTAL_FILES files** with Prettier formatting issues." >> $GITHUB_STEP_SUMMARY
-                echo "Showing a few suggestions for **$FIRST_FILE** only due to GitHub annotation limits." >> $GITHUB_STEP_SUMMARY
-                echo "**$REMAINING more files** need formatting:" >> $GITHUB_STEP_SUMMARY
-                echo '```' >> $GITHUB_STEP_SUMMARY
-                echo "$FILES" | tail -n $REMAINING >> $GITHUB_STEP_SUMMARY
-                echo '```' >> $GITHUB_STEP_SUMMARY
-                echo "Run \`npx prettier --write 'tests/**/*.{js,ts,tsx,json}'\` locally to fix all issues." >> $GITHUB_STEP_SUMMARY
-              fi
-            fi
-          else
-            echo "No Prettier issues found."
-          fi
+            ### Prettier
+            
+            ```bash
+            # Check formatting with:
+            npx prettier --check "tests/**/*.{js,ts,tsx,json}"
+            
+            # Fix formatting with:
+            npx prettier --write "tests/**/*.{js,ts,tsx,json}"
+            ```
+            
+            ### ESLint
+            
+            ```bash
+            # Check linting with:
+            npx eslint tests --ext .js,.ts,.tsx
+            
+            # Fix auto-fixable issues with:
+            npx eslint --fix tests --ext .js,.ts,.tsx
+            ```
+            
+            Please fix any code quality issues before merging!
         continue-on-error: true
       
-      # Run ESLint with native GitHub annotations
-      - name: ESLint Check with Annotations
-        if: github.event_name == 'pull_request'
-        run: |
-          # Run ESLint with GitHub reporter
-          npx eslint tests --ext .js,.ts,.tsx --format=github || true
-          
-          # Also run ESLint with JSON format to get total counts
-          ESLINT_OUTPUT=$(npx eslint tests --ext .js,.ts,.tsx -f json || true)
-          
-          # Save for debugging
-          mkdir -p temp_files
-          echo "$ESLINT_OUTPUT" > temp_files/eslint-output.json
-          
-          # Count issues if we have valid JSON
-          if echo "$ESLINT_OUTPUT" | jq empty 2>/dev/null; then
-            TOTAL_ISSUES=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | length] | add')
-            ERROR_COUNT=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | .[] | select(.severity == 2)] | length')
-            WARNING_COUNT=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | .[] | select(.severity == 1)] | length')
-            
-            # GitHub step summary for ESLint
-            echo "## ESLint Issues" >> $GITHUB_STEP_SUMMARY
-            echo "Found **$TOTAL_ISSUES total issues** with ESLint." >> $GITHUB_STEP_SUMMARY
-            echo "- **$ERROR_COUNT errors**" >> $GITHUB_STEP_SUMMARY
-            echo "- **$WARNING_COUNT warnings**" >> $GITHUB_STEP_SUMMARY
-            echo "GitHub shows only a limited number of annotations due to platform limits." >> $GITHUB_STEP_SUMMARY
-            echo "Run \`npx eslint --fix tests\` locally to fix all auto-fixable issues." >> $GITHUB_STEP_SUMMARY
-          fi
+      # Use actionsx/prettier for explicit annotations
+      - name: Prettier Check
+        uses: actionsx/prettier@v2
+        with:
+          args: --check tests/**/*.{js,ts,tsx,json}
+        continue-on-error: true
+      
+      # Use eslint GitHub reporter
+      - name: ESLint Check
+        run: npx eslint tests --ext .js,.ts,.tsx --format=github
         continue-on-error: true
       
       - uses: actions/upload-artifact@v4
