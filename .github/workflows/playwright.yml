@@ -10,12 +10,18 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write  # Need write for creating diffs
       pull-requests: write
     
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with: 
+          fetch-depth: 0
+      
+      - name: Set Git User
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
       
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
@@ -32,13 +38,7 @@ jobs:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/lint.js
         continue-on-error: true
-
-      - name: debug reviewdog
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/debug-reviewdog.js
-
+      
       - name: Playwright tests
         run: node scripts/playwright-test.js
       
