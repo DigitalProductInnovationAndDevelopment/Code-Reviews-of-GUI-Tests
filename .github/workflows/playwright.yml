@@ -30,178 +30,91 @@ jobs:
         with: { reviewdog_version: latest }
       
       #---------------------------------------------------
-      # Check for files with Prettier issues
-      #---------------------------------------------------
-      - name: Find files with Prettier issues
-        id: find_prettier_issues
-        shell: bash
-        run: |
-          # Check which files need formatting
-          PRETTIER_OUTPUT=$(npx prettier --check "tests/**/*.{js,ts,tsx,json}" 2>&1 || true)
-          FILES_WITH_ISSUES=$(echo "$PRETTIER_OUTPUT" | grep -oE "[^ ]+\.(js|ts|tsx|json)" | sort -u || echo "")
-          
-          # Save the list of files for later steps
-          if [ -n "$FILES_WITH_ISSUES" ]; then
-            echo "found_issues=true" >> $GITHUB_OUTPUT
-            echo "files_with_issues<<EOF" >> $GITHUB_OUTPUT
-            echo "$FILES_WITH_ISSUES" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            
-            # Count the number of files
-            FILE_COUNT=$(echo "$FILES_WITH_ISSUES" | wc -l)
-            echo "prettier_file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
-            
-            # Count the total number of issues
-            mkdir -p temp_prettier
-            TOTAL_ISSUES=0
-            
-            for FILE in $FILES_WITH_ISSUES; do
-              echo "Counting issues in $FILE..."
-              # Create a formatted version to compare
-              npx prettier "$FILE" > "temp_prettier/$(basename "$FILE").formatted"
-              # Count changes (each line added or removed is an issue)
-              CHANGES=$(diff -u "$FILE" "temp_prettier/$(basename "$FILE").formatted" | grep -E "^[+-][^+-]" | wc -l)
-              TOTAL_ISSUES=$((TOTAL_ISSUES + CHANGES))
-            done
-            
-            echo "prettier_issue_count=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
-            echo "Found $FILE_COUNT files with $TOTAL_ISSUES Prettier issues"
-            
-            # Create a formatted file to use in the PR comment
-            for FILE in $FILES_WITH_ISSUES; do
-              SAMPLE_FILE=$FILE
-              break
-            done
-            
-            # Format the sample file and create a diff
-            npx prettier "$SAMPLE_FILE" > "temp_prettier/sample.formatted"
-            diff -u "$SAMPLE_FILE" "temp_prettier/sample.formatted" > "temp_prettier/sample.diff" || true
-            
-            # Extract the first 8 changes for the sample
-            SAMPLE_DIFF=$(cat "temp_prettier/sample.diff" | grep -E "^[+-][^+-]" | head -n 8)
-            echo "prettier_sample<<EOF" >> $GITHUB_OUTPUT
-            echo "$SAMPLE_DIFF" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            echo "found_issues=false" >> $GITHUB_OUTPUT
-            echo "prettier_file_count=0" >> $GITHUB_OUTPUT
-            echo "prettier_issue_count=0" >> $GITHUB_OUTPUT
-            echo "No Prettier issues found"
-          fi
-      
-      #---------------------------------------------------
-      # Create limited Prettier suggestions for reviewdog
-      #---------------------------------------------------
-      - name: Create limited Prettier suggestions
-        if: steps.find_prettier_issues.outputs.found_issues == 'true'
-        shell: bash
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # We'll only process the first file to stay within GitHub limits
-          FIRST_FILE=$(echo "${{ steps.find_prettier_issues.outputs.files_with_issues }}" | head -n 1)
-          echo "Creating suggestions for $FIRST_FILE (limited to 8 suggestions)..."
-          
-          # Format the file
-          npx prettier --write "$FIRST_FILE"
-          
-          # Create a diff and send to reviewdog
-          git diff -U0 --no-color "$FIRST_FILE" > prettier.patch || true
-          
-          # If we have changes, send them to reviewdog
-          if [ -s prettier.patch ]; then
-            # Use head to limit the number of annotations
-            cat prettier.patch | reviewdog -f=diff \
-                                        -name="prettier" \
-                                        -reporter=github-pr-review \
-                                        -filter-mode=diff_context \
-                                        -level=warning
-          fi
-          
-          # Reset changes
-          git checkout -- .
-      
-      #---------------------------------------------------
-      # ESLint with reviewdog (limited)
-      #---------------------------------------------------
-      - name: ESLint check with reviewdog
-        id: eslint_check
-        shell: bash
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Run ESLint and output JSON
-          npx eslint tests --ext .js,.ts,.tsx -f json > eslint-output.json || true
-          
-          # Check if there are any issues
-          if [ -s eslint-output.json ] && [ "$(cat eslint-output.json)" != "[]" ]; then
-            # Count total issues
-            TOTAL_ERRORS=$(jq '[.[].messages | .[] | select(.severity == 2)] | length' eslint-output.json)
-            TOTAL_WARNINGS=$(jq '[.[].messages | .[] | select(.severity == 1)] | length' eslint-output.json)
-            TOTAL_ISSUES=$((TOTAL_ERRORS + TOTAL_WARNINGS))
-            TOTAL_FILES=$(jq '[.[].filePath] | unique | length' eslint-output.json)
-            
-            echo "eslint_error_count=$TOTAL_ERRORS" >> $GITHUB_OUTPUT
-            echo "eslint_warning_count=$TOTAL_WARNINGS" >> $GITHUB_OUTPUT
-            echo "eslint_issue_count=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
-            echo "eslint_file_count=$TOTAL_FILES" >> $GITHUB_OUTPUT
-            
-            echo "Found $TOTAL_ISSUES ESLint issues ($TOTAL_ERRORS errors, $TOTAL_WARNINGS warnings) in $TOTAL_FILES files"
-            
-            # Extract a limited set of issues for display (8 max)
-            LIMITED_OUTPUT=$(jq '[.[]][0:1] | map({filePath, messages: .messages[0:8]})' eslint-output.json)
-            echo "$LIMITED_OUTPUT" > eslint-limited.json
-            
-            # Send limited output to reviewdog
-            cat eslint-limited.json | reviewdog -f=eslint \
-                                              -name="eslint" \
-                                              -reporter=github-pr-review \
-                                              -filter-mode=nofilter \
-                                              -level=warning
-            
-            # Extract sample issues for the PR comment
-            SAMPLE_ISSUES=$(jq '[.[].messages[] | {ruleId, message}][0:5]' eslint-output.json)
-            echo "eslint_sample<<EOF" >> $GITHUB_OUTPUT
-            echo "$SAMPLE_ISSUES" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            echo "eslint_error_count=0" >> $GITHUB_OUTPUT
-            echo "eslint_warning_count=0" >> $GITHUB_OUTPUT
-            echo "eslint_issue_count=0" >> $GITHUB_OUTPUT
-            echo "eslint_file_count=0" >> $GITHUB_OUTPUT
-            echo "No ESLint issues found."
-          fi
-      
-      #---------------------------------------------------
-      # Generate a fix-all script for quick fixes
-      #---------------------------------------------------
-      - name: Generate fix-all script
-        if: steps.find_prettier_issues.outputs.found_issues == 'true' || steps.eslint_check.outputs.eslint_issue_count != '0'
-        run: |
-          mkdir -p artifacts
-          cat > artifacts/fix-all.sh << 'EOF'
-          #!/bin/bash
-          
-          # Fix Prettier issues
-          echo "Fixing Prettier issues..."
-          npx prettier --write "tests/**/*.{js,ts,tsx,json}"
-          
-          # Fix ESLint issues
-          echo "Fixing ESLint issues..."
-          npx eslint --fix tests --ext .js,.ts,.tsx
-          
-          echo "All fixable issues have been addressed!"
-          EOF
-          
-          chmod +x artifacts/fix-all.sh
-          echo "Created fix-all.sh script in artifacts directory"
-      
-      #---------------------------------------------------
-      # Run your original lint.js script for reports
+      # Run your original lint.js script for reports first
       #---------------------------------------------------
       - name: Run lint script for reports
         run: node scripts/lint.js
         continue-on-error: true
+        id: lint
+      
+      #---------------------------------------------------
+      # Prettier with reviewdog - focus on one file
+      #---------------------------------------------------
+      - name: Prettier style check (reviewdog)
+        shell: bash
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Format the specific file we want to check
+          FILE="tests/demo-todo-app.spec.ts"
+          
+          # Temporarily save the original file
+          cp "$FILE" "$FILE.orig"
+          
+          # Format the file with prettier
+          npx prettier --write "$FILE"
+          
+          # Create a unified diff with context
+          diff -u "$FILE.orig" "$FILE" > prettier.patch || true
+          
+          # Fix the diff headers for reviewdog
+          sed -i "1s|--- |--- a/|" prettier.patch
+          sed -i "2s|+++ |+++ b/|" prettier.patch
+          
+          # Check if we have a diff
+          if [ -s prettier.patch ]; then
+            # Count the number of changes
+            CHANGES=$(cat prettier.patch | grep -E "^[+-][^+-]" | wc -l)
+            echo "Found $CHANGES Prettier issues in $FILE"
+            
+            # Limit to first 8 hunks to avoid GitHub annotation limits
+            # Extract hunks and limit them
+            awk 'BEGIN{p=0;c=0} /^@@/{p=1;c++;if(c>8)p=0} p' prettier.patch > prettier-limited.patch
+            
+            # Send to reviewdog
+            cat prettier-limited.patch | reviewdog -f=diff \
+                                                 -name="prettier" \
+                                                 -reporter=github-pr-review \
+                                                 -filter-mode=file \
+                                                 -level=warning
+            
+            # Restore the original file
+            mv "$FILE.orig" "$FILE"
+          else
+            echo "No Prettier issues found in $FILE"
+            rm -f "$FILE.orig"
+          fi
+      
+      #---------------------------------------------------
+      # ESLint with reviewdog - focus on one file
+      #---------------------------------------------------
+      - name: ESLint check with reviewdog
+        shell: bash
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Run ESLint on the specific file
+          FILE="tests/demo-todo-app.spec.ts"
+          npx eslint "$FILE" -f json > eslint-output.json || true
+          
+          # Check if there are any issues
+          if [ -s eslint-output.json ] && [ "$(cat eslint-output.json)" != "[]" ]; then
+            # Count total issues
+            TOTAL_ISSUES=$(jq '[.[].messages | length] | add' eslint-output.json)
+            echo "Found $TOTAL_ISSUES ESLint issues in $FILE"
+            
+            # Limit the output to 8 messages maximum
+            jq '.[0].messages = (.[0].messages[0:8])' eslint-output.json > eslint-limited.json
+            
+            # Send to reviewdog
+            cat eslint-limited.json | reviewdog -f=eslint \
+                                             -name="eslint" \
+                                             -reporter=github-pr-review \
+                                             -filter-mode=file \
+                                             -level=warning
+          else
+            echo "No ESLint issues found in $FILE"
+          fi
       
       #---------------------------------------------------
       # Run your other steps
@@ -234,7 +147,7 @@ jobs:
         continue-on-error: true
       
       #---------------------------------------------------
-      # Create PR comment with summary and quick fix option
+      # Create a combined PR comment with a note about limitations
       #---------------------------------------------------
       - name: Create PR comment
         if: github.event_name == 'pull_request'
@@ -244,35 +157,13 @@ jobs:
           body: |
             ## 🔍 Code Quality Check Results
             
-            ### Prettier
+            ### Prettier and ESLint 
             
-            ${{ steps.find_prettier_issues.outputs.prettier_file_count == '0' && '✅ No formatting issues found' || format('❌ Found **{0} files** with **{1} formatting issues**.', steps.find_prettier_issues.outputs.prettier_file_count, steps.find_prettier_issues.outputs.prettier_issue_count) }}
+            Due to GitHub annotation limits, only the first 8 issues from `tests/demo-todo-app.spec.ts` are shown as inline comments.
             
-            ${{ steps.find_prettier_issues.outputs.prettier_file_count != '0' && 'Some suggestions are shown as inline comments in the "Files changed" tab. Due to GitHub limitations, only 8 suggestions are shown.' || '' }}
+            To see all issues, check the "Files changed" tab or run the fix commands locally.
             
-            ${{ steps.find_prettier_issues.outputs.prettier_file_count != '0' && format('<details><summary>Sample of Prettier issues</summary>
-
-            ```diff
-            {0}
-            ```
-
-            </details>', steps.find_prettier_issues.outputs.prettier_sample) || '' }}
-            
-            ### ESLint
-            
-            ${{ steps.eslint_check.outputs.eslint_issue_count == '0' && '✅ No linting issues found' || format('❌ Found **{0} issues** ({1} errors, {2} warnings) in {3} files.', steps.eslint_check.outputs.eslint_issue_count, steps.eslint_check.outputs.eslint_error_count, steps.eslint_check.outputs.eslint_warning_count, steps.eslint_check.outputs.eslint_file_count) }}
-            
-            ${{ steps.eslint_check.outputs.eslint_issue_count != '0' && 'Some suggestions are shown as inline comments in the "Files changed" tab. Due to GitHub limitations, only 8 suggestions are shown.' || '' }}
-            
-            ${{ steps.eslint_check.outputs.eslint_issue_count != '0' && format('<details><summary>Sample of ESLint issues</summary>
-
-            ```json
-            {0}
-            ```
-
-            </details>', steps.eslint_check.outputs.eslint_sample) || '' }}
-            
-            ### How to fix all issues
+            ### How to fix all issues locally
             
             ```bash
             # Fix Prettier issues:
@@ -281,8 +172,6 @@ jobs:
             # Fix ESLint issues:
             npx eslint --fix tests --ext .js,.ts,.tsx
             ```
-            
-            A `fix-all.sh` script has been generated in the artifacts that combines these commands for convenience.
             
             Please fix these issues before merging!
           edit-mode: replace
