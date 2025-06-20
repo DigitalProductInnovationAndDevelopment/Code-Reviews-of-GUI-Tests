@@ -46,18 +46,15 @@ jobs:
           filter_mode: nofilter                 # include lines outside PR diff
           level: warning
 
-
-      # --- ESLint annotations ---
-      - name: ESLint (reviewdog)
-        continue-on-error: true          # ← keep the job green
+      - name: ESLint via reviewdog action
+        continue-on-error: true  
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          eslint_flags: ${{ steps.diff.outputs.changed }}
-          reporter: github-pr-check
-          filter_mode: added
+          eslint_flags: 'tests/**/*.{js,ts,tsx}'
           level: warning
-
+          reporter: github-pr-review
+          filter_mode: nofilter
 
       - name: Lint, Prettier & ESLint summary
         run: node scripts/lint.js
