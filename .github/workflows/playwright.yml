@@ -7,10 +7,10 @@ on:
     branches: [main]
 
 jobs:
-  build-test:
+  lint:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Need write for creating diffs
+      contents: write
       pull-requests: write
     
     steps:
@@ -18,25 +18,86 @@ jobs:
         with: 
           fetch-depth: 0
       
-      - name: Set Git User
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-      
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
       
-      - uses: reviewdog/action-setup@v1
-        with: { reviewdog_version: latest }
-      
-      - name: Install NPM dependencies
+      - name: Install dependencies
         run: npm install
       
-      - name: Lint, Prettier & ESLint
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/lint.js
+      # Run your scripts for reporting first
+      - name: Run existing lint script for reporting
+        run: |
+          # Create a modified version of your script that doesn't try to use reviewdog
+          cat > scripts/lint-for-report.js << 'EOF'
+          #!/usr/bin/env node
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+
+          function runPrettier() {
+            console.log('\n▶ Prettier check');
+            let filesToFormat = [];
+            try {
+              execSync('npx prettier --check "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
+            } catch (error) {
+              const output = error.stdout?.toString() || '';
+              const matches = output.match(/[^\s]+\.(js|ts|tsx|json)/g);
+              if (matches) {
+                filesToFormat = matches.filter(file => file.startsWith('tests/'));
+              }
+            }
+            
+            return {
+              filesWithIssues: filesToFormat.length,
+              files: filesToFormat
+            };
+          }
+
+          function runESLint() {
+            console.log('\n▶ ESLint');
+            let raw = '';
+            try {
+              raw = execSync('npx eslint tests --ext .js,.ts,.tsx -f json', { encoding: 'utf8' });
+            } catch (e) {
+              raw = e.stdout?.toString() || '';
+            }
+            
+            const results = raw ? JSON.parse(raw) : [];
+            let errors = 0, warnings = 0, fixErr = 0, fixWarn = 0, first = '', files = new Set();
+
+            results.forEach(f => {
+              if (f.messages.length) files.add(f.filePath);
+              f.messages.forEach(m => {
+                if (m.severity === 2) {
+                  errors++;
+                  if (m.fix) fixErr++;
+                  if (!first) first = `${m.ruleId || 'unknown-rule'} in ${f.filePath}:${m.line}`;
+                } else if (m.severity === 1) {
+                  warnings++;
+                  if (m.fix) fixWarn++;
+                }
+              });
+            });
+
+            return {
+              files: files.size,
+              errors,
+              warnings,
+              fixableErrors: fixErr,
+              fixableWarnings: fixWarn,
+              first
+            };
+          }
+
+          const prettier = runPrettier();
+          const eslint = runESLint();
+
+          fs.mkdirSync('artifacts', { recursive: true });
+          fs.writeFileSync('artifacts/lint-summary.json', JSON.stringify({ prettier, eslint }, null, 2));
+          console.log('📝 artifacts/lint-summary.json written');
+          EOF
+          
+          chmod +x scripts/lint-for-report.js
+          node scripts/lint-for-report.js
         continue-on-error: true
       
       - name: Playwright tests
@@ -56,13 +117,34 @@ jobs:
           jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
             artifacts/playwright-summary.json > artifacts/test-summary.txt
       
+      # Use action-prettier for automatically fixing and suggesting Prettier issues
+      - name: Check code formatting with Prettier
+        uses: creyD/prettier_action@v4.3
+        with:
+          prettier_options: "--write tests/**/*.{js,ts,tsx,json}"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          commit_message: "Fix code formatting with Prettier"
+          only_changed: true
+          prettier_plugins: "prettier-plugin-organize-imports"
+          # Don't commit, just create suggestions
+          commit_options: ""
+      
+      # Use reviewdog action for ESLint to get better suggestions
+      - name: Run ESLint with reviewdog
+        uses: reviewdog/action-eslint@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          eslint_flags: "tests --ext .js,.ts,.tsx"
+          fail_on_error: false
+      
       - uses: actions/upload-artifact@v4
         with:
           name: gui-artifacts
           path: artifacts/*
   
   deploy-report:
-    needs: build-test
+    needs: lint
     runs-on: ubuntu-latest
     permissions:
       pages: write
