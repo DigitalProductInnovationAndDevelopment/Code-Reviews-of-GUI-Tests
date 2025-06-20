@@ -36,15 +36,16 @@ jobs:
         run: npm install --no-save eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin
 
       # --- Prettier annotations ---
-      - name: Prettier (reviewdog)
-        continue-on-error: true          # ← keep the job green
+      - name: Prettier (whole tests dir → Checks annotations)
+        continue-on-error: true                 # keep the job green
         uses: EPMatt/reviewdog-action-prettier@v1.2.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          prettier_flags: ${{ steps.diff.outputs.changed }}
-          reporter: github-pr-check
-          filter_mode: added
-          level: warning                 # annotations are still warnings
+          prettier_flags: 'tests/**/*.{js,ts,tsx,json}'
+          reporter: github-pr-check             # Checks tab + grey bars
+          filter_mode: nofilter                 # include lines outside PR diff
+          level: warning
+
 
       # --- ESLint annotations ---
       - name: ESLint (reviewdog)
