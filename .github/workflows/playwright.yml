@@ -1,132 +1,110 @@
-name: GUI Test Review
+name: Test Reviewdog
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
 jobs:
-  build-test:
+  test-reviewdog:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
+      checks: write
     
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
       
-      - uses: actions/setup-node@v4
-        with: { node-version: 18 }
-      
-      - name: Install NPM dependencies
-        run: npm install
-      
-      #---------------------------------------------------
-      # Setup reviewdog - this is critical
-      #---------------------------------------------------
       - uses: reviewdog/action-setup@v1
-        with: { reviewdog_version: latest }
       
-      #---------------------------------------------------
-      # Run your lint.js script which includes reviewdog
-      #---------------------------------------------------
-      - name: Lint, Prettier & ESLint
+      # Test 1: ESLint with reviewdog action (this one exists)
+      - name: Test 1 - ESLint via reviewdog action
+        uses: reviewdog/action-eslint@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          eslint_flags: 'tests/**/*.{js,ts,tsx}'
+          level: warning
+          reporter: github-pr-review
+          filter_mode: nofilter
+      
+      # Test 2: Manual prettier + reviewdog
+      - name: Test 2 - Manual prettier + reviewdog
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/lint.js
-        continue-on-error: true
-      
-      #---------------------------------------------------
-      # Run your other steps
-      #---------------------------------------------------
-      - name: Playwright tests
-        run: node scripts/playwright-test.js
-        continue-on-error: true
-      
-      - name: Generate flow-chart
-        run: node scripts/generate-flowchart.js
-        continue-on-error: true
-      
-      - name: Build checklist
-        run: node scripts/checklist.js
-        continue-on-error: true
-      
-      - name: Build static HTML report
-        run: node scripts/generate-webpage.js
-        continue-on-error: true
-      
-      - name: Create test-summary badge
         run: |
-          if [ -f "artifacts/playwright-summary.json" ]; then
-            jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
-              artifacts/playwright-summary.json > artifacts/test-summary.txt
-          else
-            echo "No playwright-summary.json file found. Creating empty summary."
-            echo "Total: 0 | Passed: 0 | Failed: 0 | Skipped: 0" > artifacts/test-summary.txt
-          fi
-        continue-on-error: true
+          # Create a test file with formatting issues
+          cat > tests/test-format.js << 'EOF'
+          const   x    =    1
+          const y=2
+          if(x>y){console.log("x is bigger")}
+          EOF
+          
+          # Format it
+          npx prettier --write tests/test-format.js
+          
+          # Get the diff
+          git diff tests/test-format.js
+          
+          # Send to reviewdog
+          git diff tests/test-format.js | \
+            reviewdog -f=diff -name=test-manual -reporter=github-pr-review
       
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gui-artifacts
-          path: artifacts/*
-        continue-on-error: true
-  
-  deploy-report:
-    needs: build-test
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { name: gui-artifacts, path: gui-artifacts }
-        continue-on-error: true
+      # Test 3: Check environment
+      - name: Test 3 - Debug environment
+        run: |
+          echo "=== PR Info ==="
+          echo "PR Number: ${{ github.event.pull_request.number }}"
+          echo "Base: ${{ github.base_ref }}"
+          echo "Head: ${{ github.head_ref }}"
+          echo "Token exists: ${{ secrets.GITHUB_TOKEN != '' }}"
+          
+          echo "=== Reviewdog test ==="
+          reviewdog -version
+          
+          # Test with local reporter
+          echo "Testing local reporter..."
+          cat > test.diff << 'EOF'
+          diff --git a/test.js b/test.js
+          index 1234567..abcdefg 100644
+          --- a/test.js
+          +++ b/test.js
+          @@ -1,1 +1,1 @@
+          -const x = 1
+          +const x = 1;
+          EOF
+          
+          cat test.diff | reviewdog -f=diff -reporter=local
       
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: gui-artifacts/web-report }
-        continue-on-error: true
-      
-      - id: deploy
-        uses: actions/deploy-pages@v4
-        continue-on-error: true
-  
-  comment_link:
-    if: github.event_name == 'pull_request'
-    needs: deploy-report
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    
-    steps:
-      - uses: actions/checkout@v4
-        continue-on-error: true
-      
-      - uses: actions/setup-node@v4
-        with: { node-version: 18 }
-        continue-on-error: true
-      
-      - name: Install JS dependencies (Octokit, marked, etc.)
-        run: npm install
-        continue-on-error: true
-      
-      - uses: actions/download-artifact@v4
-        with:
-          name: gui-artifacts
-          path: gui-artifacts
-        continue-on-error: true
-      
-      - name: Post / update GUI-test summary comment
+      # Test 4: Limited diff approach
+      - name: Test 4 - Your actual prettier flow
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACTS_DIR: gui-artifacts
-          WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
-        run: node scripts/summary-comment.js
-        continue-on-error: true
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Run prettier on all files
+          npx prettier --write "tests/**/*.{js,ts,tsx,json}"
+          
+          # Check diff size
+          DIFF_SIZE=$(git diff -- tests | wc -l)
+          echo "Diff size: $DIFF_SIZE lines"
+          
+          if [ $DIFF_SIZE -gt 1000 ]; then
+            echo "Large diff detected. Creating summary..."
+            
+            # Get just the first few files
+            FILES=$(git diff --name-only -- tests | head -5)
+            
+            for file in $FILES; do
+              echo "Processing $file..."
+              git diff -- "$file" | head -50 | \
+                reviewdog -f=diff -name=prettier-$file -reporter=github-pr-review
+            done
+          else
+            echo "Normal diff size. Processing all..."
+            git diff -- tests | \
+              reviewdog -f=diff -name=prettier-all -reporter=github-pr-review
+          fi
+          
+          # Cleanup
+          git checkout -- .

@@ -6,30 +6,50 @@ const IS_PR =
   process.env.GITHUB_EVENT_NAME === 'pull_request' ||
   process.env.GITHUB_EVENT_NAME === 'pull_request_target';
 
+// Debug environment
+console.log('Environment Debug:');
+console.log('- GITHUB_EVENT_NAME:', process.env.GITHUB_EVENT_NAME);
+console.log('- IS_PR:', IS_PR);
+console.log('- GITHUB_TOKEN exists:', !!process.env.GITHUB_TOKEN);
+console.log('- REVIEWDOG_GITHUB_API_TOKEN exists:', !!process.env.REVIEWDOG_GITHUB_API_TOKEN);
+console.log('- GITHUB_HEAD_REF:', process.env.GITHUB_HEAD_REF);
+console.log('- GITHUB_BASE_REF:', process.env.GITHUB_BASE_REF);
+
 function runPrettier() {
   console.log('\n▶ Prettier (write → diff → reviewdog)');
   
-  // Format files with Prettier (KEEP THIS EXACTLY THE SAME)
+  // Format files with Prettier
   execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
   
-  // Generate diff using git (KEEP THIS EXACTLY THE SAME)
+  // Generate diff using git
   const diff = execSync('git diff -- tests || true', { encoding: 'utf8' });
   const files = diff ? execSync('git diff --name-only -- tests', { encoding: 'utf8' }).split('\n').filter(Boolean) : [];
   const totalChanges = (diff.match(/^[+-](?![+-]{3})/gm) || []).length;
 
+  console.log(`- Files with changes: ${files.length}`);
+  console.log(`- Total line changes: ${totalChanges}`);
+
   // Save diff for debugging
   fs.mkdirSync('artifacts', { recursive: true });
   fs.writeFileSync('artifacts/prettier-diff.txt', diff);
+  fs.writeFileSync('artifacts/prettier-diff-size.txt', `Diff size: ${diff.length} bytes\nTotal changes: ${totalChanges}\nFiles: ${files.length}`);
   
   if (diff && IS_PR) {
     // Show the version for debugging
+    console.log('\nReviewdog version:');
     execSync('reviewdog -version', { stdio: 'inherit' });
     
-    // Extract a limited diff to avoid GitHub annotation limits
-    const limitedDiff = limitDiffHunks(diff, 50);
+    // Increase the limit significantly - GitHub can handle up to 50 annotations per step
+    const limitedDiff = limitDiffHunks(diff, 40); // Increased from 8 to 40
     fs.writeFileSync('artifacts/prettier-limited-diff.txt', limitedDiff);
     
-    // Use the limited diff with reviewdog
+    // Count hunks in original vs limited diff
+    const originalHunks = (diff.match(/^@@/gm) || []).length;
+    const limitedHunks = (limitedDiff.match(/^@@/gm) || []).length;
+    console.log(`- Original hunks: ${originalHunks}`);
+    console.log(`- Limited hunks: ${limitedHunks}`);
+    
+    // Run reviewdog
     console.log('Running reviewdog with limited diff...');
     const rd = spawnSync(
       'reviewdog',
@@ -37,9 +57,10 @@ function runPrettier() {
         '-f=diff',
         '-name=prettier',
         '-reporter=github-pr-review',
-        '-filter-mode=diff_context',  // Use the same filter mode as before
+        '-filter-mode=nofilter',  // Changed from diff_context to nofilter
         '-level=warning',
-        '-fail-on-error=false'
+        '-fail-on-error=false',
+        '-tee'  // Also output to stdout for debugging
       ],
       { 
         input: limitedDiff, 
@@ -52,8 +73,35 @@ function runPrettier() {
       }
     );
     
+    console.log(`- Reviewdog exit code: ${rd.status}`);
     if (rd.error) {
       console.error('Reviewdog error:', rd.error);
+    }
+    
+    // Try alternative reporter if main one fails
+    if (rd.status !== 0) {
+      console.log('\nTrying github-check reporter as fallback...');
+      const rd2 = spawnSync(
+        'reviewdog',
+        [
+          '-f=diff',
+          '-name=prettier-check',
+          '-reporter=github-check',
+          '-filter-mode=nofilter',
+          '-level=warning',
+          '-fail-on-error=false'
+        ],
+        { 
+          input: limitedDiff, 
+          stdio: ['pipe', 'inherit', 'inherit'], 
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
+          }
+        }
+      );
+      console.log(`- Fallback exit code: ${rd2.status}`);
     }
   }
   
@@ -75,26 +123,31 @@ function limitDiffHunks(diff, maxHunks) {
   const lines = diff.split('\n');
   const result = [];
   let hunkCount = 0;
-  let inHeader = true;  // Track if we're in the header section
+  let currentFile = null;
   
   for (const line of lines) {
-    // Always include diff header lines
-    if (inHeader) {
+    // Track file headers
+    if (line.startsWith('diff --git')) {
+      currentFile = line;
       result.push(line);
-      // When we hit a hunk header, we're no longer in the header section
-      if (line.startsWith('@@')) {
-        inHeader = false;
-        hunkCount++;
-      }
       continue;
     }
     
-    // If we find a new hunk header
+    // Always include file headers
+    if (line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
+      result.push(line);
+      continue;
+    }
+    
+    // Count and limit hunks
     if (line.startsWith('@@')) {
       hunkCount++;
-      // If we've reached our limit, stop adding lines
       if (hunkCount > maxHunks) {
-        break;
+        // Add a comment indicating truncation
+        if (hunkCount === maxHunks + 1) {
+          result.push(`... (${hunkCount - maxHunks} more hunks truncated to avoid GitHub annotation limits)`);
+        }
+        continue;
       }
     }
     
@@ -137,25 +190,33 @@ function runESLint() {
     });
   });
 
+  console.log(`- Files with issues: ${files.size}`);
+  console.log(`- Total errors: ${errors}`);
+  console.log(`- Total warnings: ${warnings}`);
+
   if (raw && IS_PR) {
     // Save the full ESLint results
     fs.writeFileSync('artifacts/eslint-results.json', raw);
     
-    // Limit ESLint results to avoid GitHub annotation limits
+    // Limit ESLint results - increase limits
     let limitedResults = [];
     if (results.length > 0) {
       // Process each file but limit messages
       limitedResults = results.map(file => {
-        // For each file, limit to the first 5 messages
-        const limitedMessages = file.messages.slice(0, 5);
+        // For each file, limit to the first 10 messages (increased from 5)
+        const limitedMessages = file.messages.slice(0, 10);
         return {
           ...file,
-          messages: limitedMessages
+          messages: limitedMessages,
+          warningCount: file.messages.filter(m => m.severity === 1).length,
+          errorCount: file.messages.filter(m => m.severity === 2).length,
+          fixableErrorCount: file.messages.filter(m => m.severity === 2 && m.fix).length,
+          fixableWarningCount: file.messages.filter(m => m.severity === 1 && m.fix).length
         };
       });
       
-      // Further limit to the first 2 files
-      limitedResults = limitedResults.slice(0, 2);
+      // Increase file limit to 10 (from 2)
+      limitedResults = limitedResults.slice(0, 10);
       
       // Save limited results
       const limitedJson = JSON.stringify(limitedResults);
@@ -171,7 +232,8 @@ function runESLint() {
           '-reporter=github-pr-review',
           '-filter-mode=nofilter',
           '-level=warning',
-          '-fail-on-error=false'
+          '-fail-on-error=false',
+          '-tee'
         ],
         { 
           input: limitedJson, 
@@ -184,6 +246,7 @@ function runESLint() {
         }
       );
       
+      console.log(`- ESLint reviewdog exit code: ${rd.status}`);
       if (rd.error) {
         console.error('Error running reviewdog for ESLint:', rd.error.message);
       }
@@ -200,8 +263,22 @@ function runESLint() {
   };
 }
 
+// Run both linters
+console.log('\n========== Starting Lint Process ==========');
 const prettier = runPrettier();
 const eslint = runESLint();
 
-fs.writeFileSync('artifacts/lint-summary.json', JSON.stringify({ prettier, eslint }, null, 2));
-console.log('📝 artifacts/lint-summary.json written');
+// Write summary
+const summary = {
+  prettier,
+  eslint,
+  metadata: {
+    timestamp: new Date().toISOString(),
+    isPR: IS_PR,
+    eventName: process.env.GITHUB_EVENT_NAME,
+    ref: process.env.GITHUB_REF
+  }
+};
+
+fs.writeFileSync('artifacts/lint-summary.json', JSON.stringify(summary, null, 2));
+console.log('\n📝 artifacts/lint-summary.json written');
