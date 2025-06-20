@@ -10,7 +10,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
     
     steps:
@@ -27,7 +27,8 @@ jobs:
       # Run your scripts for reporting first
       - name: Run existing lint script for reporting
         run: |
-          # Create a modified version of your script that doesn't try to use reviewdog
+          # Modify lint.js temporarily to disable reviewdog
+          cp scripts/lint.js scripts/lint.js.bak
           cat > scripts/lint-for-report.js << 'EOF'
           #!/usr/bin/env node
           const { execSync } = require('child_process');
@@ -117,20 +118,50 @@ jobs:
           jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
             artifacts/playwright-summary.json > artifacts/test-summary.txt
       
-      # Use action-prettier for automatically fixing and suggesting Prettier issues
-      - name: Check code formatting with Prettier
-        uses: creyD/prettier_action@v4.3
+      # Set up reviewdog for annotations
+      - uses: reviewdog/action-setup@v1
         with:
-          prettier_options: "--write tests/**/*.{js,ts,tsx,json}"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          commit_message: "Fix code formatting with Prettier"
-          only_changed: true
-          prettier_plugins: "prettier-plugin-organize-imports"
-          # Don't commit, just create suggestions
-          commit_options: ""
+          reviewdog_version: latest
       
-      # Use reviewdog action for ESLint to get better suggestions
-      - name: Run ESLint with reviewdog
+      # Run Prettier and generate diffs for reviewdog
+      - name: Run Prettier with suggestions
+        run: |
+          # Run prettier and generate diffs
+          mkdir -p prettier_diffs
+          FILES=$(npx prettier --list-different "tests/**/*.{js,ts,tsx,json}" || echo "")
+          
+          if [ -n "$FILES" ]; then
+            echo "Found files with formatting issues:"
+            echo "$FILES"
+            
+            # For each file, generate a proper diff
+            for FILE in $FILES; do
+              echo "Processing $FILE"
+              # Create a formatted version
+              FORMATTED=$(npx prettier "$FILE")
+              # Save the formatted version
+              TEMP_FILE="prettier_diffs/$(basename "$FILE").formatted"
+              echo "$FORMATTED" > "$TEMP_FILE"
+              
+              # Generate a diff
+              DIFF_FILE="prettier_diffs/$(basename "$FILE").diff"
+              diff -u "$FILE" "$TEMP_FILE" > "$DIFF_FILE" || true
+              
+              # Add proper git diff headers
+              sed -i "1s|---|--- a/$FILE|" "$DIFF_FILE"
+              sed -i "2s|+++|+++ b/$FILE|" "$DIFF_FILE"
+              
+              # Run reviewdog on this diff
+              cat "$DIFF_FILE" | reviewdog -f=diff -name=prettier -reporter=github-pr-review -filter-mode=nofilter -fail-on-error=false
+            done
+          else
+            echo "No files with formatting issues found"
+          fi
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # Run ESLint with reviewdog for annotations
+      - name: ESLint Check
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
