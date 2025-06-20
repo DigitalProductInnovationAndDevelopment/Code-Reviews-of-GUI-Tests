@@ -22,6 +22,32 @@ jobs:
       - name: Install NPM dependencies
         run: npm ci
       
+      # ───── CHECK PR SIZE ─────
+      - name: Check PR file count
+        id: pr-size-check
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "Checking PR size..."
+            # Get the number of files changed in this PR
+            PR_FILES=$(gh pr view ${{ github.event.pull_request.number }} --json files --jq '.files | length' || echo "0")
+            echo "PR has $PR_FILES changed files"
+            echo "file_count=$PR_FILES" >> $GITHUB_OUTPUT
+            
+            # Check if PR is too large for reviewdog (GitHub API limit is 300)
+            if [ "$PR_FILES" -gt "250" ]; then
+              echo "pr_too_large=true" >> $GITHUB_OUTPUT
+              echo "::warning::PR has $PR_FILES files, which exceeds reviewdog's limit. Inline annotations will be disabled."
+            else
+              echo "pr_too_large=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # For push events, assume it's not too large
+            echo "file_count=0" >> $GITHUB_OUTPUT
+            echo "pr_too_large=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      
       # ───── PRE-CHECK: Count issues before running reviewdog ─────
       - name: Pre-check Prettier issues
         id: prettier-precheck
@@ -29,8 +55,8 @@ jobs:
         run: |
           echo "Checking Prettier issues..."
           
-          # Run prettier and capture output (excluding node_modules)
-          npx prettier --check 'tests/**/*.{js,ts,tsx,json}' --ignore-path .gitignore 2>&1 | tee prettier-check.log || true
+          # Run prettier and capture output
+          npx prettier --check 'tests/**/*.{js,ts,tsx,json}' 2>&1 | tee prettier-check.log || true
           
           # Count files with issues
           FILES_WITH_ISSUES=$(grep -c "^\[warn\]" prettier-check.log || echo "0")
@@ -62,35 +88,50 @@ jobs:
         run: |
           echo "Checking ESLint issues..."
           
-          # Run ESLint with compact format to count issues (excluding node_modules)
-          npx eslint 'tests/**/*.{js,ts,tsx}' --format compact --ignore-path .gitignore 2>&1 | tee eslint-check.log || true
+          # Run ESLint with compact format to count issues
+          npx eslint 'tests/**/*.{js,ts,tsx}' --format compact 2>&1 | tee eslint-check.log || true
           
-          # Extract error and warning counts
-          ERRORS=$(grep -oE "[0-9]+ error" eslint-check.log | grep -oE "[0-9]+" | awk '{s+=$1} END {print s}' || echo "0")
-          WARNINGS=$(grep -oE "[0-9]+ warning" eslint-check.log | grep -oE "[0-9]+" | awk '{s+=$1} END {print s}' || echo "0")
-          TOTAL_ISSUES=$((ERRORS + WARNINGS))
-          
-          echo "errors=$ERRORS" >> $GITHUB_OUTPUT
-          echo "warnings=$WARNINGS" >> $GITHUB_OUTPUT
-          echo "total_issues=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
-          
-          # Check if within limit
-          if [ "$TOTAL_ISSUES" -lt "50" ]; then
+          # Check if ESLint failed due to configuration issues
+          if grep -q "Oops! Something went wrong!" eslint-check.log; then
+            echo "::warning::ESLint encountered a configuration error. Skipping ESLint checks."
+            echo "errors=0" >> $GITHUB_OUTPUT
+            echo "warnings=0" >> $GITHUB_OUTPUT
+            echo "total_issues=0" >> $GITHUB_OUTPUT
             echo "within_limit=true" >> $GITHUB_OUTPUT
-          else
-            echo "within_limit=false" >> $GITHUB_OUTPUT
-          fi
-          
-          if [ "$TOTAL_ISSUES" -eq "0" ]; then
             echo "has_issues=false" >> $GITHUB_OUTPUT
+            echo "config_error=true" >> $GITHUB_OUTPUT
           else
-            echo "has_issues=true" >> $GITHUB_OUTPUT
+            # Extract error and warning counts
+            ERRORS=$(grep -oE "[0-9]+ error" eslint-check.log | grep -oE "[0-9]+" | awk '{s+=$1} END {print s}' || echo "0")
+            WARNINGS=$(grep -oE "[0-9]+ warning" eslint-check.log | grep -oE "[0-9]+" | awk '{s+=$1} END {print s}' || echo "0")
+            TOTAL_ISSUES=$((ERRORS + WARNINGS))
+            
+            echo "errors=$ERRORS" >> $GITHUB_OUTPUT
+            echo "warnings=$WARNINGS" >> $GITHUB_OUTPUT
+            echo "total_issues=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
+            echo "config_error=false" >> $GITHUB_OUTPUT
+            
+            # Check if within limit
+            if [ "$TOTAL_ISSUES" -lt "50" ]; then
+              echo "within_limit=true" >> $GITHUB_OUTPUT
+            else
+              echo "within_limit=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if [ "$TOTAL_ISSUES" -eq "0" ]; then
+              echo "has_issues=false" >> $GITHUB_OUTPUT
+            else
+              echo "has_issues=true" >> $GITHUB_OUTPUT
+            fi
           fi
       
       # ───── CONDITIONAL INLINE ANNOTATIONS ─────
-      # Run Prettier with reviewdog ONLY if within limits
+      # Run Prettier with reviewdog ONLY if within limits AND PR is not too large
       - name: Prettier with inline annotations (within limit)
-        if: steps.prettier-precheck.outputs.has_issues == 'true' && steps.prettier-precheck.outputs.within_limit == 'true'
+        if: |
+          steps.prettier-precheck.outputs.has_issues == 'true' && 
+          steps.prettier-precheck.outputs.within_limit == 'true' && 
+          (github.event_name != 'pull_request' || steps.pr-size-check.outputs.pr_too_large != 'true')
         continue-on-error: true
         uses: EPMatt/reviewdog-action-prettier@v1.2.0
         with:
@@ -101,9 +142,13 @@ jobs:
           level: warning
           fail_on_error: false           # Ensure it doesn't fail
       
-      # Run ESLint with reviewdog ONLY if within limits
+      # Run ESLint with reviewdog ONLY if within limits AND PR is not too large AND no config error
       - name: ESLint with inline annotations (within limit)
-        if: steps.eslint-precheck.outputs.has_issues == 'true' && steps.eslint-precheck.outputs.within_limit == 'true'
+        if: |
+          steps.eslint-precheck.outputs.has_issues == 'true' && 
+          steps.eslint-precheck.outputs.within_limit == 'true' && 
+          steps.eslint-precheck.outputs.config_error != 'true' &&
+          (github.event_name != 'pull_request' || steps.pr-size-check.outputs.pr_too_large != 'true')
         continue-on-error: true
         uses: reviewdog/action-eslint@v1
         with:
@@ -129,30 +174,50 @@ jobs:
             const eslintTotal = parseInt('${{ steps.eslint-precheck.outputs.total_issues }}' || '0');
             const eslintWithinLimit = '${{ steps.eslint-precheck.outputs.within_limit }}' === 'true';
             const eslintHasIssues = '${{ steps.eslint-precheck.outputs.has_issues }}' === 'true';
+            const eslintConfigError = '${{ steps.eslint-precheck.outputs.config_error }}' === 'true';
+            
+            const prTooLarge = '${{ steps.pr-size-check.outputs.pr_too_large }}' === 'true';
+            const prFileCount = parseInt('${{ steps.pr-size-check.outputs.file_count }}' || '0');
             
             let comment = '## 📋 Code Quality Check Results\n\n';
+            
+            // Add warning if PR is too large
+            if (prTooLarge) {
+              comment += `⚠️ **Note:** This PR contains ${prFileCount} files, which exceeds GitHub's API limit. Inline annotations are disabled.\n\n`;
+            }
             
             // Prettier section
             if (prettierHasIssues) {
               comment += '### 🎨 Prettier Formatting\n';
-              if (prettierWithinLimit) {
+              if (prettierWithinLimit && !prTooLarge) {
                 comment += `Found formatting issues (check the Files Changed tab for annotations).\n\n`;
               } else {
-                comment += `⚠️ **Too many formatting issues to display inline (${prettierIssues}+ issues)**\n\n`;
+                if (prTooLarge) {
+                  comment += `Found formatting issues in your test files.\n\n`;
+                } else {
+                  comment += `⚠️ **Too many formatting issues to display inline (${prettierIssues}+ issues)**\n\n`;
+                }
                 comment += '**Please fix these locally by running:**\n';
                 comment += '```bash\nnpx prettier --write "tests/**/*.{js,ts,tsx,json}"\n```\n\n';
               }
             }
             
             // ESLint section
-            if (eslintHasIssues) {
+            if (eslintConfigError) {
               comment += '### 🔍 ESLint\n';
-              if (eslintWithinLimit) {
+              comment += '⚠️ **ESLint configuration error detected.** Please check your ESLint configuration.\n\n';
+            } else if (eslintHasIssues) {
+              comment += '### 🔍 ESLint\n';
+              if (eslintWithinLimit && !prTooLarge) {
                 comment += `Found ${eslintErrors} error(s) and ${eslintWarnings} warning(s) (check the Files Changed tab for annotations).\n\n`;
               } else {
-                comment += `⚠️ **Too many ESLint issues to display inline**\n`;
-                comment += `- ${eslintErrors} error(s)\n`;
-                comment += `- ${eslintWarnings} warning(s)\n\n`;
+                if (prTooLarge) {
+                  comment += `Found ${eslintErrors} error(s) and ${eslintWarnings} warning(s) in your test files.\n\n`;
+                } else {
+                  comment += `⚠️ **Too many ESLint issues to display inline**\n`;
+                  comment += `- ${eslintErrors} error(s)\n`;
+                  comment += `- ${eslintWarnings} warning(s)\n\n`;
+                }
                 comment += '**Please fix these locally by running:**\n';
                 comment += '```bash\nnpx eslint --fix "tests/**/*.{js,ts,tsx}"\n```\n\n';
               }
@@ -162,9 +227,9 @@ jobs:
             comment += '---\n';
             comment += '📝 **Note:** These are non-blocking warnings. Your build will continue, but fixing these issues will improve code quality.\n\n';
             
-            // Add helpful tips for large issue counts
-            if (!prettierWithinLimit || !eslintWithinLimit) {
-              comment += '### 💡 Tips for fixing many issues at once:\n\n';
+            // Add helpful tips for large issue counts or large PRs
+            if (!prettierWithinLimit || (!eslintWithinLimit && !eslintConfigError) || prTooLarge) {
+              comment += '### 💡 Tips for better code quality:\n\n';
               comment += '1. **Fix all auto-fixable issues:**\n';
               comment += '   ```bash\n';
               comment += '   # Fix both Prettier and ESLint issues\n';
@@ -177,7 +242,12 @@ jobs:
               comment += '   echo "npx lint-staged" > .husky/pre-commit\n';
               comment += '   ```\n\n';
               comment += '3. **Configure your editor** to format on save (recommended)\n\n';
-              comment += '⚠️ **Note:** Due to GitHub\'s annotation limits, inline comments are only shown when there are fewer than 50 issues per tool.\n';
+              
+              if (prTooLarge) {
+                comment += '⚠️ **Note:** This PR is too large for inline annotations. Consider splitting large PRs into smaller, more focused changes.\n';
+              } else {
+                comment += '⚠️ **Note:** Due to the number of issues, inline annotations are limited to prevent overload.\n';
+              }
             }
             
             // Find and update existing comment or create new one
@@ -216,24 +286,30 @@ jobs:
             const prettierHasIssues = '${{ steps.prettier-precheck.outputs.has_issues }}' === 'true';
             const eslintErrors = parseInt('${{ steps.eslint-precheck.outputs.errors }}' || '0');
             const eslintWarnings = parseInt('${{ steps.eslint-precheck.outputs.warnings }}' || '0');
+            const eslintConfigError = '${{ steps.eslint-precheck.outputs.config_error }}' === 'true';
             
             let title, summary, conclusion;
             
-            if (!prettierHasIssues && eslintErrors === 0 && eslintWarnings === 0) {
+            if (!prettierHasIssues && eslintErrors === 0 && eslintWarnings === 0 && !eslintConfigError) {
               conclusion = 'success';
               title = '✅ All code quality checks passed';
               summary = 'No formatting or linting issues found.';
             } else {
               // Always use 'neutral' for any issues to show as warning
               conclusion = 'neutral';
-              if (eslintErrors > 0) {
+              if (eslintConfigError) {
+                title = '⚠️ ESLint configuration error';
+                summary = 'ESLint encountered a configuration error. Please check your ESLint setup.';
+              } else if (eslintErrors > 0) {
                 title = `⚠️ Found ${eslintErrors} error(s) and ${eslintWarnings} warning(s)`;
+                summary = 'Code has issues that should be fixed, but the build will continue.';
               } else if (eslintWarnings > 0) {
                 title = `⚠️ Found ${eslintWarnings} warning(s)`;
+                summary = 'Code has issues that should be fixed, but the build will continue.';
               } else {
                 title = '⚠️ Found formatting issues';
+                summary = 'Code has issues that should be fixed, but the build will continue.';
               }
-              summary = 'Code has issues that should be fixed, but the build will continue.';
             }
             
             // Create or update check run
@@ -268,16 +344,20 @@ jobs:
       
       # ───── LOG ISSUES BUT DON'T FAIL ─────
       - name: Log code quality issues
-        if: steps.prettier-precheck.outputs.has_issues == 'true' || steps.eslint-precheck.outputs.errors != '0' || steps.eslint-precheck.outputs.warnings != '0'
+        if: steps.prettier-precheck.outputs.has_issues == 'true' || steps.eslint-precheck.outputs.errors != '0' || steps.eslint-precheck.outputs.warnings != '0' || steps.eslint-precheck.outputs.config_error == 'true'
         run: |
           echo "::warning::Code quality issues detected!"
           if [ "${{ steps.prettier-precheck.outputs.has_issues }}" == "true" ]; then
             echo "::warning::Prettier formatting issues found - run 'npx prettier --write' to fix"
           fi
-          if [ "${{ steps.eslint-precheck.outputs.errors }}" != "0" ]; then
-            echo "::warning::ESLint errors found: ${{ steps.eslint-precheck.outputs.errors }}"
-          fi
-          if [ "${{ steps.eslint-precheck.outputs.warnings }}" != "0" ]; then
-            echo "::warning::ESLint warnings found: ${{ steps.eslint-precheck.outputs.warnings }}"
+          if [ "${{ steps.eslint-precheck.outputs.config_error }}" == "true" ]; then
+            echo "::warning::ESLint configuration error - please check your ESLint setup"
+          else
+            if [ "${{ steps.eslint-precheck.outputs.errors }}" != "0" ]; then
+              echo "::warning::ESLint errors found: ${{ steps.eslint-precheck.outputs.errors }}"
+            fi
+            if [ "${{ steps.eslint-precheck.outputs.warnings }}" != "0" ]; then
+              echo "::warning::ESLint warnings found: ${{ steps.eslint-precheck.outputs.warnings }}"
+            fi
           fi
           echo "✅ Continuing build despite linting issues..."
