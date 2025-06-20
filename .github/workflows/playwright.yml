@@ -1,13 +1,11 @@
-name: GUI Test Review
+name: GUI Test Review (Prettier Inline Suggest Debug)
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
 jobs:
-  build-test:
+  review-lint:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -15,105 +13,71 @@ jobs:
 
     steps:
       # Checkout code
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with: { fetch-depth: 0 }
 
-      # Node setup
-      - uses: actions/setup-node@v4
+      # Setup Node
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with: { node-version: 18 }
 
-      # reviewdog setup (fallback, not always sufficient, see next step)
-      - uses: reviewdog/action-setup@v1
-        with:
-          reviewdog_version: v0.17.3
+      # Install dependencies
+      - name: Install NPM dependencies
+        run: npm install
 
-      # Force download official static reviewdog binary for full features
-      - name: Download reviewdog static binary (force suggest support)
+      # Download reviewdog static binary for suggestion support (with debug!)
+      - name: Download reviewdog static binary
         run: |
           curl -sSL -o reviewdog.tgz https://github.com/reviewdog/reviewdog/releases/download/v0.17.3/reviewdog_0.17.3_Linux_x86_64.tar.gz
           tar -xzvf reviewdog.tgz
           sudo mv reviewdog /usr/local/bin/reviewdog
+          which reviewdog
           reviewdog -version
 
-      # NPM install
-      - name: Install NPM dependencies
-        run: npm install
+      # Show git status before linting
+      - name: Show git status before linting
+        run: |
+          echo "==== git status ===="
+          git status
+          echo "==== git diff (before) ===="
+          git diff
 
-      # ---- Prettier & ESLint Lint with reviewdog (inline, suggest) ----
-      - name: Lint, Prettier & ESLint (with reviewdog suggest)
+      # Prettier fix and diff
+      - name: Run Prettier and show diff
+        run: |
+          npx prettier --write "tests/**/*.{js,ts,tsx,json}"
+          echo "==== git status (after prettier) ===="
+          git status
+          echo "==== git diff (after prettier) ===="
+          git diff -- tests > prettier.diff || true
+          cat prettier.diff
+
+      # reviewdog suggest (with debug logs)
+      - name: Prettier reviewdog suggest (with debug)
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-        run: node scripts/lint.js
-        continue-on-error: true
-
-      # ---- Playwright etc. ----
-      - name: Playwright tests
-        run: node scripts/playwright-test.js
-
-      - name: Generate flow-chart
-        run: node scripts/generate-flowchart.js
-
-      - name: Build checklist
-        run: node scripts/checklist.js
-
-      - name: Build static HTML report
-        run: node scripts/generate-webpage.js
-
-      - name: Create test-summary badge
         run: |
-          jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
-            artifacts/playwright-summary.json > artifacts/test-summary.txt
+          echo "==== reviewdog binary ===="
+          which reviewdog
+          reviewdog -version
+          echo "==== cat prettier.diff ===="
+          cat prettier.diff
+          if [ -s prettier.diff ]; then
+            echo "==== running reviewdog ===="
+            cat prettier.diff | reviewdog -f=diff -name=prettier -reporter=github-pr-suggest -filter-mode=nofilter -level=info -fail-on-error=false
+          else
+            echo "No Prettier issues found or no diff."
+          fi
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gui-artifacts
-          path: artifacts/*
+      # Show event context for further debugging
+      - name: Dump event.json
+        run: cat $GITHUB_EVENT_PATH
 
-  deploy-report:
-    needs: build-test
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      # Run ESLint (optional, for completeness)
+      - name: ESLint (just to show errors, not as reviewdog)
+        run: npx eslint "tests/**/*.{js,ts,tsx}" || true
 
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { name: gui-artifacts, path: gui-artifacts }
-
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: gui-artifacts/web-report }
-
-      - id: deploy
-        uses: actions/deploy-pages@v4
-
-  comment_link:
-    if: github.event_name == 'pull_request'
-    needs: deploy-report
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with: { node-version: 18 }
-
-      - name: Install JS dependencies (Octokit, marked, etc.)
-        run: npm install
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: gui-artifacts
-          path: gui-artifacts
-
-      - name: Post / update GUI-test summary comment
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACTS_DIR: gui-artifacts
-          WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
-        run: node scripts/summary-comment.js
+      # Final output
+      - name: Final git status
+        run: git status
