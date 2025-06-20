@@ -34,17 +34,15 @@ jobs:
       #  run: npm install --no-save eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin
 
       # --- Prettier annotations ---
-      - name: Prettier (tests dir → Checks tab)
+      - name: Prettier (tests dir → Checks)
         continue-on-error: true
         uses: EPMatt/reviewdog-action-prettier@v1.2.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prettier_flags: 'tests/**/*.{js,ts,tsx,json}'
-          reporter: github-pr-check      # Checks API, unlimited annotations
-          filter_mode: file              # keep whole-project behaviour
+          reporter: github-pr-check      # ← uses Checks API
+          filter_mode: nofilter          # ← diff no longer fetched
           level: warning
-
-
 
       - name: ESLint via reviewdog
         continue-on-error: true
