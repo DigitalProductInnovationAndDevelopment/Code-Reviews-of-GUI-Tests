@@ -24,97 +24,32 @@ jobs:
         run: npm install
       
       #---------------------------------------------------
-      # Setup reviewdog
-      #---------------------------------------------------
-      - uses: reviewdog/action-setup@v1
-        with: { reviewdog_version: latest }
-      
-      #---------------------------------------------------
       # Run your original lint.js script for reports first
       #---------------------------------------------------
       - name: Run lint script for reports
         run: node scripts/lint.js
         continue-on-error: true
-        id: lint
       
       #---------------------------------------------------
-      # Prettier with reviewdog - focus on one file
+      # Use a dedicated Prettier action for annotations
       #---------------------------------------------------
-      - name: Prettier style check (reviewdog)
-        shell: bash
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Format the specific file we want to check
-          FILE="tests/demo-todo-app.spec.ts"
-          
-          # Temporarily save the original file
-          cp "$FILE" "$FILE.orig"
-          
-          # Format the file with prettier
-          npx prettier --write "$FILE"
-          
-          # Create a unified diff with context
-          diff -u "$FILE.orig" "$FILE" > prettier.patch || true
-          
-          # Fix the diff headers for reviewdog
-          sed -i "1s|--- |--- a/|" prettier.patch
-          sed -i "2s|+++ |+++ b/|" prettier.patch
-          
-          # Check if we have a diff
-          if [ -s prettier.patch ]; then
-            # Count the number of changes
-            CHANGES=$(cat prettier.patch | grep -E "^[+-][^+-]" | wc -l)
-            echo "Found $CHANGES Prettier issues in $FILE"
-            
-            # Limit to first 8 hunks to avoid GitHub annotation limits
-            # Extract hunks and limit them
-            awk 'BEGIN{p=0;c=0} /^@@/{p=1;c++;if(c>8)p=0} p' prettier.patch > prettier-limited.patch
-            
-            # Send to reviewdog
-            cat prettier-limited.patch | reviewdog -f=diff \
-                                                 -name="prettier" \
-                                                 -reporter=github-pr-review \
-                                                 -filter-mode=file \
-                                                 -level=warning
-            
-            # Restore the original file
-            mv "$FILE.orig" "$FILE"
-          else
-            echo "No Prettier issues found in $FILE"
-            rm -f "$FILE.orig"
-          fi
+      - name: Prettier check
+        uses: creyD/prettier_action@v4.3
+        with:
+          prettier_options: "--check tests/**/*.{js,ts,tsx,json}"
+          commit_options: ""  # Don't commit changes
+          only_changed: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
       
       #---------------------------------------------------
-      # ESLint with reviewdog - focus on one file
+      # Run ESLint with GitHub format
       #---------------------------------------------------
-      - name: ESLint check with reviewdog
-        shell: bash
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: ESLint with GitHub annotations
+        if: github.event_name == 'pull_request'
         run: |
-          # Run ESLint on the specific file
-          FILE="tests/demo-todo-app.spec.ts"
-          npx eslint "$FILE" -f json > eslint-output.json || true
-          
-          # Check if there are any issues
-          if [ -s eslint-output.json ] && [ "$(cat eslint-output.json)" != "[]" ]; then
-            # Count total issues
-            TOTAL_ISSUES=$(jq '[.[].messages | length] | add' eslint-output.json)
-            echo "Found $TOTAL_ISSUES ESLint issues in $FILE"
-            
-            # Limit the output to 8 messages maximum
-            jq '.[0].messages = (.[0].messages[0:8])' eslint-output.json > eslint-limited.json
-            
-            # Send to reviewdog
-            cat eslint-limited.json | reviewdog -f=eslint \
-                                             -name="eslint" \
-                                             -reporter=github-pr-review \
-                                             -filter-mode=file \
-                                             -level=warning
-          else
-            echo "No ESLint issues found in $FILE"
-          fi
+          # Run ESLint with GitHub formatter
+          npx eslint tests --ext .js,.ts,.tsx --format=github || true
       
       #---------------------------------------------------
       # Run your other steps
@@ -147,7 +82,7 @@ jobs:
         continue-on-error: true
       
       #---------------------------------------------------
-      # Create a combined PR comment with a note about limitations
+      # Create a PR comment with quick fix instructions
       #---------------------------------------------------
       - name: Create PR comment
         if: github.event_name == 'pull_request'
@@ -159,11 +94,9 @@ jobs:
             
             ### Prettier and ESLint 
             
-            Due to GitHub annotation limits, only the first 8 issues from `tests/demo-todo-app.spec.ts` are shown as inline comments.
+            Due to GitHub annotation limits, only a limited number of issues are shown as inline comments.
             
-            To see all issues, check the "Files changed" tab or run the fix commands locally.
-            
-            ### How to fix all issues locally
+            ### How to fix all issues
             
             ```bash
             # Fix Prettier issues:
