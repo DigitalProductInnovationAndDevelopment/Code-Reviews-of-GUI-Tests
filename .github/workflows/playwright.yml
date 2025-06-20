@@ -27,8 +27,7 @@ jobs:
       # Run your scripts for reporting first
       - name: Run existing lint script for reporting
         run: |
-          # Modify lint.js temporarily to disable reviewdog
-          cp scripts/lint.js scripts/lint.js.bak
+          # Create a simplified lint script that only generates reports
           cat > scripts/lint-for-report.js << 'EOF'
           #!/usr/bin/env node
           const { execSync } = require('child_process');
@@ -118,56 +117,106 @@ jobs:
           jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
             artifacts/playwright-summary.json > artifacts/test-summary.txt
       
-      # Set up reviewdog for annotations
+      # Setup reviewdog
       - uses: reviewdog/action-setup@v1
         with:
           reviewdog_version: latest
       
-      # Run Prettier and generate diffs for reviewdog
-      - name: Run Prettier with suggestions
+      # Run Prettier with limited fix suggestions
+      - name: Prettier limited suggestions
+        if: github.event_name == 'pull_request'
         run: |
-          # Run prettier and generate diffs
-          mkdir -p prettier_diffs
+          # First check which files need formatting
           FILES=$(npx prettier --list-different "tests/**/*.{js,ts,tsx,json}" || echo "")
           
           if [ -n "$FILES" ]; then
-            echo "Found files with formatting issues:"
+            echo "Files with Prettier issues:"
             echo "$FILES"
             
-            # For each file, generate a proper diff
-            for FILE in $FILES; do
-              echo "Processing $FILE"
-              # Create a formatted version
-              FORMATTED=$(npx prettier "$FILE")
-              # Save the formatted version
-              TEMP_FILE="prettier_diffs/$(basename "$FILE").formatted"
-              echo "$FORMATTED" > "$TEMP_FILE"
+            # Count total issues
+            TOTAL_FILES=$(echo "$FILES" | wc -l)
+            
+            # Get the first file only (to stay within GitHub limits)
+            FIRST_FILE=$(echo "$FILES" | head -n 1)
+            echo "Showing suggestions for: $FIRST_FILE"
+            
+            # Generate formatted version
+            FORMATTED=$(npx prettier "$FIRST_FILE")
+            TEMP_FILE="prettier_temp.formatted"
+            echo "$FORMATTED" > "$TEMP_FILE"
+            
+            # Generate diff
+            DIFF=$(diff -u "$FIRST_FILE" "$TEMP_FILE" || true)
+            
+            # Add proper git diff headers
+            DIFF=$(echo "$DIFF" | sed "1s|---|--- a/$FIRST_FILE|" | sed "2s|+++|+++ b/$FIRST_FILE|")
+            
+            # Save to file for debugging
+            echo "$DIFF" > prettier_diff.patch
+            
+            # Run reviewdog to create suggestions
+            echo "$DIFF" | reviewdog -f=diff -name=prettier -reporter=github-pr-review -filter-mode=nofilter -fail-on-error=false
+            
+            # Post a comment about remaining issues
+            if [ "$TOTAL_FILES" -gt 1 ]; then
+              REMAINING=$((TOTAL_FILES - 1))
               
-              # Generate a diff
-              DIFF_FILE="prettier_diffs/$(basename "$FILE").diff"
-              diff -u "$FILE" "$TEMP_FILE" > "$DIFF_FILE" || true
-              
-              # Add proper git diff headers
-              sed -i "1s|---|--- a/$FILE|" "$DIFF_FILE"
-              sed -i "2s|+++|+++ b/$FILE|" "$DIFF_FILE"
-              
-              # Run reviewdog on this diff
-              cat "$DIFF_FILE" | reviewdog -f=diff -name=prettier -reporter=github-pr-review -filter-mode=nofilter -fail-on-error=false
-            done
+              # Create a GitHub step summary
+              echo "## Prettier Issues" >> $GITHUB_STEP_SUMMARY
+              echo "Found **$TOTAL_FILES files** with Prettier formatting issues." >> $GITHUB_STEP_SUMMARY
+              echo "Showing suggestions for **$FIRST_FILE** only due to GitHub annotation limits." >> $GITHUB_STEP_SUMMARY
+              echo "**$REMAINING more files** need formatting:" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$FILES" | tail -n $REMAINING >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "Run \`npx prettier --write 'tests/**/*.{js,ts,tsx,json}'\` locally to fix all issues." >> $GITHUB_STEP_SUMMARY
+            fi
           else
-            echo "No files with formatting issues found"
+            echo "No Prettier issues found."
           fi
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      # Run ESLint with reviewdog for annotations
-      - name: ESLint Check
-        uses: reviewdog/action-eslint@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          eslint_flags: "tests --ext .js,.ts,.tsx"
-          fail_on_error: false
+      # Run ESLint with limited fix suggestions
+      - name: ESLint limited suggestions
+        if: github.event_name == 'pull_request'
+        run: |
+          # Run ESLint and capture important issues
+          mkdir -p eslint_results
+          
+          # Run ESLint and get JSON output
+          npx eslint tests --ext .js,.ts,.tsx -f json > eslint_results/all_issues.json || true
+          
+          # Count total issues
+          TOTAL_ISSUES=$(cat eslint_results/all_issues.json | jq '[.[].messages | length] | add')
+          
+          # Get up to 8 errors (to stay within GitHub limits)
+          cat eslint_results/all_issues.json | jq '[.[].messages | .[] | select(.severity == 2)] | .[0:8]' > eslint_results/errors.json
+          ERROR_COUNT=$(cat eslint_results/errors.json | jq 'length')
+          
+          # Get up to 8 warnings
+          cat eslint_results/all_issues.json | jq '[.[].messages | .[] | select(.severity == 1)] | .[0:8]' > eslint_results/warnings.json
+          WARNING_COUNT=$(cat eslint_results/warnings.json | jq 'length')
+          
+          # Create a file that reviewdog can process with limited issues
+          jq -s '[ .[] | { filePath: "tests/demo-todo-app.spec.ts", messages: . } ]' eslint_results/errors.json eslint_results/warnings.json > eslint_results/limited.json
+          
+          # Run reviewdog on the limited issues
+          cat eslint_results/limited.json | reviewdog -f=eslint -name=eslint -reporter=github-pr-review -filter-mode=nofilter -fail-on-error=false
+          
+          # Create a summary of remaining issues
+          if [ "$TOTAL_ISSUES" -gt $((ERROR_COUNT + WARNING_COUNT)) ]; then
+            REMAINING=$((TOTAL_ISSUES - ERROR_COUNT - WARNING_COUNT))
+            
+            # Create a GitHub step summary
+            echo "## ESLint Issues" >> $GITHUB_STEP_SUMMARY
+            echo "Found **$TOTAL_ISSUES total issues** with ESLint." >> $GITHUB_STEP_SUMMARY
+            echo "Showing **$ERROR_COUNT errors** and **$WARNING_COUNT warnings** due to GitHub annotation limits." >> $GITHUB_STEP_SUMMARY
+            echo "**$REMAINING more issues** need fixing." >> $GITHUB_STEP_SUMMARY
+            echo "Run \`npx eslint --fix tests\` locally to fix all auto-fixable issues." >> $GITHUB_STEP_SUMMARY
+          fi
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - uses: actions/upload-artifact@v4
         with:
