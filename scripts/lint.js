@@ -26,7 +26,7 @@ function runPrettier() {
     execSync('reviewdog -version', { stdio: 'inherit' });
     
     // Extract a limited diff to avoid GitHub annotation limits
-    const limitedDiff = limitDiffHunks(diff, 8);
+    const limitedDiff = limitDiffHunks(diff, 50);
     fs.writeFileSync('artifacts/prettier-limited-diff.txt', limitedDiff);
     
     // Use the limited diff with reviewdog
