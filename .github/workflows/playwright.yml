@@ -41,10 +41,11 @@ jobs:
         uses: EPMatt/reviewdog-action-prettier@v1.2.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          prettier_flags: 'tests/**/*.{js,ts,tsx,json}'
-          reporter: github-pr-check             # Checks tab + grey bars
+          #prettier_flags: 'tests/**/*.{js,ts,tsx,json}'
+          reporter: github-pr-preview             # Checks tab + grey bars
           filter_mode: nofilter                 # include lines outside PR diff
           level: warning
+          workdir: tests
 
       - name: ESLint via reviewdog action
         continue-on-error: true  
