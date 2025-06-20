@@ -127,21 +127,19 @@ jobs:
           fi
         continue-on-error: true
       
-      # Setup reviewdog
-      - uses: reviewdog/action-setup@v1
-        with:
-          reviewdog_version: latest
-        continue-on-error: true
-      
-      # Run Prettier with strictly limited fix suggestions
-      - name: Prettier limited suggestions
+      # Let's use GitHub native annotations instead of reviewdog
+      - name: Prettier Check and Annotations
         if: github.event_name == 'pull_request'
         run: |
           # Create dirs for temp files
           mkdir -p temp_files
           
-          # First check which files need formatting
-          FILES=$(npx prettier --list-different "tests/**/*.{js,ts,tsx,json}" || echo "")
+          # Find files with Prettier issues
+          PRETTIER_OUTPUT=$(npx prettier --check "tests/**/*.{js,ts,tsx,json}" 2>&1 || true)
+          echo "$PRETTIER_OUTPUT"
+          
+          # Extract the list of files with issues
+          FILES=$(echo "$PRETTIER_OUTPUT" | grep -oE "[^ ]+\.(js|ts|tsx|json)" | sort -u || echo "")
           
           if [ -n "$FILES" ]; then
             echo "Files with Prettier issues:"
@@ -150,93 +148,94 @@ jobs:
             # Count total issues
             TOTAL_FILES=$(echo "$FILES" | wc -l)
             
-            # Get the first file only (to stay within GitHub limits)
+            # For the first file, create fix suggestions
             FIRST_FILE=$(echo "$FILES" | head -n 1)
-            echo "Showing suggestions for: $FIRST_FILE"
-            
-            # Generate formatted version
-            FORMATTED=$(npx prettier "$FIRST_FILE")
-            TEMP_FILE="temp_files/prettier_temp.formatted"
-            echo "$FORMATTED" > "$TEMP_FILE"
-            
-            # Generate diff
-            DIFF=$(diff -u "$FIRST_FILE" "$TEMP_FILE" || true)
-            
-            # Add proper git diff headers
-            DIFF=$(echo "$DIFF" | sed "1s|---|--- a/$FIRST_FILE|" | sed "2s|+++|+++ b/$FIRST_FILE|")
-            
-            # Save to file for debugging
-            echo "$DIFF" > temp_files/prettier_diff.patch
-            
-            # Extract only first 5 changes from the diff to stay well under GitHub limits
-            # This extracts 5 "hunks" from the diff
-            DIFF_LIMITED=$(echo "$DIFF" | awk 'BEGIN{i=0} /^@@/{i++} i<=6' | head -n 100)
-            echo "$DIFF_LIMITED" > temp_files/prettier_diff_limited.patch
-            
-            # Run reviewdog to create suggestions (only on the limited diff)
-            echo "$DIFF_LIMITED" | reviewdog -f=diff -name=prettier -reporter=github-pr-review -filter-mode=nofilter -fail-on-error=false || true
-            
-            # Post a comment about remaining issues
-            if [ "$TOTAL_FILES" -gt 1 ]; then
-              REMAINING=$((TOTAL_FILES - 1))
+            if [ -n "$FIRST_FILE" ]; then
+              echo "Analyzing formatting issues in: $FIRST_FILE"
               
-              # Create a GitHub step summary
-              echo "## Prettier Issues" >> $GITHUB_STEP_SUMMARY
-              echo "Found **$TOTAL_FILES files** with Prettier formatting issues." >> $GITHUB_STEP_SUMMARY
-              echo "Showing a few suggestions for **$FIRST_FILE** only due to GitHub annotation limits." >> $GITHUB_STEP_SUMMARY
-              echo "**$REMAINING more files** need formatting:" >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-              echo "$FILES" | tail -n $REMAINING >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-              echo "Run \`npx prettier --write 'tests/**/*.{js,ts,tsx,json}'\` locally to fix all issues." >> $GITHUB_STEP_SUMMARY
+              # Create formatted version
+              FORMATTED=$(npx prettier "$FIRST_FILE")
+              ORIGINAL=$(cat "$FIRST_FILE")
+              
+              # Generate limited number of annotations (max 10)
+              ISSUES=0
+              LINE=1
+              ORIGINAL_LINES=()
+              FORMATTED_LINES=()
+              
+              # Read original file line by line
+              while IFS= read -r original_line; do
+                ORIGINAL_LINES+=("$original_line")
+              done <<< "$ORIGINAL"
+              
+              # Read formatted file line by line
+              while IFS= read -r formatted_line; do
+                FORMATTED_LINES+=("$formatted_line")
+              done <<< "$FORMATTED"
+              
+              # Compare line by line and create annotations
+              for i in "${!ORIGINAL_LINES[@]}"; do
+                if [ "$ISSUES" -ge 8 ]; then
+                  break  # Limit to 8 issues
+                fi
+                
+                if [ "${ORIGINAL_LINES[$i]}" != "${FORMATTED_LINES[$i]}" ]; then
+                  LINE_NUM=$((i+1))
+                  
+                  # Create GitHub annotation
+                  echo "::warning file=$FIRST_FILE,line=$LINE_NUM::Formatting issue - should be: ${FORMATTED_LINES[$i]}"
+                  
+                  ISSUES=$((ISSUES+1))
+                fi
+              done
+              
+              # Add a summary comment
+              if [ "$TOTAL_FILES" -gt 1 ]; then
+                REMAINING=$((TOTAL_FILES - 1))
+                
+                # Create a GitHub step summary
+                echo "## Prettier Issues" >> $GITHUB_STEP_SUMMARY
+                echo "Found **$TOTAL_FILES files** with Prettier formatting issues." >> $GITHUB_STEP_SUMMARY
+                echo "Showing a few suggestions for **$FIRST_FILE** only due to GitHub annotation limits." >> $GITHUB_STEP_SUMMARY
+                echo "**$REMAINING more files** need formatting:" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "$FILES" | tail -n $REMAINING >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "Run \`npx prettier --write 'tests/**/*.{js,ts,tsx,json}'\` locally to fix all issues." >> $GITHUB_STEP_SUMMARY
+              fi
             fi
           else
             echo "No Prettier issues found."
           fi
         continue-on-error: true
       
-      # Run ESLint with strictly limited fix suggestions
-      - name: ESLint limited suggestions
+      # Run ESLint with native GitHub annotations
+      - name: ESLint Check with Annotations
         if: github.event_name == 'pull_request'
         run: |
-          # Create dirs for temp files
-          mkdir -p temp_files/eslint_results
+          # Run ESLint with GitHub reporter
+          npx eslint tests --ext .js,.ts,.tsx --format=github || true
           
-          # Run ESLint and get JSON output
-          npx eslint tests --ext .js,.ts,.tsx -f json > temp_files/eslint_results/all_issues.json || true
+          # Also run ESLint with JSON format to get total counts
+          ESLINT_OUTPUT=$(npx eslint tests --ext .js,.ts,.tsx -f json || true)
           
-          # Check if we have valid JSON output
-          if jq empty temp_files/eslint_results/all_issues.json 2>/dev/null; then
-            # Count total issues
-            TOTAL_ISSUES=$(cat temp_files/eslint_results/all_issues.json | jq '[.[].messages | length] | add')
+          # Save for debugging
+          mkdir -p temp_files
+          echo "$ESLINT_OUTPUT" > temp_files/eslint-output.json
+          
+          # Count issues if we have valid JSON
+          if echo "$ESLINT_OUTPUT" | jq empty 2>/dev/null; then
+            TOTAL_ISSUES=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | length] | add')
+            ERROR_COUNT=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | .[] | select(.severity == 2)] | length')
+            WARNING_COUNT=$(echo "$ESLINT_OUTPUT" | jq '[.[].messages | .[] | select(.severity == 1)] | length')
             
-            # Get only 5 errors max (to stay well within GitHub limits)
-            cat temp_files/eslint_results/all_issues.json | jq '[.[].messages | .[] | select(.severity == 2)] | .[0:5]' > temp_files/eslint_results/errors.json
-            ERROR_COUNT=$(cat temp_files/eslint_results/errors.json | jq 'length')
-            
-            # Get only 5 warnings max
-            cat temp_files/eslint_results/all_issues.json | jq '[.[].messages | .[] | select(.severity == 1)] | .[0:5]' > temp_files/eslint_results/warnings.json
-            WARNING_COUNT=$(cat temp_files/eslint_results/warnings.json | jq 'length')
-            
-            # Create a file that reviewdog can process with limited issues
-            jq -s '[ .[] | { filePath: "tests/demo-todo-app.spec.ts", messages: . } ]' temp_files/eslint_results/errors.json temp_files/eslint_results/warnings.json > temp_files/eslint_results/limited.json
-            
-            # Run reviewdog on the limited issues
-            cat temp_files/eslint_results/limited.json | reviewdog -f=eslint -name=eslint -reporter=github-pr-review -filter-mode=nofilter -fail-on-error=false || true
-            
-            # Create a summary of remaining issues
-            if [ "$TOTAL_ISSUES" -gt $((ERROR_COUNT + WARNING_COUNT)) ]; then
-              REMAINING=$((TOTAL_ISSUES - ERROR_COUNT - WARNING_COUNT))
-              
-              # Create a GitHub step summary
-              echo "## ESLint Issues" >> $GITHUB_STEP_SUMMARY
-              echo "Found **$TOTAL_ISSUES total issues** with ESLint." >> $GITHUB_STEP_SUMMARY
-              echo "Showing **$ERROR_COUNT errors** and **$WARNING_COUNT warnings** due to GitHub annotation limits." >> $GITHUB_STEP_SUMMARY
-              echo "**$REMAINING more issues** need fixing." >> $GITHUB_STEP_SUMMARY
-              echo "Run \`npx eslint --fix tests\` locally to fix all auto-fixable issues." >> $GITHUB_STEP_SUMMARY
-            fi
-          else
-            echo "ESLint did not produce valid JSON output or found no issues."
+            # GitHub step summary for ESLint
+            echo "## ESLint Issues" >> $GITHUB_STEP_SUMMARY
+            echo "Found **$TOTAL_ISSUES total issues** with ESLint." >> $GITHUB_STEP_SUMMARY
+            echo "- **$ERROR_COUNT errors**" >> $GITHUB_STEP_SUMMARY
+            echo "- **$WARNING_COUNT warnings**" >> $GITHUB_STEP_SUMMARY
+            echo "GitHub shows only a limited number of annotations due to platform limits." >> $GITHUB_STEP_SUMMARY
+            echo "Run \`npx eslint --fix tests\` locally to fix all auto-fixable issues." >> $GITHUB_STEP_SUMMARY
           fi
         continue-on-error: true
       
