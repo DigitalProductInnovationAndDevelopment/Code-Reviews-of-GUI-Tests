@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-/**
- * Runs Prettier and ESLint, posts inline suggestions via reviewdog on PRs,
- * always writes artifacts/lint-summary.json.
- */
-
 const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
 
@@ -11,24 +6,21 @@ const IS_PR =
   process.env.GITHUB_EVENT_NAME === 'pull_request' ||
   process.env.GITHUB_EVENT_NAME === 'pull_request_target';
 
-const capture = cmd => execSync(cmd, { encoding: 'utf8' }).trim();
-
 function runPrettier() {
   console.log('\n▶ Prettier (write → diff → reviewdog)');
-  // Write/fix in-place, get diff
   execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
-  const diff = capture('git diff -- tests || true');
-  const files = diff ? capture('git diff --name-only -- tests').split('\n').filter(Boolean) : [];
+  const diff = execSync('git diff -- tests || true', { encoding: 'utf8' });
+  const files = diff ? execSync('git diff --name-only -- tests', { encoding: 'utf8' }).split('\n').filter(Boolean) : [];
   const totalChanges = (diff.match(/^[+-](?![+-]{3})/gm) || []).length;
 
-  // Inline suggestions (only in PR context)
   if (diff && IS_PR) {
+    execSync('reviewdog -version', { stdio: 'inherit' }); // Shows actual version used!
     const rd = spawnSync(
       'reviewdog',
       [
         '-f=diff',
         '-name=prettier',
-        '-reporter=github-pr-suggest', // "Apply suggestion" button!
+        '-reporter=github-pr-suggest', // ← must be "="
         '-filter-mode=nofilter',
         '-level=info',
         '-fail-on-error=false'
@@ -37,7 +29,7 @@ function runPrettier() {
     );
     if (rd.error) throw rd.error;
   }
-  execSync('git checkout -- .'); // Reset for next steps
+  execSync('git checkout -- .'); // Clean up for next steps
 
   return {
     filesWithIssues: files.length,
@@ -51,7 +43,7 @@ function runESLint() {
   console.log('\n▶ ESLint');
   let raw = '';
   try {
-    raw = capture('npx eslint tests --ext .js,.ts,.tsx -f json');
+    raw = execSync('npx eslint tests --ext .js,.ts,.tsx -f json', { encoding: 'utf8' });
   } catch (e) {
     raw = e.stdout?.toString() || '';
   }
