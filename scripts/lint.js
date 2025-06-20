@@ -1,48 +1,42 @@
 #!/usr/bin/env node
-/*  Lint summary generator  —  no Reviewdog calls
-    1. Ask Prettier which files are off (`--list-different`)
-    2. Rewrite them so we can capture an illustrative diff
-    3. Run ESLint and collect its JSON
-    4. Emit artifacts/lint-summary.json for summary-comment.js
-*/
+/**
+ * Generates artifacts/lint-summary.json (plus prettier-diff.txt & eslint-results.json)
+ * No Reviewdog calls and ALWAYS exits 0 so the pipeline keeps going.
+ */
 const { execSync } = require('child_process');
-const fs   = require('fs');
+const fs = require('fs');
 
-// ────────────────────────────────
-// PRETTIER
-// ────────────────────────────────
+// ────────────────  PRETTIER  ────────────────
 function runPrettier() {
   console.log('\n▶ Prettier (list → write → diff)');
 
-  // ➊ Get the list WITHOUT rewriting so we know the real count
-  let listOutput = '';
+  // 1️⃣ list files that need work
+  let list = '';
   try {
-    listOutput = execSync(
+    list = execSync(
       'npx prettier --list-different "tests/**/*.{js,ts,tsx,json}"',
-      { encoding: 'utf8' }
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
     );
   } catch (e) {
-    // non-zero exit means “files differ” – capture the list
-    listOutput = e.stdout?.toString() || '';
+    // prettier exits 1 when it finds unformatted files
+    list = (e.stdout || '') + (e.stderr || '');
   }
-  const files = listOutput.split('\n').filter(Boolean);
+  const files = list.split(/\r?\n/).filter(Boolean);
 
-  // ➋ If anything needs fixing, rewrite it so we can show a diff
+  // 2️⃣ rewrite them so we can build a sample diff
   let diff = '';
   let totalChanges = 0;
   if (files.length) {
     execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', {
       stdio: 'inherit',
     });
-
     diff = execSync('git diff -- tests', { encoding: 'utf8' });
     totalChanges = (diff.match(/^[+-](?![+-]{3})/gm) || []).length;
 
-    // save a sample diff for debugging
     fs.mkdirSync('artifacts', { recursive: true });
     fs.writeFileSync('artifacts/prettier-diff.txt', diff);
 
-    // restore the working tree so later steps run on clean code
+    // keep the working tree clean for later steps
     execSync('git checkout -- .');
   }
 
@@ -54,9 +48,7 @@ function runPrettier() {
   };
 }
 
-// ────────────────────────────────
-// ESLINT
-// ────────────────────────────────
+// ────────────────  ESLINT  ────────────────
 function runESLint() {
   console.log('\n▶ ESLint');
 
@@ -67,18 +59,17 @@ function runESLint() {
       { encoding: 'utf8' }
     );
   } catch (e) {
-    // eslint exits 1 when problems are found – capture its JSON
+    // eslint exits 1 when it finds problems
     raw = e.stdout?.toString() || '';
   }
 
   const results = raw ? JSON.parse(raw) : [];
-
   let errors = 0,
       warnings = 0,
       fixErr = 0,
       fixWarn = 0,
-      first   = '',
-      files   = new Set();
+      first = '',
+      files = new Set();
 
   results.forEach(f => {
     if (f.messages.length) files.add(f.filePath);
@@ -100,9 +91,7 @@ function runESLint() {
            fixableWarnings: fixWarn, first };
 }
 
-// ────────────────────────────────
-// MAIN
-// ────────────────────────────────
+// ────────────────  MAIN  ────────────────
 const prettier = runPrettier();
 const eslint   = runESLint();
 
@@ -112,5 +101,5 @@ fs.writeFileSync(
 );
 console.log('📝  artifacts/lint-summary.json written');
 
-// Always exit 0 so the pipeline continues
+// Never fail the job
 process.exit(0);

@@ -27,11 +27,6 @@ jobs:
 
 
       # ───── LINT & FORMAT (INLINE COMMENTS) ─────
-# --- Prettier with reviewdog (inline PR comments) ---
-      - name: Lint, Prettier & ESLint summary
-        run: node scripts/lint.js
-        continue-on-error: true
-
       - name: Prettier (reviewdog)
         uses: EPMatt/reviewdog-action-prettier@v1.2.0   # ← correct repo + version
         with:
@@ -50,6 +45,10 @@ jobs:
           reporter: github-pr-review   # ✅ inline
           filter_mode: added
           level: warning
+        continue-on-error: true
+
+      - name: Lint, Prettier & ESLint summary
+        run: node scripts/lint.js
         continue-on-error: true
 
       - name: Playwright tests
