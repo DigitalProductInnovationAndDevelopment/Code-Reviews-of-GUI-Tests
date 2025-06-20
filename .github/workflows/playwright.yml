@@ -30,61 +30,27 @@ jobs:
         with: { reviewdog_version: latest }
       
       #---------------------------------------------------
-      # Prettier with reviewdog for inline comments
+      # Prettier with reviewdog - exact copy from working workflow
       #---------------------------------------------------
-      - name: Prettier check with reviewdog
+      - name: Prettier style check (reviewdog)
         shell: bash
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # First check files without modifying them
-          PRETTIER_OUTPUT=$(npx prettier --check "tests/**/*.{js,ts,tsx,json}" 2>&1 || true)
-          
-          # Extract list of files with issues
-          FILES_WITH_ISSUES=$(echo "$PRETTIER_OUTPUT" | grep -oE "[^ ]+\.(js|ts|tsx|json)" | sort -u || echo "")
-          
-          if [ -n "$FILES_WITH_ISSUES" ]; then
-            # Count files
-            PRETTIER_FILES=$(echo "$FILES_WITH_ISSUES" | wc -l)
-            echo "prettier_files=$PRETTIER_FILES" >> $GITHUB_OUTPUT
-            
-            # Now create temporary formatted versions
-            mkdir -p temp_prettier
-            PRETTIER_CHANGES=0
-            
-            # Format each file and count changes
-            for FILE in $FILES_WITH_ISSUES; do
-              echo "Processing $FILE"
-              npx prettier "$FILE" > "temp_prettier/$(basename "$FILE").formatted"
-              FILE_CHANGES=$(diff -u "$FILE" "temp_prettier/$(basename "$FILE").formatted" | grep -E "^[+-][^+-]" | wc -l)
-              PRETTIER_CHANGES=$((PRETTIER_CHANGES + FILE_CHANGES))
-            done
-            
-            echo "prettier_issues=$PRETTIER_CHANGES" >> $GITHUB_OUTPUT
-            echo "Found $PRETTIER_FILES files with $PRETTIER_CHANGES Prettier issues"
-            
-            # Format the files for reviewdog to see the changes
-            npx prettier --write $FILES_WITH_ISSUES
-            
-            # Create diff and send to reviewdog
-            git diff -U0 --no-color > prettier.patch || true
+          npx prettier --write "tests/**/*.{js,ts,tsx,json}"
+          git diff -U0 --no-color > prettier.patch || true
+          if [ -s prettier.patch ]; then
             cat prettier.patch | reviewdog -f=diff \
-                                        -name="prettier" \
-                                        -reporter=github-pr-review \
-                                        -filter-mode=diff_context \
-                                        -level=warning
-            
-            # Reset changes
-            git checkout -- .
+                                           -name="prettier" \
+                                           -reporter=github-pr-review \
+                                           -filter-mode=diff_context \
+                                           -level=warning
           else
-            echo "prettier_files=0" >> $GITHUB_OUTPUT
-            echo "prettier_issues=0" >> $GITHUB_OUTPUT
-            echo "No Prettier issues found"
+            echo "No Prettier issues found."
           fi
-        id: prettier
       
       #---------------------------------------------------
-      # ESLint with reviewdog for inline comments
+      # ESLint with reviewdog
       #---------------------------------------------------
       - name: ESLint check with reviewdog
         shell: bash
@@ -101,58 +67,20 @@ jobs:
                                               -reporter=github-pr-review \
                                               -filter-mode=nofilter \
                                               -level=warning
-            
-            # Count ESLint issues
-            ESLINT_ERRORS=$(jq '[.[].messages | .[] | select(.severity == 2)] | length' eslint-output.json)
-            ESLINT_WARNINGS=$(jq '[.[].messages | .[] | select(.severity == 1)] | length' eslint-output.json)
-            ESLINT_TOTAL=$((ESLINT_ERRORS + ESLINT_WARNINGS))
-            ESLINT_FILES=$(jq '[.[].filePath] | unique | length' eslint-output.json)
-            
-            echo "eslint_errors=$ESLINT_ERRORS" >> $GITHUB_OUTPUT
-            echo "eslint_warnings=$ESLINT_WARNINGS" >> $GITHUB_OUTPUT
-            echo "eslint_total=$ESLINT_TOTAL" >> $GITHUB_OUTPUT
-            echo "eslint_files=$ESLINT_FILES" >> $GITHUB_OUTPUT
-            
-            echo "Found $ESLINT_TOTAL ESLint issues ($ESLINT_ERRORS errors, $ESLINT_WARNINGS warnings) in $ESLINT_FILES files"
           else
-            echo "eslint_errors=0" >> $GITHUB_OUTPUT
-            echo "eslint_warnings=0" >> $GITHUB_OUTPUT
-            echo "eslint_total=0" >> $GITHUB_OUTPUT
-            echo "eslint_files=0" >> $GITHUB_OUTPUT
-            echo "No ESLint issues found"
+            echo "No ESLint issues found."
           fi
-        id: eslint
       
       #---------------------------------------------------
-      # Create lint-summary.json for the dashboard
+      # Run your original lint.js script for reports
       #---------------------------------------------------
-      - name: Create lint-summary.json
-        run: |
-          mkdir -p artifacts
-          cat > artifacts/lint-summary.json << EOF
-          {
-            "prettier": {
-              "filesWithIssues": ${{ steps.prettier.outputs.prettier_files || 0 }},
-              "totalChanges": ${{ steps.prettier.outputs.prettier_issues || 0 }},
-              "files": []
-            },
-            "eslint": {
-              "files": ${{ steps.eslint.outputs.eslint_files || 0 }},
-              "errors": ${{ steps.eslint.outputs.eslint_errors || 0 }},
-              "warnings": ${{ steps.eslint.outputs.eslint_warnings || 0 }},
-              "fixableErrors": 0,
-              "fixableWarnings": 0
-            }
-          }
-          EOF
-          
-          echo "Created lint-summary.json with proper counts"
-          cat artifacts/lint-summary.json
-      
-      - name: Lint, Prettier & ESLint
+      - name: Run lint script for reports
         run: node scripts/lint.js
         continue-on-error: true
       
+      #---------------------------------------------------
+      # Run your other steps
+      #---------------------------------------------------
       - name: Playwright tests
         run: node scripts/playwright-test.js
         continue-on-error: true
@@ -180,46 +108,11 @@ jobs:
           fi
         continue-on-error: true
       
-      #---------------------------------------------------
-      # Create PR comment with summary
-      #---------------------------------------------------
-      - name: Create PR comment
-        if: github.event_name == 'pull_request'
-        uses: peter-evans/create-or-update-comment@v3
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            ## 🔍 Code Quality Check Results
-            
-            ### Prettier
-            
-            ${{ steps.prettier.outputs.prettier_files == '0' && '✅ No formatting issues found' || format('❌ Found **{0} files** with **{1} formatting issues**.', steps.prettier.outputs.prettier_files, steps.prettier.outputs.prettier_issues) }}
-            
-            ${{ steps.prettier.outputs.prettier_files != '0' && 'Check the "Files changed" tab to see inline suggestions for formatting issues.' || '' }}
-            
-            ### ESLint
-            
-            ${{ steps.eslint.outputs.eslint_total == '0' && '✅ No linting issues found' || format('❌ Found **{0} issues** ({1} errors, {2} warnings).', steps.eslint.outputs.eslint_total, steps.eslint.outputs.eslint_errors, steps.eslint.outputs.eslint_warnings) }}
-            
-            ${{ steps.eslint.outputs.eslint_total != '0' && 'Check the "Files changed" tab to see inline suggestions for ESLint issues.' || '' }}
-            
-            ### How to fix all issues locally
-            
-            ```bash
-            # Fix Prettier issues:
-            npx prettier --write "tests/**/*.{js,ts,tsx,json}"
-            
-            # Fix ESLint issues:
-            npx eslint --fix tests --ext .js,.ts,.tsx
-            ```
-            
-            Please fix these issues before merging!
-          edit-mode: replace
-      
       - uses: actions/upload-artifact@v4
         with:
           name: gui-artifacts
           path: artifacts/*
+        continue-on-error: true
   
   deploy-report:
     needs: build-test
