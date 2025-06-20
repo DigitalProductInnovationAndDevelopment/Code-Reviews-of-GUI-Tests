@@ -39,9 +39,6 @@
     "@octokit/core": "^5.0.0",
     "@mermaid-js/mermaid-cli": "10.6.1",
     "marked": "15.0.12",
-    "jq": "^1.6.0",
-    "@typescript-eslint/eslint-plugin": "^7.10.0",
-    "@typescript-eslint/parser": "^7.10.0",
-    "typescript": "^5.4.5"                     
+    "jq": "^1.6.0"                       
   }
 }
