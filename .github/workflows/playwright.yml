@@ -20,6 +20,9 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
       
+      - name: Install NPM dependencies
+        run: npm install
+      
       #---------------------------------------------------
       # Setup reviewdog
       #---------------------------------------------------
@@ -34,20 +37,51 @@ jobs:
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npx prettier --write "tests/**/*.{js,ts,tsx,json}"
-          git diff -U0 --no-color > prettier.patch || true
-          if [ -s prettier.patch ]; then
+          # First check files without modifying them
+          PRETTIER_OUTPUT=$(npx prettier --check "tests/**/*.{js,ts,tsx,json}" 2>&1 || true)
+          
+          # Extract list of files with issues
+          FILES_WITH_ISSUES=$(echo "$PRETTIER_OUTPUT" | grep -oE "[^ ]+\.(js|ts|tsx|json)" | sort -u || echo "")
+          
+          if [ -n "$FILES_WITH_ISSUES" ]; then
+            # Count files
+            PRETTIER_FILES=$(echo "$FILES_WITH_ISSUES" | wc -l)
+            echo "prettier_files=$PRETTIER_FILES" >> $GITHUB_OUTPUT
+            
+            # Now create temporary formatted versions
+            mkdir -p temp_prettier
+            PRETTIER_CHANGES=0
+            
+            # Format each file and count changes
+            for FILE in $FILES_WITH_ISSUES; do
+              echo "Processing $FILE"
+              npx prettier "$FILE" > "temp_prettier/$(basename "$FILE").formatted"
+              FILE_CHANGES=$(diff -u "$FILE" "temp_prettier/$(basename "$FILE").formatted" | grep -E "^[+-][^+-]" | wc -l)
+              PRETTIER_CHANGES=$((PRETTIER_CHANGES + FILE_CHANGES))
+            done
+            
+            echo "prettier_issues=$PRETTIER_CHANGES" >> $GITHUB_OUTPUT
+            echo "Found $PRETTIER_FILES files with $PRETTIER_CHANGES Prettier issues"
+            
+            # Format the files for reviewdog to see the changes
+            npx prettier --write $FILES_WITH_ISSUES
+            
+            # Create diff and send to reviewdog
+            git diff -U0 --no-color > prettier.patch || true
             cat prettier.patch | reviewdog -f=diff \
-                                         -name="prettier" \
-                                         -reporter=github-pr-review \
-                                         -filter-mode=diff_context \
-                                         -level=warning
+                                        -name="prettier" \
+                                        -reporter=github-pr-review \
+                                        -filter-mode=diff_context \
+                                        -level=warning
+            
+            # Reset changes
+            git checkout -- .
           else
-            echo "No Prettier issues found."
+            echo "prettier_files=0" >> $GITHUB_OUTPUT
+            echo "prettier_issues=0" >> $GITHUB_OUTPUT
+            echo "No Prettier issues found"
           fi
-      
-      - name: Install NPM dependencies
-        run: npm install
+        id: prettier
       
       #---------------------------------------------------
       # ESLint with reviewdog for inline comments
@@ -67,32 +101,8 @@ jobs:
                                               -reporter=github-pr-review \
                                               -filter-mode=nofilter \
                                               -level=warning
-          else
-            echo "No ESLint issues found."
-          fi
-      
-      #---------------------------------------------------
-      # Generate accurate counts for the dashboard
-      #---------------------------------------------------
-      - name: Generate accurate counts
-        id: count-issues
-        run: |
-          # Count Prettier issues
-          if [ -s prettier.patch ]; then
-            # Count only the actual changed lines (not context/metadata)
-            PRETTIER_CHANGES=$(cat prettier.patch | grep -E "^[+-][^+-]" | wc -l)
-            PRETTIER_FILES=$(git diff --name-only | grep -E "\.(js|ts|tsx|json)$" | wc -l)
-            echo "prettier_issues=$PRETTIER_CHANGES" >> $GITHUB_OUTPUT
-            echo "prettier_files=$PRETTIER_FILES" >> $GITHUB_OUTPUT
-            echo "Found $PRETTIER_FILES files with $PRETTIER_CHANGES Prettier issues"
-          else
-            echo "prettier_issues=0" >> $GITHUB_OUTPUT
-            echo "prettier_files=0" >> $GITHUB_OUTPUT
-            echo "No Prettier issues found"
-          fi
-          
-          # Count ESLint issues
-          if [ -s eslint-output.json ] && [ "$(cat eslint-output.json)" != "[]" ]; then
+            
+            # Count ESLint issues
             ESLINT_ERRORS=$(jq '[.[].messages | .[] | select(.severity == 2)] | length' eslint-output.json)
             ESLINT_WARNINGS=$(jq '[.[].messages | .[] | select(.severity == 1)] | length' eslint-output.json)
             ESLINT_TOTAL=$((ESLINT_ERRORS + ESLINT_WARNINGS))
@@ -111,6 +121,7 @@ jobs:
             echo "eslint_files=0" >> $GITHUB_OUTPUT
             echo "No ESLint issues found"
           fi
+        id: eslint
       
       #---------------------------------------------------
       # Create lint-summary.json for the dashboard
@@ -121,14 +132,14 @@ jobs:
           cat > artifacts/lint-summary.json << EOF
           {
             "prettier": {
-              "filesWithIssues": ${{ steps.count-issues.outputs.prettier_files || 0 }},
-              "totalChanges": ${{ steps.count-issues.outputs.prettier_issues || 0 }},
+              "filesWithIssues": ${{ steps.prettier.outputs.prettier_files || 0 }},
+              "totalChanges": ${{ steps.prettier.outputs.prettier_issues || 0 }},
               "files": []
             },
             "eslint": {
-              "files": ${{ steps.count-issues.outputs.eslint_files || 0 }},
-              "errors": ${{ steps.count-issues.outputs.eslint_errors || 0 }},
-              "warnings": ${{ steps.count-issues.outputs.eslint_warnings || 0 }},
+              "files": ${{ steps.eslint.outputs.eslint_files || 0 }},
+              "errors": ${{ steps.eslint.outputs.eslint_errors || 0 }},
+              "warnings": ${{ steps.eslint.outputs.eslint_warnings || 0 }},
               "fixableErrors": 0,
               "fixableWarnings": 0
             }
@@ -138,9 +149,10 @@ jobs:
           echo "Created lint-summary.json with proper counts"
           cat artifacts/lint-summary.json
       
-      #---------------------------------------------------
-      # Run your other tests and steps
-      #---------------------------------------------------
+      - name: Lint, Prettier & ESLint
+        run: node scripts/lint.js
+        continue-on-error: true
+      
       - name: Playwright tests
         run: node scripts/playwright-test.js
         continue-on-error: true
@@ -181,15 +193,15 @@ jobs:
             
             ### Prettier
             
-            ${{ steps.count-issues.outputs.prettier_files == '0' && '✅ No formatting issues found' || format('❌ Found **{0} files** with **{1} formatting issues**.', steps.count-issues.outputs.prettier_files, steps.count-issues.outputs.prettier_issues) }}
+            ${{ steps.prettier.outputs.prettier_files == '0' && '✅ No formatting issues found' || format('❌ Found **{0} files** with **{1} formatting issues**.', steps.prettier.outputs.prettier_files, steps.prettier.outputs.prettier_issues) }}
             
-            ${{ steps.count-issues.outputs.prettier_files != '0' && 'Check the "Files changed" tab to see inline suggestions for formatting issues.' || '' }}
+            ${{ steps.prettier.outputs.prettier_files != '0' && 'Check the "Files changed" tab to see inline suggestions for formatting issues.' || '' }}
             
             ### ESLint
             
-            ${{ steps.count-issues.outputs.eslint_total == '0' && '✅ No linting issues found' || format('❌ Found **{0} issues** ({1} errors, {2} warnings).', steps.count-issues.outputs.eslint_total, steps.count-issues.outputs.eslint_errors, steps.count-issues.outputs.eslint_warnings) }}
+            ${{ steps.eslint.outputs.eslint_total == '0' && '✅ No linting issues found' || format('❌ Found **{0} issues** ({1} errors, {2} warnings).', steps.eslint.outputs.eslint_total, steps.eslint.outputs.eslint_errors, steps.eslint.outputs.eslint_warnings) }}
             
-            ${{ steps.count-issues.outputs.eslint_total != '0' && 'Check the "Files changed" tab to see inline suggestions for ESLint issues.' || '' }}
+            ${{ steps.eslint.outputs.eslint_total != '0' && 'Check the "Files changed" tab to see inline suggestions for ESLint issues.' || '' }}
             
             ### How to fix all issues locally
             
