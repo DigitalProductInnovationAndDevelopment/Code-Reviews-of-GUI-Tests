@@ -37,14 +37,23 @@ jobs:
         with: { reviewdog_version: latest }
         
       # --- Prettier annotations ---
-      - name: ESLint via reviewdog action
+      - name: Get list of changed files
+        id: changed
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            tests/**/*.{js,ts,tsx}
+
+      - name: Run ESLint only on changed files
+        if: steps.changed.outputs.any_changed == 'true'
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          eslint_flags: 'tests/**/*.{js,ts,tsx}'
+          eslint_flags: ${{ steps.changed.outputs.all_changed_files }}
           level: warning
           reporter: github-pr-review
           filter_mode: nofilter
+
 
       - name: Lint, Prettier & ESLint summary
         run: node scripts/lint.js
