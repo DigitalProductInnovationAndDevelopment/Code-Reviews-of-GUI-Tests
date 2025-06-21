@@ -13,11 +13,6 @@
     "allowJs": true,
     "checkJs": true
   },
-  "include": [
-    "tests/**/*.ts",
-    "tests/**/*.js"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["tests/**/*.ts", "tests/**/*.js"], // Changed this line
+  "exclude": ["node_modules"] // Changed this line
 }
