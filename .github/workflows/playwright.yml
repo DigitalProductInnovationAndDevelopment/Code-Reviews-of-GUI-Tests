@@ -9,9 +9,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
 
     steps:
@@ -20,7 +19,9 @@ jobs:
     #---------------------------------------------------
     - name: Checkout code
       uses: actions/checkout@v3
-      with: { fetch-depth: 0 }
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.ref }}
 
     #---------------------------------------------------
     # 1 – reviewdog CLI
@@ -71,6 +72,65 @@ jobs:
     - name: Run Playwright tests
       run: npx playwright test
 
+    # --- START OF NEW STEPS FOR SCREENSHOT PUBLISHING ---
+
+    # Prepare the directory for PR-specific screenshots on GitHub Pages
+    - name: Prepare PR Screenshots for GitHub Pages
+      if: github.event_name == 'pull_request' # Only for PRs
+      run: |
+        PR_DIR="docs/pr/${{ github.event.pull_request.number }}/screenshots"
+        mkdir -p "$PR_DIR"
+        cp published-screenshots/*.png "$PR_DIR/"
+        echo "Copied screenshots to $PR_DIR/"
+        ls -lh "$PR_DIR/" # For debugging, shows what was copied
+
+    # Commit and Push PR Screenshots to GitHub Pages
+    - name: Commit and Push PR Screenshots to GitHub Pages
+      if: github.event_name == 'pull_request' # Only for PRs
+      uses: EndBug/add-and-commit@v9 # Use this action to commit and push changes
+      with:
+        add: 'docs/pr/${{ github.event.pull_request.number }}/screenshots/'
+        message: 'Docs: Publish Playwright screenshots for PR #${{ github.event.pull_request.number }} [skip ci]'
+        default_author: github_actions
+        push: true
+
+    # Generate Markdown for screenshots with their public URLs
+    - name: Generate Screenshot Markdown for PR Comment
+      id: generate_screenshot_markdown
+      if: github.event_name == 'pull_request' # Only for PRs
+      run: |
+        REPO_OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+        REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+        PR_NUMBER="${{ github.event.pull_request.number }}"
+        PR_SCREENSHOTS_LOCAL_DIR="docs/pr/${PR_NUMBER}/screenshots"
+
+        GITHUB_PAGES_BASE_URL="https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/pr/${PR_NUMBER}/screenshots/"
+
+        # --- DEBUGGING: List files in the directory we're trying to read ---
+        echo "Attempting to read from: $PR_SCREENSHOTS_LOCAL_DIR"
+        ls -lh "$PR_SCREENSHOTS_LOCAL_DIR" || echo "Directory does not exist or is empty here."
+        # --- END DEBUGGING ---
+
+        IMAGE_MARKDOWN=""
+        if [ -d "$PR_SCREENSHOTS_LOCAL_DIR" ]; then
+          for img_file in "$PR_SCREENSHOTS_LOCAL_DIR"/*.png; do
+            if [ -f "$img_file" ]; then
+              img_name=$(basename "$img_file")
+              img_url="${GITHUB_PAGES_BASE_URL}${img_name}"
+              IMAGE_MARKDOWN+="![${img_name}](${img_url})\n\n"
+            fi
+          done
+        else
+          echo "Warning: Local directory '$PR_SCREENSHOTS_LOCAL_DIR' does not exist for Markdown generation."
+        fi
+
+        echo "pr_screenshots_markdown<<EOF" >> $GITHUB_OUTPUT
+        echo "$IMAGE_MARKDOWN" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+      shell: bash
+
+    # --- END OF NEW STEPS FOR SCREENSHOT PUBLISHING ---
+
     #---------------------------------------------------
     # 6 – Upload HTML report
     #---------------------------------------------------
@@ -82,38 +142,21 @@ jobs:
         path: playwright-report/
 
     #---------------------------------------------------
-    # 7 – Extract Playwright test summary
+    # 7 – Extract test summary
     #---------------------------------------------------
-    - name: Extract Playwright summary
+    - name: Extract test summary
       id: summary
-      shell: bash
       run: |
-        REPORT="playwright-metrics.json"
-
-        if [ ! -f "$REPORT" ]; then
-            echo "$REPORT not found!"
-            exit 1
-        fi
-
+        REPORT=metrics.json
         TOTAL=$(jq '[..|objects|select(has("status"))] | length' "$REPORT")
         PASSED=$(jq '[..|objects|select(.status?=="expected")] | length' "$REPORT")
-        FAILED=$(jq '[..|objects|select(.status?=="failed")] | length' "$REPORT")
+        FAILED=$(jq '[..|objects|select(.status?=="failed")]    | length' "$REPORT")
         SKIPPED=$(jq '[..|objects|select(.status?=="skipped")] | length' "$REPORT")
         DURATION=$(jq '.stats.duration*1000|floor' "$REPORT")
-
-        if [ "$TOTAL" -eq 0 ]; then
-            PASS_RATE=0.00
-        else
-            PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($PASSED/$TOTAL)*100}")
-        fi
-
-        echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
-        echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
-        echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
-        echo "skipped=$SKIPPED" >> "$GITHUB_OUTPUT"
-        echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
-        echo "passrate=$PASS_RATE" >> "$GITHUB_OUTPUT"
-
+        PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($TOTAL==0)?0:($PASSED/$TOTAL)*100}")
+        for k in total passed failed skipped duration passrate; do
+          eval "echo \"$k=\${${k^^}}\" >> \$GITHUB_OUTPUT"
+        done
 
     #---------------------------------------------------
     # 8 – ESLint (tests only)
@@ -121,50 +164,28 @@ jobs:
     - name: Run ESLint on GUI tests
       shell: bash
       run: |
-        npx eslint "tests/**/*.{js,ts,tsx}" -f json -o eslint-tests.json || true
+        npx eslint "tests/**/*.{js,ts,tsx}" -f stylish > eslint-tests.txt || true
 
     - name: Upload ESLint report
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: eslint-test-report
-        path: eslint-tests.json
+        path: eslint-tests.txt
 
     - name: Read ESLint report (preview)
       id: lint_summary
       run: |
         echo 'summary<<EOF' >> $GITHUB_OUTPUT
-        jq '.' eslint-tests.json | head -n 20 >> $GITHUB_OUTPUT
+        head -n 20 eslint-tests.txt >> $GITHUB_OUTPUT
         echo 'EOF' >> $GITHUB_OUTPUT
 
-
-   #---------------------------------------------------
-    # 9 – Extract ESLint test summary
     #---------------------------------------------------
-    - name: Extract ESLint summary
-      id: eslint_summary
-      run: |
-        REPORT="eslint-tests.json"
-        TOTAL_FILES=$(jq length "$REPORT")
-        ERRORS=$(jq '[.[] | .errorCount] | add' "$REPORT")
-        WARNINGS=$(jq '[.[] | .warningCount] | add' "$REPORT")
-        FIXABLE_ERRORS=$(jq '[.[] | .fixableErrorCount] | add' "$REPORT")
-        FIXABLE_WARNINGS=$(jq '[.[] | .fixableWarningCount] | add' "$REPORT")
-
-        echo "total_files=$TOTAL_FILES" >> "$GITHUB_OUTPUT"
-        echo "errors=$ERRORS" >> "$GITHUB_OUTPUT"
-        echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
-        echo "fixable_errors=$FIXABLE_ERRORS" >> "$GITHUB_OUTPUT"
-        echo "fixable_warnings=$FIXABLE_WARNINGS" >> "$GITHUB_OUTPUT"
-
-
-    #---------------------------------------------------
-    # 10 – Generate Suite→Spec Mermaid chart (flowchart.png)
+    # 9 – Generate Suite→Spec Mermaid chart (flowchart.png)
     #---------------------------------------------------
     - name: Generate test-flow chart
       shell: bash
       run: |
-        REPORT="playwright-metrics.json"
         set -e
         echo "graph TD" > flowchart.mmd
 
@@ -176,7 +197,7 @@ jobs:
               $suite.specs[]? as $spec |
                 ($spec.title // "NO_SPEC_TITLE") as $specTitle |
                 [$fileTitle, $suiteTitle, $specTitle] | @tsv
-        ' "$REPORT" |
+        ' metrics.json |
         while IFS=$'\t' read -r fileTitle suiteTitle specTitle; do
           # Build unique, safe IDs by combining parent and child
           fileId=$(echo "$fileTitle" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
@@ -205,8 +226,7 @@ jobs:
 
         ls -lh flowchart.png
 
-
-    - name: Show flowchart.mmd for debugging  
+    - name: Show flowchart.mmd for debugging
       run: cat flowchart.mmd
 
     - name: Upload test-flow chart
@@ -217,33 +237,33 @@ jobs:
         path: flowchart.png
 
     #---------------------------------------------------
-    # 11 – Sticky PR comment
+    # 10 – Sticky PR comment
     #---------------------------------------------------
     - name: Comment on PR with results
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         message: |
           ## Playwright Test Metrics
-          *Total:* **${{ steps.summary.outputs.total }}**  
-          *Passed:* **${{ steps.summary.outputs.passed }}**  
-          *Failed:* **${{ steps.summary.outputs.failed }}**  
+          *Total:* **${{ steps.summary.outputs.total }}**
+          *Passed:* **${{ steps.summary.outputs.passed }}**
+          *Failed:* **${{ steps.summary.outputs.failed }}**
           *Skipped:* **${{ steps.summary.outputs.skipped }}**
 
-          *Duration:* **${{ steps.summary.outputs.duration }} ms**  
-          *Pass Rate:* **${{ steps.summary.outputs.passrate }} %**
-         
- 
-          ## ESLint Test Metrics
-          *Files Checked:* **${{ steps.eslint_summary.outputs.total_files }}**  
-          *Errors:* **${{ steps.eslint_summary.outputs.errors }}**  
-          *Warnings:* **${{ steps.eslint_summary.outputs.warnings }}**  
-          *Fixable Errors:* **${{ steps.eslint_summary.outputs.fixable_errors }}**  
-          *Fixable Warnings:* **${{ steps.eslint_summary.outputs.fixable_warnings }}**
+          Duration: **${{ steps.summary.outputs.duration }} ms**
+          Pass Rate: **${{ steps.summary.outputs.passrate }} %**
+
+          ## ESLint (GUI tests)
           ```
           ${{ steps.lint_summary.outputs.summary }}
           ```
 
-          ## Test-Flow Chart  
+          ## Test-Flow Chart
+          # Note: The flowchart.png is uploaded as an artifact. To embed it directly like screenshots,
+          # you would also need to copy it into the 'published-screenshots' directory in step 9,
+          # and then reference it using the PR-specific GitHub Pages URL.
           Artifact: **test-flow-chart → flowchart.png**
+
+          ## Playwright Screenshots for this PR
+          ${{ steps.generate_screenshot_markdown.outputs.pr_screenshots_markdown }}
 
           _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
