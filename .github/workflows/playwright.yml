@@ -87,22 +87,12 @@ jobs:
     - name: Checkout base version of test files from main
       run: |
         git fetch origin main # Ensure origin/main is up-to-date
-        mkdir -p tests_main_version # Directory to store main's test files
-
-        # Iterate through files changed in tests/ relative to main,
-        # and get their 'main' version.
-        for file in $(git diff --name-only origin/main HEAD -- tests/ 2>/dev/null); do
-          if [ -f "$file" ]; then # Only process if the file exists in current PR (might be deleted in PR)
-            # Create parent directories in tests_main_version if they don't exist
-            mkdir -p "tests_main_version/$(dirname "$file")"
-            # Get the version of the file from origin/main and put it into tests_main_version
-            git show origin/main:"$file" > "tests_main_version/$file" || { echo "Failed to get $file from origin/main."; }
-          fi
-        done
-        # Overwrite the 'tests/' directory with the extracted main version for the 'before' run
-        rm -rf tests/ # Remove current PR's tests/
-        rsync -a tests_main_version/ tests/ || { echo "rsync tests_main_version to tests/ failed. Exiting."; exit 1; }
-        echo "Contents of tests/ after checking out main's version:" # Debugging
+        # Directly checkout the 'tests/' directory from origin/main.
+        # This will overwrite the current 'tests/' with main's version.
+        # Use '|| true' to allow this step to pass even if 'tests/' isn't found on 'origin/main'
+        # (e.g., if it's a brand new test folder in the PR).
+        git checkout origin/main -- tests/ || { echo "Warning: Failed to checkout tests/ from origin/main. This might be expected if 'tests/' is new in the PR or empty on main."; true; }
+        echo "Contents of tests/ after checking out main's version (for 'before' run):" # Debugging
         ls -laR tests/ 
 
     # Step C: Run Playwright on base version (for "before" view)
@@ -114,8 +104,8 @@ jobs:
         # Create the main output directory for Playwright's artifacts
         mkdir -p playwright-artifacts-before || true
         echo "Running Playwright 'before' tests, outputting to: playwright-artifacts-before"
-        # Use '--output' to force Playwright to put ALL artifacts (screenshots, traces, HTML report) here
-        npx playwright test --output=playwright-artifacts-before --debug || true 
+        # Run in --headless mode to avoid XServer issues on CI. Removed --debug here.
+        npx playwright test --output=playwright-artifacts-before --headless || true 
         
         echo "Contents of playwright-artifacts-before after 'before' tests:" # Debugging: list contents after run
         ls -laR playwright-artifacts-before || true 
@@ -127,7 +117,7 @@ jobs:
         # Move the backup back to become the PR's tests/
         rsync -a tests_pr_backup/ tests/ || { echo "rsync tests_pr_backup to tests/ failed. Exiting."; exit 1; }
         rm -rf tests_pr_backup/ # Clean up the backup directory
-        rm -rf tests_main_version/ # Clean up the temporary main version directory
+        # tests_main_version cleanup is no longer needed with the new git checkout approach
         echo "Contents of tests/ after restoring PR's version:" # Debugging
         ls -laR tests/ 
 
@@ -142,8 +132,8 @@ jobs:
         # Create the main output directory for Playwright's artifacts
         mkdir -p playwright-artifacts-pr || true
         echo "Running Playwright 'PR' tests, outputting to: playwright-artifacts-pr"
-        # Use '--output' to force Playwright to put ALL artifacts here
-        npx playwright test --output=playwright-artifacts-pr --debug || true
+        # Run in --headless mode to avoid XServer issues on CI. Removed --debug here.
+        npx playwright test --output=playwright-artifacts-pr --headless || true
 
         echo "Contents of playwright-artifacts-pr after 'PR' tests:" # Debugging: list contents after run
         ls -laR playwright-artifacts-pr || true 
