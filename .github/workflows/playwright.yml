@@ -89,9 +89,8 @@ jobs:
         git fetch origin main # Ensure origin/main is up-to-date
         mkdir -p tests_main_version # Directory to store main's test files
 
-        # Friend's approach: Iterate through files changed in tests/ relative to main,
+        # Iterate through files changed in tests/ relative to main,
         # and get their 'main' version.
-        # Ensure mkdir -p is used for subdirectories if your tests/ has them.
         for file in $(git diff --name-only origin/main HEAD -- tests/ 2>/dev/null); do
           if [ -f "$file" ]; then # Only process if the file exists in current PR (might be deleted in PR)
             # Create parent directories in tests_main_version if they don't exist
@@ -373,7 +372,7 @@ jobs:
     - name: Generate test-flow chart
       shell: bash
       run: |
-        export LC_ALL=C # Add this line to fix the 'tr' error
+        export LC_ALL=C # Keep this line, it's generally good practice
         set -e
         # The JSON report for the flowchart is now results.json inside playwright-artifacts-pr
         REPORT_FILE="playwright-artifacts-pr/results.json" 
@@ -396,11 +395,12 @@ jobs:
               [$fileTitle, $suiteTitle, $specTitle] | @tsv
         ' "$REPORT_FILE" |
         while IFS=$'\t' read -r fileTitle suiteTitle specTitle; do
-          # Build unique, safe IDs by combining parent and child
-          fileId=$(echo "$fileTitle" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
-          suiteId=$(echo "${fileTitle}_${suiteTitle}" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
-          specId=$(echo "${fileTitle}_${suiteTitle}_${specTitle}" | tr -c 'A-Za-Z0-9' '_' | sed 's/^_*\|_*$//g')
-
+          # Build unique, safe IDs by replacing non-alphanumeric characters with underscores
+          # using sed, which is generally more robust to locale issues with character classes.
+          fileId=$(echo "$fileTitle" | sed 's/[^a-zA-Z0-9]/_/g' | sed 's/^_*\|_*$//g')
+          suiteId=$(echo "${fileTitle}_${suiteTitle}" | sed 's/[^a-zA-Z0-9]/_/g' | sed 's/^_*\|_*$//g')
+          specId=$(echo "${fileTitle}_${suiteTitle}_${specTitle}" | sed 's/[^a-zA-Z0-9]/_/g' | sed 's/^_*\|_*$//g')
+        
           # File node
           if ! grep -q "^  ${fileId}\[" flowchart.mmd; then
             echo "  ${fileId}[\"${fileTitle}\"]" >> flowchart.mmd
@@ -413,14 +413,14 @@ jobs:
           # Spec node/edge
           echo "  ${suiteId} --> ${specId}[\"${specTitle}\"]" >> flowchart.mmd
         done
-
+        
         printf '{ "args": ["--no-sandbox","--disable-setuid-sandbox"] }\n' > puppeteer.json
-
+        
         npx -y @mermaid-js/mermaid-cli@10.6.1 \
           -p puppeteer.json \
           -i flowchart.mmd \
           -o flowchart.png
-
+        
         ls -lh flowchart.png
 
 
