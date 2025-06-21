@@ -83,7 +83,7 @@ jobs:
         echo "Contents of tests_pr_backup/:" # Debugging: verify backup content
         ls -laR tests_pr_backup/ 
 
-    # Step B: Checkout base branch version of test files (from main)
+    # Step B: Checkout base branch version of test files from main
     - name: Checkout base version of test files from main
       run: |
         git fetch origin main # Ensure origin/main is up-to-date
@@ -101,11 +101,19 @@ jobs:
         # This ENV variable is picked up by playwright.config.js for the JSON reporter's outputFile path
         PLAYWRIGHT_SCREENSHOT_DIR: playwright-artifacts-before 
       run: |
+        # Debugging: Print Playwright version
+        echo "Playwright version (via npx):"
+        npx playwright --version || true
+
+        echo "Playwright version (direct path):"
+        ./node_modules/.bin/playwright --version || true
+
         # Create the main output directory for Playwright's artifacts
         mkdir -p playwright-artifacts-before || true
         echo "Running Playwright 'before' tests, outputting to: playwright-artifacts-before"
         # Run in --headless mode to avoid XServer issues on CI.
-        npx playwright test --output=playwright-artifacts-before --headless || true 
+        # Directly invoke Playwright from node_modules/.bin/
+        ./node_modules/.bin/playwright test --output=playwright-artifacts-before --headless || true 
         
         echo "Contents of playwright-artifacts-before after 'before' tests:" # Debugging: list contents after run
         ls -laR playwright-artifacts-before || true 
@@ -117,7 +125,6 @@ jobs:
         # Move the backup back to become the PR's tests/
         rsync -a tests_pr_backup/ tests/ || { echo "rsync tests_pr_backup to tests/ failed. Exiting."; exit 1; }
         rm -rf tests_pr_backup/ # Clean up the backup directory
-        # tests_main_version cleanup is no longer needed with the new git restore approach
         echo "Contents of tests/ after restoring PR's version:" # Debugging
         ls -laR tests/ 
 
@@ -129,11 +136,19 @@ jobs:
         # This ENV variable is picked up by playwright.config.js for the JSON reporter's outputFile path
         PLAYWRIGHT_SCREENSHOT_DIR: playwright-artifacts-pr 
       run: |
+        # Debugging: Print Playwright version
+        echo "Playwright version (via npx):"
+        npx playwright --version || true
+
+        echo "Playwright version (direct path):"
+        ./node_modules/.bin/playwright --version || true
+
         # Create the main output directory for Playwright's artifacts
         mkdir -p playwright-artifacts-pr || true
         echo "Running Playwright 'PR' tests, outputting to: playwright-artifacts-pr"
         # Run in --headless mode to avoid XServer issues on CI.
-        npx playwright test --output=playwright-artifacts-pr --headless || true
+        # Directly invoke Playwright from node_modules/.bin/
+        ./node_modules/.bin/playwright test --output=playwright-artifacts-pr --headless || true
 
         echo "Contents of playwright-artifacts-pr after 'PR' tests:" # Debugging: list contents after run
         ls -laR playwright-artifacts-pr || true 
