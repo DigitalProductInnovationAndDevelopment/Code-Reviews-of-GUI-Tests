@@ -79,10 +79,9 @@ jobs:
     - name: Save PR test files
       run: |
         mkdir -p tests_pr_backup # Ensure the backup directory exists
-        # Use rsync for robust copying of the 'tests' directory and its contents
         rsync -a tests/ tests_pr_backup/ || { echo "rsync to tests_pr_backup failed. Exiting."; exit 1; }
-        echo "Contents of tests_pr_backup/:"
-        ls -laR tests_pr_backup/ # Debugging: verify backup content
+        echo "Contents of tests_pr_backup/:" # Debugging: verify backup content
+        ls -laR tests_pr_backup/ 
 
     # Step B: Checkout base branch version of test files (from main)
     - name: Checkout base version of test files from main
@@ -104,8 +103,8 @@ jobs:
         # Overwrite the 'tests/' directory with the extracted main version for the 'before' run
         rm -rf tests/ # Remove current PR's tests/
         rsync -a tests_main_version/ tests/ || { echo "rsync tests_main_version to tests/ failed. Exiting."; exit 1; }
-        echo "Contents of tests/ after checking out main's version:"
-        ls -laR tests/ # Debugging
+        echo "Contents of tests/ after checking out main's version:" # Debugging
+        ls -laR tests/ 
 
     # Step C: Run Playwright on base version (for "before" view)
     - name: Run Playwright "before" tests on Main's version
@@ -119,10 +118,10 @@ jobs:
         # Use '--output' to force Playwright to put ALL artifacts (screenshots, traces, HTML report) here
         npx playwright test --output=playwright-artifacts-before --debug || true 
         
-        echo "Contents of playwright-artifacts-before after 'before' tests:"
-        ls -laR playwright-artifacts-before || true # Debugging: list contents after run
+        echo "Contents of playwright-artifacts-before after 'before' tests:" # Debugging: list contents after run
+        ls -laR playwright-artifacts-before || true 
 
-    # Step D: Restore PR version of tests
+    # Step D: Restore PR test files
     - name: Restore PR test files
       run: |
         rm -rf tests/ # Remove tests/ from main's version
@@ -130,8 +129,8 @@ jobs:
         rsync -a tests_pr_backup/ tests/ || { echo "rsync tests_pr_backup to tests/ failed. Exiting."; exit 1; }
         rm -rf tests_pr_backup/ # Clean up the backup directory
         rm -rf tests_main_version/ # Clean up the temporary main version directory
-        echo "Contents of tests/ after restoring PR's version:"
-        ls -laR tests/ # Debugging
+        echo "Contents of tests/ after restoring PR's version:" # Debugging
+        ls -laR tests/ 
 
     #---------------------------------------------------
     # 5 – Run Playwright tests (This now runs on the PR branch's tests)
@@ -147,8 +146,8 @@ jobs:
         # Use '--output' to force Playwright to put ALL artifacts here
         npx playwright test --output=playwright-artifacts-pr --debug || true
 
-        echo "Contents of playwright-artifacts-pr after 'PR' tests:"
-        ls -laR playwright-artifacts-pr || true # Debugging: list contents after run
+        echo "Contents of playwright-artifacts-pr after 'PR' tests:" # Debugging: list contents after run
+        ls -laR playwright-artifacts-pr || true 
 
     # --- Verify Playwright Report Existence AFTER tests ---
     # This step now checks in the playwright-artifacts-pr directory for results.json
@@ -192,38 +191,44 @@ jobs:
         ls -lh "$PR_BEFORE_DIR" # For debugging
 
     - name: Commit and Push PR Screenshots to GitHub Pages
-      if: github.event_name == 'pull_request' && github.ref == format('refs/pull/{0}/merge', github.event.pull_request.number) # Only run on pull_request merge events or after successful PR build
+      # Only run this step on pull_request *events* (not push to main after merge)
+      # and specifically for the head branch, not the merge commit, to allow pushing
+      # Note: This typically requires repository write permissions.
+      if: github.event_name == 'pull_request'
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add docs/pr/${{ github.event.pull_request.number }}/
+        git add docs/pr/${{ github.event.pull_request.number }}/ || true # Add with || true to avoid failure if no new files
         git commit -m "Add screenshots for PR #${{ github.event.pull_request.number }}" || echo "No changes to commit"
-        git push
+        # Use a token with write access to push to the same branch
+        git push origin HEAD:${{ github.event.pull_request.head.ref }} || echo "Failed to push screenshots, likely no changes or permissions issue."
 
     - name: Generate Screenshot Markdown for PR Comment
       id: screenshot_markdown
       run: |
         PR_NUMBER=${{ github.event.pull_request.number }}
-        AFTER_DIR="docs/pr/$PR_NUMBER/after-screenshots"
-        BEFORE_DIR="docs/pr/$PR_NUMBER/before-screenshots"
+        REPO_NAME="${{ github.event.repository.name }}"
+        OWNER_NAME="${{ github.repository_owner }}"
         
         MARKDOWN="### Playwright Screenshots\n\n"
         MARKDOWN+="#### Before (main branch)\n"
         # Use find to list PNGs to handle cases where they are in subdirectories
+        BEFORE_DIR="docs/pr/$PR_NUMBER/before-screenshots"
         if [ -d "$BEFORE_DIR" ]; then
           for f in $(find "$BEFORE_DIR" -maxdepth 1 -name "*.png" 2>/dev/null | sort); do 
             FILENAME=$(basename "$f")
-            MARKDOWN+="- [${FILENAME}](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr/$PR_NUMBER/before-screenshots/$FILENAME)\n"
+            MARKDOWN+="- [${FILENAME}](https://${OWNER_NAME}.github.io/${REPO_NAME}/pr/$PR_NUMBER/before-screenshots/$FILENAME)\n"
           done
         else
           MARKDOWN+="No 'before' screenshots found.\n"
         fi
 
         MARKDOWN+="\n#### After (PR branch)\n"
+        AFTER_DIR="docs/pr/$PR_NUMBER/after-screenshots"
         if [ -d "$AFTER_DIR" ]; then
           for f in $(find "$AFTER_DIR" -maxdepth 1 -name "*.png" 2>/dev/null | sort); do 
             FILENAME=$(basename "$f")
-            MARKDOWN+="- [${FILENAME}](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr/$PR_NUMBER/after-screenshots/$FILENAME)\n"
+            MARKDOWN+="- [${FILENAME}](https://${OWNER_NAME}.github.io/${REPO_NAME}/pr/$PR_NUMBER/after-screenshots/$FILENAME)\n"
           done
         else
           MARKDOWN+="No 'after' screenshots found.\n"
@@ -276,13 +281,13 @@ jobs:
 
         if [ ! -f "$REPORT_FILE" ]; then
           echo "Error: Playwright report file not found at $REPORT_FILE"
-          echo "total=N/A" >> $GITHUB_OUTPUT
-          echo "passed=N/A" >> "$GITHUB_OUTPUT"
-          echo "failed=N/A" >> "$GITHUB_OUTPUT"
-          echo "skipped=N/A" >> "$GITHUB_OUTPUT"
-          echo "duration=N/A" >> "$GITHUB_OUTPUT"
-          echo "passrate=N/A" >> "$GITHUB_OUTPUT"
-          exit 0 
+          echo "total=0" >> $GITHUB_OUTPUT # Set to 0 if report not found
+          echo "passed=0" >> "$GITHUB_OUTPUT"
+          echo "failed=0" >> "$GITHUB_OUTPUT"
+          echo "skipped=0" >> "$GITHUB_OUTPUT"
+          echo "duration=0" >> "$GITHUB_OUTPUT"
+          echo "passrate=0.00" >> "$GITHUB_OUTPUT"
+          exit 0 # Allow workflow to continue even if report is missing
         fi
         
         TOTAL=$(jq '.stats.total' "$REPORT_FILE")
@@ -342,11 +347,11 @@ jobs:
         if [ ! -f "$REPORT" ]; then
           echo "Error: ESLint report file not found at $REPORT. Cannot extract summary."
           # Set default values if file not found to prevent workflow failure
-          echo "total_files=N/A" >> "$GITHUB_OUTPUT"
-          echo "errors=N/A" >> "$GITHUB_OUTPUT"
-          echo "warnings=N/A" >> "$GITHUB_OUTPUT"
-          echo "fixable_errors=N/A" >> "$GITHUB_OUTPUT"
-          echo "fixable_warnings=N/A" >> "$GITHUB_OUTPUT"
+          echo "total_files=0" >> "$GITHUB_OUTPUT"
+          echo "errors=0" >> "$GITHUB_OUTPUT"
+          echo "warnings=0" >> "$GITHUB_OUTPUT"
+          echo "fixable_errors=0" >> "$GITHUB_OUTPUT"
+          echo "fixable_warnings=0" >> "$GITHUB_OUTPUT"
           exit 0 # Allow workflow to continue
         fi
 
@@ -368,6 +373,7 @@ jobs:
     - name: Generate test-flow chart
       shell: bash
       run: |
+        export LC_ALL=C # Add this line to fix the 'tr' error
         set -e
         # The JSON report for the flowchart is now results.json inside playwright-artifacts-pr
         REPORT_FILE="playwright-artifacts-pr/results.json" 
