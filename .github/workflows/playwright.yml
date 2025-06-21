@@ -1,4 +1,4 @@
-#start
+#start 1
 name: Playwright Tests + Prettier (reviewdog) + test-flow chart
 
 on:
