@@ -87,11 +87,11 @@ jobs:
     - name: Checkout base version of test files from main
       run: |
         git fetch origin main # Ensure origin/main is up-to-date
-        # Directly checkout the 'tests/' directory from origin/main.
-        # This will overwrite the current 'tests/' with main's version.
-        # Use '|| true' to allow this step to pass even if 'tests/' isn't found on 'origin/main'
-        # (e.g., if it's a brand new test folder in the PR).
-        git checkout origin/main -- tests/ || { echo "Warning: Failed to checkout tests/ from origin/main. This might be expected if 'tests/' is new in the PR or empty on main."; true; }
+        # Remove current tests/ directory to ensure clean restore
+        rm -rf tests/
+        # Directly restore the 'tests/' directory from origin/main.
+        # This is more robust as it will create the 'tests/' directory if it exists on 'main'.
+        git restore --source=origin/main -- tests/ || { echo "Warning: Failed to restore tests/ from origin/main. This might be expected if 'tests/' is new in the PR or empty on main."; true; }
         echo "Contents of tests/ after checking out main's version (for 'before' run):" # Debugging
         ls -laR tests/ 
 
@@ -104,7 +104,7 @@ jobs:
         # Create the main output directory for Playwright's artifacts
         mkdir -p playwright-artifacts-before || true
         echo "Running Playwright 'before' tests, outputting to: playwright-artifacts-before"
-        # Run in --headless mode to avoid XServer issues on CI. Removed --debug here.
+        # Run in --headless mode to avoid XServer issues on CI.
         npx playwright test --output=playwright-artifacts-before --headless || true 
         
         echo "Contents of playwright-artifacts-before after 'before' tests:" # Debugging: list contents after run
@@ -117,7 +117,7 @@ jobs:
         # Move the backup back to become the PR's tests/
         rsync -a tests_pr_backup/ tests/ || { echo "rsync tests_pr_backup to tests/ failed. Exiting."; exit 1; }
         rm -rf tests_pr_backup/ # Clean up the backup directory
-        # tests_main_version cleanup is no longer needed with the new git checkout approach
+        # tests_main_version cleanup is no longer needed with the new git restore approach
         echo "Contents of tests/ after restoring PR's version:" # Debugging
         ls -laR tests/ 
 
@@ -132,7 +132,7 @@ jobs:
         # Create the main output directory for Playwright's artifacts
         mkdir -p playwright-artifacts-pr || true
         echo "Running Playwright 'PR' tests, outputting to: playwright-artifacts-pr"
-        # Run in --headless mode to avoid XServer issues on CI. Removed --debug here.
+        # Run in --headless mode to avoid XServer issues on CI.
         npx playwright test --output=playwright-artifacts-pr --headless || true
 
         echo "Contents of playwright-artifacts-pr after 'PR' tests:" # Debugging: list contents after run
