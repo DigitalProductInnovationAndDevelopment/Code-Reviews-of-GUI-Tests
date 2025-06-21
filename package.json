@@ -1,25 +1,11 @@
 {
   "name": "code-reviews-of-gui-tests",
   "version": "1.0.0",
-  "description": "Prototype to address the challenge of reviewing GUI tests",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "lint": "eslint . --ext .js,.ts --format unix || true"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/issues"
-  },
-  "homepage": "https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests#readme",
+  // ... (other fields)
   "devDependencies": {
     "@playwright/test": "^1.52.0",
-    "eslint": "^8.0.0"
+    "eslint": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",   // ADD THIS
+    "@typescript-eslint/parser": "^7.0.0"           // ADD THIS
   }
 }
