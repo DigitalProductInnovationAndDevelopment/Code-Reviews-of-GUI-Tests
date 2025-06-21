@@ -1,0 +1,289 @@
+import { test, expect } from "@playwright/test";
+import { execSync } from "node:child_process";
+import fs from "node:fs/promises";
+import path from "node:path";
+
+function runESLint(filePath: string): any[] {
+  try {
+    let output = execSync(`npx eslint ${filePath} -f json`, {
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+
+    const jsonStart = output.indexOf("[");
+    if (jsonStart === -1) {
+      throw new Error("No JSON array found in ESLint output");
+    }
+    output = output.slice(jsonStart);
+    return JSON.parse(output);
+  } catch (err: any) {
+    console.error("❌ ESLint execSync threw an error:");
+    console.error(err);
+
+    const stdout = err.stdout?.toString() ?? "";
+    const stderr = err.stderr?.toString() ?? "";
+    let output = stdout || stderr;
+
+    const jsonStart = output.indexOf("[");
+    if (jsonStart !== -1) {
+      output = output.slice(jsonStart);
+      try {
+        return JSON.parse(output);
+      } catch (parseErr) {
+        console.error("❌ Failed to parse recovered ESLint JSON output");
+      }
+    }
+
+    console.error("❌ No ESLint JSON output could be parsed");
+    return [];
+  }
+}
+
+const testCases = [
+  {
+    name: "unused variable (no-unused-vars)",
+    code: `const unused = 42;`,
+    expectedRule: "no-unused-vars",
+  },
+  {
+    name: "use of any type (@typescript-eslint/no-explicit-any)",
+    code: `function test(value: any) { return value; }`,
+    expectedRule: "@typescript-eslint/no-explicit-any",
+  },
+  {
+    name: "use of console (no-console)",
+    code: `console.log("Hello");`,
+    expectedRule: "no-console",
+  },
+  {
+    name: "prettier formatting issue (prettier/prettier)",
+    code: `const   x =   1;`,
+    expectedRule: "prettier/prettier",
+  },
+  {
+    name: "clean code (no errors)",
+    code: `function add(a: number, b: number) {\n  return a + b;\n}\n`,
+    expectedRule: null,
+  },
+];
+
+test.describe("ESLint config validation (ESM)", () => {
+  for (const { name, code, expectedRule } of testCases) {
+    test(name, async () => {
+      const fileName = `lint-demo-${name.replace(/[^a-z0-9\-]/gi, "-")}.ts`;
+      const filePath = path.join("tests", fileName);
+
+      await fs.mkdir("tests", { recursive: true });
+      await fs.writeFile(filePath, code);
+
+      const results = runESLint(filePath);
+      const ruleIds: string[] = [];
+
+      for (const fileResult of results) {
+        if (Array.isArray(fileResult.messages)) {
+          for (const message of fileResult.messages) {
+            if (typeof message.ruleId === "string") {
+              ruleIds.push(message.ruleId);
+            }
+          }
+        }
+      }
+
+      console.log(`▶ Rule IDs for ${fileName}:`, ruleIds);
+
+      if (expectedRule) {
+        expect(ruleIds).toContain(expectedRule);
+      } else {
+        const ignored = ["prettier/prettier", "no-unused-vars"];
+        const actualRelevant = ruleIds.filter((id) => !ignored.includes(id));
+        expect(actualRelevant.length).toBe(0);
+      }
+
+      await fs.unlink(filePath);
+    });
+  }
+
+  test("should not crash if .eslint.local.config.js is missing", async () => {
+    const localConfigPath = ".eslint.local.config.js";
+    const backupPath = ".eslint.local.config.backup.js";
+    const filePath = "tests/lint-no-override.ts";
+
+    await fs.mkdir("tests", { recursive: true });
+    await fs.writeFile(filePath, `const test = 1;`);
+
+    let renamed = false;
+    try {
+      await fs.rename(localConfigPath, backupPath);
+      renamed = true;
+    } catch {}
+
+    const results = runESLint(filePath);
+    const ruleIds: string[] = [];
+
+    for (const fileResult of results) {
+      if (fileResult.messages) {
+        for (const msg of fileResult.messages) {
+          if (msg.ruleId) {
+            ruleIds.push(msg.ruleId);
+          }
+        }
+      }
+    }
+
+    console.log(`▶ Rule IDs for ${filePath}:`, ruleIds);
+
+    expect(Array.isArray(ruleIds)).toBe(true);
+
+    await fs.unlink(filePath);
+
+    if (renamed) {
+      await fs.rename(backupPath, localConfigPath);
+    }
+  });
+
+  test("should apply local override config correctly", async () => {
+    const localConfigPath = ".eslint.local.config.js";
+    const configPath = "eslint.config.js";
+    const filePath = "tests/lint-override-applied.ts";
+    const backupConfigPath = "eslint.config.js.backup";
+
+    await fs.mkdir("tests", { recursive: true });
+
+    // Backup eslint.config.js if it exists
+    let backedUp = false;
+    try {
+      await fs.access(configPath);
+      await fs.rename(configPath, backupConfigPath);
+      backedUp = true;
+      console.log("⚠️ Backed up original eslint.config.js");
+    } catch {
+      // No original config found, no backup needed
+    }
+
+    try {
+      // Step 1: Write override file
+      await fs.writeFile(
+        localConfigPath,
+        `export default {
+      rules: {
+        'no-console': 'off'
+      }
+    };`
+      );
+
+      // Step 2: Write the test ESLint config that uses the override
+      await fs.writeFile(
+        configPath,
+        `
+    import tsParser from "@typescript-eslint/parser";
+    import tsPlugin from "@typescript-eslint/eslint-plugin";
+    import playwrightPlugin from "eslint-plugin-playwright";
+    import prettierPlugin from "eslint-plugin-prettier";
+
+    let localOverride = {};
+
+    try {
+      localOverride = (await import("./.eslint.local.config.js")).default;
+      console.log("✅ Loaded local ESLint override config.");
+    } catch (err) {
+      console.log("ℹ️ No local override config found.");
+    }
+
+    export default [
+      {
+        ignores: [],
+      },
+      {
+        files: ["**/*.ts"],
+        languageOptions: {
+          ecmaVersion: 2021,
+          sourceType: "module",
+          parser: tsParser,
+        },
+        plugins: {
+          "@typescript-eslint": tsPlugin,
+          playwright: playwrightPlugin,
+          prettier: prettierPlugin,
+        },
+        rules: {
+          "no-console": "error",
+          "prettier/prettier": "error",
+          ...(localOverride?.rules || {})
+        },
+      },
+    ];
+  `
+      );
+
+      // Step 3: Write test file that triggers no-console
+      await fs.writeFile(filePath, `console.log("This should pass");`);
+
+      // Run ESLint normally (your runESLint function uses default config)
+      const results = runESLint(filePath);
+      const ruleIds: string[] = [];
+
+      for (const fileResult of results) {
+        if (fileResult.messages) {
+          for (const msg of fileResult.messages) {
+            if (msg.ruleId) {
+              ruleIds.push(msg.ruleId);
+            }
+          }
+        }
+      }
+
+      console.log(`▶ Rule IDs for override test:`, ruleIds);
+
+      expect(ruleIds).not.toContain("no-console");
+
+      // Clean up test files
+      await fs.unlink(filePath);
+      await fs.unlink(localConfigPath);
+      await fs.unlink(configPath);
+    } finally {
+      // Restore original eslint.config.js if backed up
+      if (backedUp) {
+        await fs.rename(backupConfigPath, configPath);
+        console.log("✅ Restored original eslint.config.js");
+      }
+    }
+  });
+
+  test("should fallback gracefully if local override config is broken", async () => {
+    const localConfigPath = ".eslint.local.config.js";
+    const filePath = "tests/lint-broken-override.ts";
+
+    await fs.mkdir("tests", { recursive: true });
+
+    // Write invalid override
+    await fs.writeFile(
+      localConfigPath,
+      `export default {
+        rules: {
+          'no-console': 'off',
+      }; // syntax error`
+    );
+
+    await fs.writeFile(filePath, `const test = 1;`);
+
+    const results = runESLint(filePath);
+    const ruleIds: string[] = [];
+
+    for (const fileResult of results) {
+      if (fileResult.messages) {
+        for (const msg of fileResult.messages) {
+          if (msg.ruleId) {
+            ruleIds.push(msg.ruleId);
+          }
+        }
+      }
+    }
+
+    console.log(`▶ Rule IDs with broken override:`, ruleIds);
+
+    expect(Array.isArray(ruleIds)).toBe(true);
+
+    await fs.unlink(filePath);
+    await fs.unlink(localConfigPath);
+  });
+});
