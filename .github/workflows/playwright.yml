@@ -80,9 +80,10 @@ jobs:
         # Create the directory where Playwright should output its results and screenshots
         mkdir -p published-screenshots || true
         echo "Running Playwright tests, outputting artifacts to: published-screenshots"
-        # Run Playwright in headless mode and direct its output to 'published-screenshots'
-        # Add || true to allow workflow to continue even if tests fail
-        npx playwright test --output=published-screenshots --headless || true
+        # Run Playwright and direct its output to 'published-screenshots'
+        # Playwright runs headless by default in CI, so no --headless flag is needed here.
+        # THIS IS THE CORRECTED LINE:
+        npx playwright test --output=published-screenshots || true
 
         echo "Contents of published-screenshots after tests:" # Debugging
         ls -laR published-screenshots || true
@@ -231,7 +232,7 @@ jobs:
         fi
 
     #---------------------------------------------------
-    # 9 – Extract ESLint test summary
+    # 9 – Extract ESLint summary
     #---------------------------------------------------
     - name: Extract ESLint summary
       id: eslint_summary
