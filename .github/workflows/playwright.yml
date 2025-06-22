@@ -12,9 +12,9 @@ jobs:
     permissions:
       contents: write # Needed for git operations (restore, commit, push) and for Prettier patch if it makes changes
       pull-requests: write # Needed for sticky PR comment
-      # REMOVED: pages: write and id-token: write - these are not needed for artifact upload
+      # Removed: pages: write and id-token: write - these are NOT needed for artifact upload
 
-    # REMOVED: environment block - not needed for artifact upload
+    # Removed: environment block - this is NOT needed for artifact upload
     # environment:
     #   name: github-pages
     #   url: ${{ steps.deployment.outputs.page_url }}
@@ -101,7 +101,7 @@ jobs:
         mkdir -p "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots"
 
         # Copy the screenshots to this artifact directory
-        # We target published-screenshots/html/data because that's where Playwright places its hashed screenshot images
+        # We target published-screenshots/html/data as Playwright's actual image files are here
         find published-screenshots/html/data -name "*.png" -exec cp -f {} "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots/" \; || true
         echo "Copied screenshots to $ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots/"
         ls -lh "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots/" # For debugging, shows what was copied
@@ -116,7 +116,18 @@ jobs:
         retention-days: 7 # Optional: how long to keep this artifact
         if-no-files-found: ignore # Do not fail if no screenshots are found
 
-    # REMOVED: Upload GitHub Pages Artifact and Deploy to GitHub Pages steps
+    # Removed: Upload GitHub Pages Artifact step
+    # - name: Upload GitHub Pages Artifact
+    #   if: github.event_name == 'pull_request'
+    #   uses: actions/upload-pages-artifact@v3
+    #   with:
+    #     path: _site
+
+    # Removed: Deploy to GitHub Pages step
+    # - name: Deploy to GitHub Pages
+    #   id: deployment
+    #   if: github.event_name == 'pull_request'
+    #   uses: actions/deploy-pages@v4
 
     # Generate Markdown for the PR Comment (now points to artifact download, not live URL)
     - name: Generate Screenshot Markdown for PR Comment
@@ -129,18 +140,19 @@ jobs:
         IMAGE_MARKDOWN="## 🖼️ Playwright Screenshots (Downloadable Artifacts)\n\n"
         IMAGE_MARKDOWN+="Screenshots for this PR are available as a workflow artifact.\n"
         IMAGE_MARKDOWN+="You can find them in the 'Artifacts' section of this workflow run's summary page.\n\n"
+        
+        # Use dynamic PR number for artifact name, enclosed in quotes for Markdown
         IMAGE_MARKDOWN+="* **Artifact Name:** `pr-screenshots-${{ github.event.pull_request.number }}`\n"
-        IMAGE_MARKDOWN+="* **Direct Link to Run:** [View Workflow Run](${RUN_URL})\n\n"
-
-        # Replace this hardcoded URL with dynamic one if needed, but for simplicity we rely on the workflow run link
+        
+        # Dynamic link to the current workflow run
         RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        IMAGE_MARKDOWN="${IMAGE_MARKDOWN//\$RUN_URL/$RUN_URL}"
-
+        IMAGE_MARKDOWN+="* **Direct Link to Run:** [View Workflow Run](${RUN_URL})\n\n"
+        
         # Check if actual screenshots were found to provide more specific message
         if [ ! -d "published-screenshots/html/data" ] || ! find "published-screenshots/html/data" -maxdepth 1 -name "*.png" -print -quit | grep -q .; then
             IMAGE_MARKDOWN="${IMAGE_MARKDOWN}No screenshots were found for this run.\n\n"
         fi
-
+        
         echo "pr_screenshots_markdown<<EOF" >> $GITHUB_OUTPUT
         echo "$IMAGE_MARKDOWN" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
@@ -149,7 +161,7 @@ jobs:
     # --- END OF ARTIFACT PREPARATION AND UPLOAD FOR SCREENSHOTS ---
 
     #---------------------------------------------------
-    # 6 – Upload HTML report (existing artifact upload for reports)
+    # 6 – Upload HTML report
     #---------------------------------------------------
     - name: Upload HTML report
       if: always()
@@ -257,7 +269,7 @@ jobs:
         FIXABLE_ERRORS=$(jq '[.[] | .fixableErrorCount] | add' "$REPORT")
         FIXABLE_WARNINGS=$(jq '[.[] | .fixableWarningCount] | add' "$REPORT")
 
-        echo "total_files=$TOTAL_FILES" >> "$GITHUB_OUTPUT"
+        echo "total_files=$TOTAL_OUTPUT" >> "$GITHUB_OUTPUT"
         echo "errors=$ERRORS" >> "$GITHUB_OUTPUT"
         echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
         echo "fixable_warnings=$FIXABLE_WARNINGS" >> "$GITHUB_OUTPUT"
@@ -369,6 +381,7 @@ jobs:
 
           **View Full Reports:**
           You can download the following artifacts from this workflow run's summary page:
+          * **`pr-screenshots-${{ github.event.pull_request.number }}`**: All Playwright screenshots for this PR.
           * **`playwright-html-report`**: The full interactive Playwright HTML report for this PR's branch.
           * **`eslint-test-report`**: Detailed ESLint results.
 
