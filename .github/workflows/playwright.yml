@@ -147,7 +147,6 @@ jobs:
         # However, to be robust for markdown generation *after* push,
         # we generally need to know what was *expected* to be pushed.
         # A simpler approach for PR comments is to iterate based on the find from the previous step.
-        # Let's assume the previous `find` was successful and use its output if needed.
         # For direct generation here, we'll re-find if the directory exists in the original published path.
 
         # A more robust approach might be to capture the list of image files in a previous step's output
@@ -372,4 +371,45 @@ jobs:
       with:
         name: test-flow-chart
         path: flowchart.png
-        if-
+        if-no-files-found: ignore
+
+    #---------------------------------------------------
+    # 11 – Sticky PR comment
+    #---------------------------------------------------
+    - name: Comment on PR with results
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        message: |
+          ## Playwright Test Metrics
+          *Total:* **${{ steps.summary.outputs.total }}**
+          *Passed:* **${{ steps.summary.outputs.passed }}**
+          *Failed:* **${{ steps.summary.outputs.failed }}**
+          *Skipped:* **${{ steps.summary.outputs.skipped }}**
+
+          *Duration:* **${{ steps.summary.outputs.duration }} ms**
+          *Pass Rate:* **${{ steps.summary.outputs.passrate }} %**
+
+          ## ESLint (GUI tests)
+          *Total files scanned:* **${{ steps.eslint_summary.outputs.total_files }}**
+          *Errors:* **${{ steps.eslint_summary.outputs.errors }}**
+          *Warnings:* **${{ steps.eslint_summary.outputs.warnings }}**
+          *Fixable Errors:* **${{ steps.eslint_summary.outputs.fixable_errors }}**
+          *Fixable Warnings:* **${{ steps.eslint_summary.outputs.fixable_warnings }}**
+          ```
+          ${{ steps.lint_summary.outputs.summary }} # Keep this for the first 20 lines of raw output if desired
+          ```
+
+          ## Test-Flow Chart
+          Artifact: **test-flow-chart → flowchart.png**
+
+          ## Playwright Screenshots for this PR
+          ${{ steps.generate_screenshot_markdown.outputs.pr_screenshots_markdown }}
+
+          ---
+
+          **View Full Reports:**
+          You can download the following artifacts from this workflow run's summary page:
+          * **`playwright-html-report`**: The full interactive Playwright HTML report for this PR's branch.
+          * **`eslint-test-report`**: Detailed ESLint results.
+
+          _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
