@@ -50,7 +50,6 @@ function runESLint(filePath: string): any[] {
   }
 }
 
-
 const testCases: {
   name: string;
   code: string;
