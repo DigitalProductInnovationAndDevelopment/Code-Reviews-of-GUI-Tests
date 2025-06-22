@@ -32,7 +32,8 @@ function runESLint(filePath: string): any[] {
       stdio: "pipe",
     });
     const jsonStart = output.indexOf("[");
-    if (jsonStart === -1) throw new Error("No JSON array found in ESLint output");
+    if (jsonStart === -1)
+      throw new Error("No JSON array found in ESLint output");
     return JSON.parse(output.slice(jsonStart));
   } catch (err: any) {
     const output = err.stdout?.toString() || err.stderr?.toString() || "";
