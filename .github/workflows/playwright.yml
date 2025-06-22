@@ -1,4 +1,3 @@
-#START
 name: Playwright Tests + Prettier (reviewdog) + test-flow chart
 
 on:
@@ -13,13 +12,12 @@ jobs:
     permissions:
       contents: write # Needed for git operations (restore, commit, push) and for Prettier patch if it makes changes
       pull-requests: write # Needed for sticky PR comment
-      # NEW: Add pages: write and id-token: write for GitHub Pages deployment
-      pages: write
-      id-token: write
+      # REMOVED: pages: write and id-token: write - these are not needed for artifact upload
 
-    environment: # NEW: Define environment for GitHub Pages deployment
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    # REMOVED: environment block - not needed for artifact upload
+    # environment:
+    #   name: github-pages
+    #   url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
     #---------------------------------------------------
@@ -88,59 +86,59 @@ jobs:
         echo "Contents of published-screenshots after tests:" # Debugging
         ls -laR published-screenshots || true
 
-    # --- START OF NEW STEPS FOR SCREENSHOT PUBLISHING ---
+    # --- START OF ARTIFACT PREPARATION AND UPLOAD FOR SCREENSHOTS ---
 
-    # Prepare the directory for PR-specific screenshots on GitHub Pages
-    # This step will now just copy the relevant files into a *new* directory that will become the artifact
-    - name: Prepare Playwright Screenshots for Pages Artifact
+    # Prepare the directory for PR-specific screenshots to be uploaded as an artifact
+    - name: Prepare Playwright Screenshots for Artifact Upload
       if: github.event_name == 'pull_request' # Only for PRs
       run: |
         PR_NUMBER="${{ github.event.pull_request.number }}"
-        # Define the directory path where content will be structured for the artifact
-        # This will be the root of the GH Pages site after deployment
-        PAGES_ARTIFACT_DIR="_site" # Standard name for Pages artifacts
-        
-        # Create the target directory within _site for this PR's screenshots
-        mkdir -p "$PAGES_ARTIFACT_DIR/pr/$PR_NUMBER/screenshots"
+        # Define the directory where content will be structured for the artifact
+        # This will be the root of the artifact when downloaded
+        ARTIFACT_ROOT_DIR="_workflow_artifacts" # A new, clearer root for the artifact
+
+        # Create the target directory within the artifact root for this PR's screenshots
+        mkdir -p "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots"
 
         # Copy the screenshots to this artifact directory
-        # We target published-screenshots/html/data as before
-        find published-screenshots/html/data -name "*.png" -exec cp -f {} "$PAGES_ARTIFACT_DIR/pr/$PR_NUMBER/screenshots/" \; || true
-        echo "Copied screenshots to $PAGES_ARTIFACT_DIR/pr/$PR_NUMBER/screenshots/"
-        ls -lh "$PAGES_ARTIFACT_DIR/pr/$PR_NUMBER/screenshots/" # For debugging, shows what was copied
+        # We target published-screenshots/html/data because that's where Playwright places its hashed screenshot images
+        find published-screenshots/html/data -name "*.png" -exec cp -f {} "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots/" \; || true
+        echo "Copied screenshots to $ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots/"
+        ls -lh "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots/" # For debugging, shows what was copied
 
-    # NEW STEP: Upload the prepared directory as a GitHub Pages artifact
-    - name: Upload GitHub Pages Artifact
+    # NEW STEP: Upload the prepared directory containing screenshots as a workflow artifact
+    - name: Upload PR Screenshots Artifact
       if: github.event_name == 'pull_request' # Only for PRs
-      uses: actions/upload-pages-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        path: _site # The directory containing the content to publish
+        name: pr-screenshots-${{ github.event.pull_request.number }} # A unique name for the artifact per PR
+        path: _workflow_artifacts/pr/${{ github.event.pull_request.number }}/screenshots/ # Upload only the specific screenshots
+        retention-days: 7 # Optional: how long to keep this artifact
+        if-no-files-found: ignore # Do not fail if no screenshots are found
 
-    # NEW STEP: Deploy the artifact to GitHub Pages
-    - name: Deploy to GitHub Pages
-      id: deployment
-      if: github.event_name == 'pull_request' # Only for PRs
-      uses: actions/deploy-pages@v4 # This action deploys the artifact uploaded above
+    # REMOVED: Upload GitHub Pages Artifact and Deploy to GitHub Pages steps
 
-    # Generate Markdown for screenshots with their public URLs
+    # Generate Markdown for the PR Comment (now points to artifact download, not live URL)
     - name: Generate Screenshot Markdown for PR Comment
       id: generate_screenshot_markdown
       if: github.event_name == 'pull_request' # Only for PRs
       run: |
-        # The base URL needs to be the GitHub Pages URL for your repository.
-        # This URL now points to the content on the gh-pages branch.
-        # IMPORTANT: Use `steps.deployment.outputs.page_url` which is dynamically set by deploy-pages action
-        GITHUB_PAGES_BASE_URL="${{ steps.deployment.outputs.page_url }}/pr/${{ github.event.pull_request.number }}/screenshots/"
+        # Since we are NOT deploying to GitHub Pages for live URLs,
+        # we provide instructions to download the artifact.
+        
+        IMAGE_MARKDOWN="## 🖼️ Playwright Screenshots (Downloadable Artifacts)\n\n"
+        IMAGE_MARKDOWN+="Screenshots for this PR are available as a workflow artifact.\n"
+        IMAGE_MARKDOWN+="You can find them in the 'Artifacts' section of this workflow run's summary page.\n\n"
+        IMAGE_MARKDOWN+="* **Artifact Name:** `pr-screenshots-${{ github.event.pull_request.number }}`\n"
+        IMAGE_MARKDOWN+="* **Direct Link to Run:** [View Workflow Run](${RUN_URL})\n\n"
 
-        IMAGE_MARKDOWN=""
-        if [ -d "published-screenshots/html/data" ] && find "published-screenshots/html/data" -maxdepth 1 -name "*.png" -print -quit | grep -q .; then
-            for img_file in published-screenshots/html/data/*.png; do
-                img_name=$(basename "$img_file")
-                img_url="${GITHUB_PAGES_BASE_URL}${img_name}"
-                IMAGE_MARKDOWN+="![${img_name}](${img_url})\n\n"
-            done
-        else
-            IMAGE_MARKDOWN+="No screenshots available for this PR.\n\n"
+        # Replace this hardcoded URL with dynamic one if needed, but for simplicity we rely on the workflow run link
+        RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        IMAGE_MARKDOWN="${IMAGE_MARKDOWN//\$RUN_URL/$RUN_URL}"
+
+        # Check if actual screenshots were found to provide more specific message
+        if [ ! -d "published-screenshots/html/data" ] || ! find "published-screenshots/html/data" -maxdepth 1 -name "*.png" -print -quit | grep -q .; then
+            IMAGE_MARKDOWN="${IMAGE_MARKDOWN}No screenshots were found for this run.\n\n"
         fi
 
         echo "pr_screenshots_markdown<<EOF" >> $GITHUB_OUTPUT
@@ -148,10 +146,10 @@ jobs:
         echo "EOF" >> $GITHUB_OUTPUT
       shell: bash
 
-    # --- END OF NEW STEPS FOR SCREENSHOT PUBLISHING ---
+    # --- END OF ARTIFACT PREPARATION AND UPLOAD FOR SCREENSHOTS ---
 
     #---------------------------------------------------
-    # 6 – Upload HTML report
+    # 6 – Upload HTML report (existing artifact upload for reports)
     #---------------------------------------------------
     - name: Upload HTML report
       if: always()
