@@ -99,14 +99,17 @@ jobs:
       run: |
         npx eslint "*.{js,ts,tsx}" -f json -o eslint-root.json || true
 
-    - name: Check ESLint errors and fail
+    - name: Check ESLint errors and fail if any
       shell: bash
       run: |
         ERRORS=$(jq '[.[] | .errorCount] | add' eslint-root.json)
         if [ "$ERRORS" -gt 0 ]; then
           echo "ESLint found errors."
           exit 1
+        else
+          echo "No ESLint errors found."
         fi
+
 
     - name: Upload ESLint report
       if: always()
@@ -119,11 +122,12 @@ jobs:
       id: lint_summary
       run: |
         jq -r '
-          .[]
-          | .filePath as $file
-          | .messages[]
-          | "\($file):\(.line):\(.column) [\(.ruleId // "unknown")]: \(.message)"
-        ' eslint-tests.json > lint_summary.txt
+        .[]
+        | .filePath as $file
+        | .messages[]
+        | "\($file):\(.line):\(.column) [\(.ruleId // "unknown")]: \(.message)"
+        ' eslint-root.json > lint_summary.txt
+
 
         head -n 20 lint_summary.txt > lint_summary_preview.txt
 
@@ -140,7 +144,7 @@ jobs:
     - name: Extract ESLint summary
       id: eslint_summary
       run: |
-        REPORT="eslint-tests.json"
+        REPORT="eslint-root.json"
         TOTAL_FILES=$(jq length "$REPORT")
         ERRORS=$(jq '[.[] | .errorCount] | add' "$REPORT")
         WARNINGS=$(jq '[.[] | .warningCount] | add' "$REPORT")
