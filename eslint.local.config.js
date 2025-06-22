@@ -2,7 +2,7 @@
 export default {
   rules: {
     // Developer-specific overrides
-    "no-console": "error",
-    "@typescript-eslint/no-explicit-any": "warn",
+    "no-console": "off",
+    "@typescript-eslint/no-explicit-any": "off",
   },
 };

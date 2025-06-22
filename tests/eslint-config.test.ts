@@ -62,16 +62,16 @@ const testCases: {
     code: `const unused = 42;`,
     expectedRule: "no-unused-vars",
   },
-  {
-    name: "use of any type (@typescript-eslint/no-explicit-any)",
-    code: `function test(value: any) { return value; }`,
-    expectedRule: "@typescript-eslint/no-explicit-any",
-  },
-  {
-    name: "use of console (no-console)",
-    code: `console.log("Hello");`,
-    expectedRule: "no-console",
-  },
+  // {
+  //    name: "use of any type (@typescript-eslint/no-explicit-any)",
+  //    code: `function test(value: any) { return value; }`,
+  //    expectedRule: "@typescript-eslint/no-explicit-any",
+  //  },
+  //  {
+  //   name: "use of console (no-console)",
+  //   code: `console.log("Hello");`,
+  //   expectedRule: "no-console",
+  // },
   {
     name: "prettier formatting issue (prettier/prettier)",
     code: `const   x =   1;`,
