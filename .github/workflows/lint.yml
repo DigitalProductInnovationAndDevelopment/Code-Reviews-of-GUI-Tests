@@ -115,12 +115,25 @@ jobs:
         name: eslint-test-report
         path: eslint-tests.json
 
-    - name: Read ESLint report (preview)
+    - name: Read ESLint report (summary text)
       id: lint_summary
       run: |
-        echo 'summary<<EOF' >> $GITHUB_OUTPUT
-        jq '.' eslint-tests.json | head -n 20 >> $GITHUB_OUTPUT
-        echo 'EOF' >> $GITHUB_OUTPUT
+        # Extract file, line, col, rule, and message for each ESLint issue (error or warning)
+        jq -r '
+          .[]
+          | .filePath as $file
+          | .messages[]
+          | "\($file):\(.line):\(.column) [\(.ruleId // "unknown")]: \(.message)"
+        ' eslint-tests.json > lint_summary.txt
+
+        # Limit output lines to 20 for PR comment
+        head -n 20 lint_summary.txt > lint_summary_preview.txt
+
+        # Save preview as output for use in comment
+        echo "summary<<EOF" >> $GITHUB_OUTPUT
+        cat lint_summary_preview.txt >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
 
     # 9 – Extract ESLint summary
     - name: Extract ESLint summary
@@ -199,6 +212,8 @@ jobs:
           *Warnings:* **${{ steps.eslint_summary.outputs.warnings }}**  
           *Fixable Errors:* **${{ steps.eslint_summary.outputs.fixable_errors }}**  
           *Fixable Warnings:* **${{ steps.eslint_summary.outputs.fixable_warnings }}**
+
+          ### ESLint issues preview (up to 20)
           ```
           ${{ steps.lint_summary.outputs.summary }}
           ```
