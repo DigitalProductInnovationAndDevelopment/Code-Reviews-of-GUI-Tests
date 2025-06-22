@@ -4,6 +4,11 @@ test.beforeEach(async ({ page }) => {
   await page.goto('https://demo.playwright.dev/todomvc');
 });
 
+ // --- ADD THIS SINGLE LINE ---
+  // This will capture a screenshot of the entire page at its initial state.
+  await expect(page).toHaveScreenshot('initial-todo-page.png');
+});
+
 const TODO_ITEMS = [
   'buy some cheese',
   'feed the cat',
