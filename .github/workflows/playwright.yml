@@ -17,7 +17,7 @@ jobs:
     #---------------------------------------------------
     # 0 – Checkout
     #---------------------------------------------------
-    - name: Checkout code
+    - name: Checkout code (PR branch)
       uses: actions/checkout@v3
       with:
         fetch-depth: 0
@@ -96,28 +96,33 @@ jobs:
     - name: Prepare PR Screenshots for GitHub Pages
       if: github.event_name == 'pull_request' # Only for PRs
       run: |
-        # Create a unique directory for this PR's screenshots within docs/
-        # e.g., docs/pr/123/screenshots/
-        PR_DIR="docs/pr/${{ github.event.pull_request.number }}/screenshots"
-        mkdir -p "$PR_DIR"
+        PR_NUMBER="${{ github.event.pull_request.number }}"
+        # Define the directory path relative to the root of the gh-pages branch
+        # This will create "pr/<PR_NUMBER>/screenshots" directly on the gh-pages branch
+        GH_PAGES_SCREENSHOT_DIR="pr/$PR_NUMBER/screenshots"
+        # Create the temp directory on the runner's workspace
+        mkdir -p "$GH_PAGES_SCREENSHOT_DIR"
 
-        # Corrected command to find and copy nested screenshots
-        # This will find all .png files in published-screenshots/html/data/ (where Playwright puts hashed images)
-        # and copy them directly into the $PR_DIR.
-        # Use 'cp -f' to force overwrite if file exists, just in case.
-        find published-screenshots/html/data -name "*.png" -exec cp -f {} "$PR_DIR/" \; || true
-        echo "Copied screenshots to $PR_DIR/"
-        ls -lh "$PR_DIR/" # For debugging, shows what was copied
+        # Copy the screenshots to the temp directory
+        # We target published-screenshots/html/data because that's where Playwright places its hashed screenshot images
+        find published-screenshots/html/data -name "*.png" -exec cp -f {} "$GH_PAGES_SCREENSHOT_DIR/" \; || true
+        echo "Copied screenshots to $GH_PAGES_SCREENSHOT_DIR/"
+        ls -lh "$GH_PAGES_SCREENSHOT_DIR/" # For debugging, shows what was copied
 
-    # Commit and Push PR Screenshots to GitHub Pages
+    # Commit and Push PR Screenshots to GH-Pages branch
     - name: Commit and Push PR Screenshots to GitHub Pages
       if: github.event_name == 'pull_request' # Only for PRs
       uses: EndBug/add-and-commit@v9 # Use this action to commit and push changes
       with:
-        add: 'docs/pr/${{ github.event.pull_request.number }}/screenshots/' # Add the new screenshot files
+        # IMPORTANT: Push to the gh-pages branch for GitHub Pages hosting
+        branch: gh-pages
+        # The path to add on the gh-pages branch
+        add: 'pr/${{ github.event.pull_request.number }}/screenshots/'
         message: 'Docs: Publish Playwright screenshots for PR #${{ github.event.pull_request.number }} [skip ci]'
         default_author: github_actions # Use GitHub Actions bot as author
-        push: true # This will push to the currently checked-out branch (your PR branch)
+        push: true # This will push to the specified branch (gh-pages)
+        # Ensure the token has permissions to push to gh-pages
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     # Generate Markdown for screenshots with their public URLs
     - name: Generate Screenshot Markdown for PR Comment
@@ -125,17 +130,30 @@ jobs:
       if: github.event_name == 'pull_request' # Only for PRs
       run: |
         # The base URL needs to be the GitHub Pages URL for your repository.
-        # Make sure the 'digitalproductinnovationanddevelopment/Code-Reviews-of-GUI-Tests' part
-        # matches your actual GitHub repository path.
+        # This URL now points to the content on the gh-pages branch.
         GITHUB_PAGES_BASE_URL="https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/pr/${{ github.event.pull_request.number }}/screenshots/"
 
-        PR_DIR="docs/pr/${{ github.event.pull_request.number }}/screenshots" # Re-define PR_DIR for this step
+        PR_DIR="pr/${{ github.event.pull_request.number }}/screenshots" # Path as it will be on gh-pages, for checking existence
 
         IMAGE_MARKDOWN=""
-        # Check if the target screenshot directory was populated
-        if [ -d "$PR_DIR" ] && find "$PR_DIR" -maxdepth 1 -name "*.png" -print -quit | grep -q .; then
-            # Now iterate over the copied files in the target directory to generate markdown
-            for img_file in "$PR_DIR"/*.png; do
+        # Check if the target screenshot directory was populated in the local runner workspace
+        # We assume if it was copied in 'Prepare PR Screenshots for GitHub Pages', it exists here.
+        # This check is primarily for debugging scenarios where no screenshots are generated.
+        # The 'ls -1' command is used here to get just the filenames without extra details.
+        # It's important to list files from the *original* location or ensure the 'add-and-commit'
+        # step provides feedback on what was actually committed if this step fails to find.
+        # For simplicity, we'll iterate on what was found in the *original* source if possible,
+        # or rely on the `ls -lh "$GH_PAGES_SCREENSHOT_DIR/"` from the prepare step logs.
+        # However, to be robust for markdown generation *after* push,
+        # we generally need to know what was *expected* to be pushed.
+        # A simpler approach for PR comments is to iterate based on the find from the previous step.
+        # Let's assume the previous `find` was successful and use its output if needed.
+        # For direct generation here, we'll re-find if the directory exists in the original published path.
+
+        # A more robust approach might be to capture the list of image files in a previous step's output
+        # and pass it to this step, but for now, re-finding in the original source directory is simpler.
+        if [ -d "published-screenshots/html/data" ] && find "published-screenshots/html/data" -maxdepth 1 -name "*.png" -print -quit | grep -q .; then
+            for img_file in published-screenshots/html/data/*.png; do
                 img_name=$(basename "$img_file")
                 img_url="${GITHUB_PAGES_BASE_URL}${img_name}"
                 IMAGE_MARKDOWN+="![${img_name}](${img_url})\n\n"
@@ -354,45 +372,4 @@ jobs:
       with:
         name: test-flow-chart
         path: flowchart.png
-        if-no-files-found: ignore
-
-    #---------------------------------------------------
-    # 11 – Sticky PR comment
-    #---------------------------------------------------
-    - name: Comment on PR with results
-      uses: marocchino/sticky-pull-request-comment@v2
-      with:
-        message: |
-          ## Playwright Test Metrics
-          *Total:* **${{ steps.summary.outputs.total }}**
-          *Passed:* **${{ steps.summary.outputs.passed }}**
-          *Failed:* **${{ steps.summary.outputs.failed }}**
-          *Skipped:* **${{ steps.summary.outputs.skipped }}**
-
-          *Duration:* **${{ steps.summary.outputs.duration }} ms**
-          *Pass Rate:* **${{ steps.summary.outputs.passrate }} %**
-
-          ## ESLint (GUI tests)
-          *Total files scanned:* **${{ steps.eslint_summary.outputs.total_files }}**
-          *Errors:* **${{ steps.eslint_summary.outputs.errors }}**
-          *Warnings:* **${{ steps.eslint_summary.outputs.warnings }}**
-          *Fixable Errors:* **${{ steps.eslint_summary.outputs.fixable_errors }}**
-          *Fixable Warnings:* **${{ steps.eslint_summary.outputs.fixable_warnings }}**
-          ```
-          ${{ steps.lint_summary.outputs.summary }} # Keep this for the first 20 lines of raw output if desired
-          ```
-
-          ## Test-Flow Chart
-          Artifact: **test-flow-chart → flowchart.png**
-
-          ## Playwright Screenshots for this PR
-          ${{ steps.generate_screenshot_markdown.outputs.pr_screenshots_markdown }}
-
-          ---
-
-          **View Full Reports:**
-          You can download the following artifacts from this workflow run's summary page:
-          * **`playwright-html-report`**: The full interactive Playwright HTML report for this PR's branch.
-          * **`eslint-test-report`**: Detailed ESLint results.
-
-          _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+        if-
