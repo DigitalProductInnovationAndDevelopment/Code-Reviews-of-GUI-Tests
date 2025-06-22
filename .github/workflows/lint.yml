@@ -93,31 +93,31 @@ jobs:
         echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
         echo "passrate=$PASS_RATE" >> "$GITHUB_OUTPUT"
 
-    # 8 – ESLint (tests only)
-    - name: Run ESLint on GUI tests
+    # 8 – ESLint (root directory only)
+    - name: Run ESLint on root files only
       shell: bash
       run: |
-        npx eslint "tests/**/*.{js,ts,tsx}" -f json -o eslint-tests.json || true
+        npx eslint "*.{js,ts,tsx}" -f json -o eslint-root.json || true
 
     - name: Check ESLint errors and fail
       shell: bash
       run: |
-        ERRORS=$(jq '[.[] | .errorCount] | add' eslint-tests.json)
+        ERRORS=$(jq '[.[] | .errorCount] | add' eslint-root.json)
         if [ "$ERRORS" -gt 0 ]; then
           echo "ESLint found errors."
+          exit 1
         fi
 
     - name: Upload ESLint report
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: eslint-test-report
-        path: eslint-tests.json
+        name: eslint-root-report
+        path: eslint-root.json
 
     - name: Read ESLint report (summary text)
       id: lint_summary
       run: |
-        # Extract file, line, col, rule, and message for each ESLint issue (error or warning)
         jq -r '
           .[]
           | .filePath as $file
@@ -125,13 +125,15 @@ jobs:
           | "\($file):\(.line):\(.column) [\(.ruleId // "unknown")]: \(.message)"
         ' eslint-tests.json > lint_summary.txt
 
-        # Limit output lines to 20 for PR comment
         head -n 20 lint_summary.txt > lint_summary_preview.txt
 
-        # Save preview as output for use in comment
         echo "summary<<EOF" >> $GITHUB_OUTPUT
         cat lint_summary_preview.txt >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Debug ESLint preview
+      run: cat lint_summary_preview.txt || echo "No ESLint issues found"
+
 
 
     # 9 – Extract ESLint summary
