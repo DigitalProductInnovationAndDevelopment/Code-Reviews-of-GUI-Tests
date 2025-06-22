@@ -11,7 +11,7 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
   },
   reporter: [
-    ['json', { outputFile: 'playwright-metrics.json' }],
-    ['html', { outputFile: 'report.html', open: 'never' }],
+    ["json", { outputFile: "playwright-metrics.json" }],
+    ["html", { outputFile: "report.html", open: "never" }],
   ],
 });
