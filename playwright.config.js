@@ -11,7 +11,8 @@ export default defineConfig({
     // Corrected to output HTML report to a subfolder within published-screenshots
     // This should fix the 'published-screenshots/html/' not found warning.
     ['html', { open: 'never', outputFolder: 'published-screenshots/html' }],
-    ['json', { outputFile: 'published-screenshots/results.json' }] // Ensure JSON report is also in published-screenshots
+    // Ensure JSON report is also in published-screenshots
+    ['json', { outputFile: 'published-screenshots/results.json' }] 
   ],
   use: {
     trace: 'on-first-retry',
@@ -25,12 +26,12 @@ export default defineConfig({
     },
     // You can add other projects for different browsers here if needed, e.g.:
     // {
-    //   name: 'firefox',
-    //   use: { ...devices['Desktop Firefox'] },
+    //  name: 'firefox',
+    //  use: { ...devices['Desktop Firefox'] },
     // },
     // {
-    //   name: 'webkit',
-    //   use: { ...devices['Desktop Safari'] },
+    //  name: 'webkit',
+    //  use: { ...devices['Desktop Safari'] },
     // },
   ],
 });
