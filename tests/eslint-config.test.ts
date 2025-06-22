@@ -276,7 +276,7 @@ test.describe("ESLint config validation (ESM)", () => {
       `export default {
         rules: {
           'no-console': 'off',
-      }; // syntax error`
+      }; // syntax error`,
     );
 
     await fs.writeFile(filePath, `const test = 1;`);
