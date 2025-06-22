@@ -1,3 +1,4 @@
+// tests/demo-todo-app.spec.ts
 import { test, expect, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
@@ -12,12 +13,18 @@ const TODO_ITEMS = [
 
 test.describe('New Todo', () => {
   test('should allow me to add todo items', async ({ page }) => {
+    // ⭐ Visual Regression: Initial empty state of the app
+    await expect(page).toHaveScreenshot('todo-app-empty.png');
+
     // create a new todo locator
     const newTodo = page.getByPlaceholder('What needs to be done?');
 
     // Create 1st todo.
     await newTodo.fill(TODO_ITEMS[0]);
     await newTodo.press('Enter');
+
+    // ⭐ Visual Regression: After adding one todo item
+    await expect(page).toHaveScreenshot('todo-app-one-item.png');
 
     // Make sure the list only has one todo item.
     await expect(page.getByTestId('todo-title')).toHaveText([
@@ -27,6 +34,10 @@ test.describe('New Todo', () => {
     // Create 2nd todo.
     await newTodo.fill(TODO_ITEMS[1]);
     await newTodo.press('Enter');
+
+    // ⭐ Visual Regression: After adding two todo items
+    await expect(page).toHaveScreenshot('todo-app-two-items.png');
+
 
     // Make sure the list now has two todo items.
     await expect(page.getByTestId('todo-title')).toHaveText([
@@ -54,9 +65,12 @@ test.describe('New Todo', () => {
     // Create 3 items.
     await createDefaultTodos(page);
 
+    // ⭐ Visual Regression: After adding all default items
+    await expect(page).toHaveScreenshot('todo-app-default-items.png');
+
     // create a todo count locator
     const todoCount = page.getByTestId('todo-count')
-  
+
     // Check test using different methods.
     await expect(page.getByText('3 items left')).toBeVisible();
     await expect(todoCount).toHaveText('3 items left');
@@ -83,6 +97,10 @@ test.describe('Mark all as completed', () => {
     // Complete all todos.
     await page.getByLabel('Mark all as complete').check();
 
+    // ⭐ Visual Regression: After marking all items as complete
+    await expect(page).toHaveScreenshot('todo-app-all-completed.png');
+
+
     // Ensure all todos have 'completed' class.
     await expect(page.getByTestId('todo-item')).toHaveClass(['completed', 'completed', 'completed']);
     await checkNumberOfCompletedTodosInLocalStorage(page, 3);
@@ -93,6 +111,9 @@ test.describe('Mark all as completed', () => {
     // Check and then immediately uncheck.
     await toggleAll.check();
     await toggleAll.uncheck();
+
+    // ⭐ Visual Regression: After unchecking all (back to default view)
+    await expect(page).toHaveScreenshot('todo-app-all-uncompleted.png');
 
     // Should be no completed classes.
     await expect(page.getByTestId('todo-item')).toHaveClass(['', '', '']);
@@ -107,6 +128,10 @@ test.describe('Mark all as completed', () => {
     // Uncheck first todo.
     const firstTodo = page.getByTestId('todo-item').nth(0);
     await firstTodo.getByRole('checkbox').uncheck();
+
+    // ⭐ Visual Regression: After unchecking one item
+    await expect(page).toHaveScreenshot('todo-app-one-unchecked.png');
+
 
     // Reuse toggleAll locator and make sure its not checked.
     await expect(toggleAll).not.toBeChecked();
@@ -135,6 +160,10 @@ test.describe('Item', () => {
     const firstTodo = page.getByTestId('todo-item').nth(0);
     await firstTodo.getByRole('checkbox').check();
     await expect(firstTodo).toHaveClass('completed');
+
+    // ⭐ Visual Regression: After checking the first item
+    await expect(page).toHaveScreenshot('todo-app-first-item-completed.png');
+
 
     // Check second item.
     const secondTodo = page.getByTestId('todo-item').nth(1);
@@ -174,12 +203,18 @@ test.describe('Item', () => {
   test('should allow me to edit an item', async ({ page }) => {
     await createDefaultTodos(page);
 
+    // ⭐ Visual Regression: Before editing an item (initial state with 3 todos)
+    await expect(page).toHaveScreenshot('todo-app-before-edit.png');
+
     const todoItems = page.getByTestId('todo-item');
     const secondTodo = todoItems.nth(1);
     await secondTodo.dblclick();
     await expect(secondTodo.getByRole('textbox', { name: 'Edit' })).toHaveValue(TODO_ITEMS[1]);
     await secondTodo.getByRole('textbox', { name: 'Edit' }).fill('buy some sausages');
     await secondTodo.getByRole('textbox', { name: 'Edit' }).press('Enter');
+
+    // ⭐ Visual Regression: After editing an item
+    await expect(page).toHaveScreenshot('todo-app-after-edit.png');
 
     // Explicitly assert the new text value.
     await expect(todoItems).toHaveText([
@@ -200,6 +235,11 @@ test.describe('Editing', () => {
   test('should hide other controls when editing', async ({ page }) => {
     const todoItem = page.getByTestId('todo-item').nth(1);
     await todoItem.dblclick();
+
+    // ⭐ Visual Regression: While an item is in edit mode
+    await expect(page).toHaveScreenshot('todo-item-editing-mode.png', {mask: [todoItem.getByRole('textbox', {name: 'Edit'})]}); // Mask the input field for consistent screenshots
+
+
     await expect(todoItem.getByRole('checkbox')).not.toBeVisible();
     await expect(todoItem.locator('label', {
       hasText: TODO_ITEMS[1],
@@ -260,18 +300,25 @@ test.describe('Counter', () => {
   test('should display the current number of todo items', async ({ page }) => {
     // create a new todo locator
     const newTodo = page.getByPlaceholder('What needs to be done?');
-    
+
     // create a todo count locator
     const todoCount = page.getByTestId('todo-count')
 
     await newTodo.fill(TODO_ITEMS[0]);
     await newTodo.press('Enter');
 
+    // ⭐ Visual Regression: After adding one item, check counter visually
+    await expect(page.getByTestId('todo-count')).toHaveScreenshot('todo-counter-1-item.png');
+
+
     await expect(todoCount).toContainText('1');
 
     await newTodo.fill(TODO_ITEMS[1]);
     await newTodo.press('Enter');
     await expect(todoCount).toContainText('2');
+
+    // ⭐ Visual Regression: After adding two items, check counter visually
+    await expect(page.getByTestId('todo-count')).toHaveScreenshot('todo-counter-2-items.png');
 
     await checkNumberOfTodosInLocalStorage(page, 2);
   });
@@ -284,6 +331,9 @@ test.describe('Clear completed button', () => {
 
   test('should display the correct text', async ({ page }) => {
     await page.locator('.todo-list li .toggle').first().check();
+    // ⭐ Visual Regression: Check visibility of 'Clear completed' button
+    await expect(page.getByRole('button', { name: 'Clear completed' })).toHaveScreenshot('clear-completed-button-visible.png');
+
     await expect(page.getByRole('button', { name: 'Clear completed' })).toBeVisible();
   });
 
@@ -291,6 +341,9 @@ test.describe('Clear completed button', () => {
     const todoItems = page.getByTestId('todo-item');
     await todoItems.nth(1).getByRole('checkbox').check();
     await page.getByRole('button', { name: 'Clear completed' }).click();
+    // ⭐ Visual Regression: After clearing completed items
+    await expect(page).toHaveScreenshot('todo-app-after-clearing-completed.png');
+
     await expect(todoItems).toHaveCount(2);
     await expect(todoItems).toHaveText([TODO_ITEMS[0], TODO_ITEMS[2]]);
   });
@@ -298,6 +351,9 @@ test.describe('Clear completed button', () => {
   test('should be hidden when there are no items that are completed', async ({ page }) => {
     await page.locator('.todo-list li .toggle').first().check();
     await page.getByRole('button', { name: 'Clear completed' }).click();
+    // ⭐ Visual Regression: After clearing all, button should be hidden
+    await expect(page.getByRole('button', { name: 'Clear completed' })).toHaveScreenshot('clear-completed-button-hidden.png');
+
     await expect(page.getByRole('button', { name: 'Clear completed' })).toBeHidden();
   });
 });
@@ -319,11 +375,19 @@ test.describe('Persistence', () => {
     await expect(firstTodoCheck).toBeChecked();
     await expect(todoItems).toHaveClass(['completed', '']);
 
+    // ⭐ Visual Regression: State before reload
+    await expect(page).toHaveScreenshot('todo-app-before-reload.png');
+
+
     // Ensure there is 1 completed item.
     await checkNumberOfCompletedTodosInLocalStorage(page, 1);
 
     // Now reload.
     await page.reload();
+    // ⭐ Visual Regression: State after reload (should look the same as before reload)
+    await expect(page).toHaveScreenshot('todo-app-after-reload.png');
+
+
     await expect(todoItems).toHaveText([TODO_ITEMS[0], TODO_ITEMS[1]]);
     await expect(firstTodoCheck).toBeChecked();
     await expect(todoItems).toHaveClass(['completed', '']);
@@ -345,27 +409,37 @@ test.describe('Routing', () => {
 
     await checkNumberOfCompletedTodosInLocalStorage(page, 1);
     await page.getByRole('link', { name: 'Active' }).click();
+    // ⭐ Visual Regression: Active items view
+    await expect(page).toHaveScreenshot('todo-app-active-items.png');
+
     await expect(todoItem).toHaveCount(2);
     await expect(todoItem).toHaveText([TODO_ITEMS[0], TODO_ITEMS[2]]);
   });
 
   test('should respect the back button', async ({ page }) => {
-    const todoItem = page.getByTestId('todo-item'); 
+    const todoItem = page.getByTestId('todo-item');
     await page.getByTestId('todo-item').nth(1).getByRole('checkbox').check();
 
     await checkNumberOfCompletedTodosInLocalStorage(page, 1);
 
     await test.step('Showing all items', async () => {
       await page.getByRole('link', { name: 'All' }).click();
+      // ⭐ Visual Regression: All items view (via back button)
+      await expect(page).toHaveScreenshot('todo-app-all-items-route.png');
+
       await expect(todoItem).toHaveCount(3);
     });
 
     await test.step('Showing active items', async () => {
       await page.getByRole('link', { name: 'Active' }).click();
+      // ⭐ Visual Regression: Active items view (via back button)
+      await expect(page).toHaveScreenshot('todo-app-active-items-route.png');
     });
 
     await test.step('Showing completed items', async () => {
       await page.getByRole('link', { name: 'Completed' }).click();
+      // ⭐ Visual Regression: Completed items view (via back button)
+      await expect(page).toHaveScreenshot('todo-app-completed-items-route.png');
     });
 
     await expect(todoItem).toHaveCount(1);
@@ -379,6 +453,9 @@ test.describe('Routing', () => {
     await page.getByTestId('todo-item').nth(1).getByRole('checkbox').check();
     await checkNumberOfCompletedTodosInLocalStorage(page, 1);
     await page.getByRole('link', { name: 'Completed' }).click();
+    // ⭐ Visual Regression: Completed items view
+    await expect(page).toHaveScreenshot('todo-app-completed-items.png');
+
     await expect(page.getByTestId('todo-item')).toHaveCount(1);
   });
 
@@ -388,10 +465,15 @@ test.describe('Routing', () => {
     await page.getByRole('link', { name: 'Active' }).click();
     await page.getByRole('link', { name: 'Completed' }).click();
     await page.getByRole('link', { name: 'All' }).click();
+    // ⭐ Visual Regression: All items view (after filtering)
+    await expect(page).toHaveScreenshot('todo-app-all-items-filtered.png');
+
     await expect(page.getByTestId('todo-item')).toHaveCount(3);
   });
 
   test('should highlight the currently applied filter', async ({ page }) => {
+    // ⭐ Visual Regression: All filter selected
+    await expect(page).toHaveScreenshot('todo-filter-all-selected.png');
     await expect(page.getByRole('link', { name: 'All' })).toHaveClass('selected');
     
     //create locators for active and completed links
@@ -399,9 +481,15 @@ test.describe('Routing', () => {
     const completedLink = page.getByRole('link', { name: 'Completed' });
     await activeLink.click();
 
+    // ⭐ Visual Regression: Active filter selected
+    await expect(page).toHaveScreenshot('todo-filter-active-selected.png');
+
     // Page change - active items.
     await expect(activeLink).toHaveClass('selected');
     await completedLink.click();
+
+    // ⭐ Visual Regression: Completed filter selected
+    await expect(page).toHaveScreenshot('todo-filter-completed-selected.png');
 
     // Page change - completed items.
     await expect(completedLink).toHaveClass('selected');
