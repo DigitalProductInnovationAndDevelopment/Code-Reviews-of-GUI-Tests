@@ -158,8 +158,9 @@ jobs:
       with:
         name: playwright-html-report
         # Playwright puts HTML report in html/ subfolder of --output (after playwright.config.js change)
-        path: published-screenshots/html/
-        # Add if-no-files-found to avoid warning if no report is generated (e.g., if Playwright fails early)
+        path: |
+          published-screenshots/html/
+          published-screenshots/results.json # ADD THIS LINE
         if-no-files-found: ignore
 
     #---------------------------------------------------
@@ -373,8 +374,13 @@ jobs:
           *Pass Rate:* **${{ steps.summary.outputs.passrate }} %**
 
           ## ESLint (GUI tests)
+          *Total files scanned:* **${{ steps.eslint_summary.outputs.total_files }}**
+          *Errors:* **${{ steps.eslint_summary.outputs.errors }}**
+          *Warnings:* **${{ steps.eslint_summary.outputs.warnings }}**
+          *Fixable Errors:* **${{ steps.eslint_summary.outputs.fixable_errors }}**
+          *Fixable Warnings:* **${{ steps.eslint_summary.outputs.fixable_warnings }}**
           ```
-          ${{ steps.lint_summary.outputs.summary }}
+          ${{ steps.lint_summary.outputs.summary }} # Keep this for the first 20 lines of raw output if desired
           ```
 
           ## Test-Flow Chart
