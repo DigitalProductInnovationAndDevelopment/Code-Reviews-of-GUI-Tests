@@ -227,7 +227,7 @@ test.describe("ESLint config validation (ESM)", () => {
         },
       },
     ];
-  `
+  `,
       );
 
       // Step 3: Write test file that triggers no-console
