@@ -97,12 +97,12 @@ jobs:
     - name: Run ESLint on root files only
       shell: bash
       run: |
-        npx eslint "*.{js,ts,tsx}" -f json -o eslint-root.json || true
+        npx eslint "*.{js,ts,tsx}" -f json -o eslint.config.json || true
 
     - name: Check ESLint errors and fail if any
       shell: bash
       run: |
-        ERRORS=$(jq '[.[] | .errorCount] | add' eslint-root.json)
+        ERRORS=$(jq '[.[] | .errorCount] | add' eslint.config.json)
         if [ "$ERRORS" -gt 0 ]; then
           echo "ESLint found errors."
           exit 1
@@ -115,8 +115,8 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: eslint-root-report
-        path: eslint-root.json
+        name: eslint.config-report
+        path: eslint.config.json
 
     - name: Read ESLint report (summary text)
       id: lint_summary
@@ -126,7 +126,7 @@ jobs:
         | .filePath as $file
         | .messages[]
         | "\($file):\(.line):\(.column) [\(.ruleId // "unknown")]: \(.message)"
-        ' eslint-root.json > lint_summary.txt
+        ' eslint.config.json > lint_summary.txt
 
 
         head -n 20 lint_summary.txt > lint_summary_preview.txt
@@ -144,7 +144,7 @@ jobs:
     - name: Extract ESLint summary
       id: eslint_summary
       run: |
-        REPORT="eslint-root.json"
+        REPORT="eslint.config.json"
         TOTAL_FILES=$(jq length "$REPORT")
         ERRORS=$(jq '[.[] | .errorCount] | add' "$REPORT")
         WARNINGS=$(jq '[.[] | .warningCount] | add' "$REPORT")
