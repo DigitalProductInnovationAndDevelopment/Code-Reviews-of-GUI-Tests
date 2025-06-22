@@ -105,7 +105,7 @@ jobs:
         ERRORS=$(jq '[.[] | .errorCount] | add' eslint-tests.json)
         if [ "$ERRORS" -gt 0 ]; then
           echo "ESLint found errors."
-          
+          exit 1
         fi
 
     - name: Upload ESLint report

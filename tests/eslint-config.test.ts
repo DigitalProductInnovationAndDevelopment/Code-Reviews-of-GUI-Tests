@@ -3,43 +3,58 @@ import { execSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+interface ESLintMessage {
+  ruleId: string | null;
+  severity: number;
+  message: string;
+  line: number;
+  column: number;
+  nodeType?: string;
+  endLine?: number;
+  endColumn?: number;
+  fix?: unknown;
+}
+
+interface ESLintResult {
+  filePath: string;
+  messages: ESLintMessage[];
+  errorCount: number;
+  warningCount: number;
+  fixableErrorCount: number;
+  fixableWarningCount: number;
+  source?: string;
+}
+
 function runESLint(filePath: string): any[] {
   try {
-    let output = execSync(`npx eslint ${filePath} -f json`, {
+    const output = execSync(`npx eslint ${filePath} -f json`, {
       encoding: "utf-8",
       stdio: "pipe",
     });
-
     const jsonStart = output.indexOf("[");
-    if (jsonStart === -1) {
-      throw new Error("No JSON array found in ESLint output");
-    }
-    output = output.slice(jsonStart);
-    return JSON.parse(output);
+    if (jsonStart === -1) throw new Error("No JSON array found in ESLint output");
+    return JSON.parse(output.slice(jsonStart));
   } catch (err: any) {
-    console.error("❌ ESLint execSync threw an error:");
-    console.error(err);
-
-    const stdout = err.stdout?.toString() ?? "";
-    const stderr = err.stderr?.toString() ?? "";
-    let output = stdout || stderr;
-
+    const output = err.stdout?.toString() || err.stderr?.toString() || "";
     const jsonStart = output.indexOf("[");
     if (jsonStart !== -1) {
-      output = output.slice(jsonStart);
       try {
-        return JSON.parse(output);
-      } catch (parseErr) {
-        console.error("❌ Failed to parse recovered ESLint JSON output");
+        return JSON.parse(output.slice(jsonStart));
+      } catch {
+        console.error("Failed to parse ESLint output JSON");
       }
     }
-
-    console.error("❌ No ESLint JSON output could be parsed");
+    console.error("ESLint failed and no JSON output could be parsed");
     return [];
   }
 }
 
-const testCases = [
+
+const testCases: {
+  name: string;
+  code: string;
+  expectedRule: string | null;
+}[] = [
   {
     name: "unused variable (no-unused-vars)",
     code: `const unused = 42;`,

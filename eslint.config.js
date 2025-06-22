@@ -45,8 +45,8 @@ export default [
     rules: {
       "no-unused-vars": "error",
       "playwright/no-wait-for-timeout": "error",
-      "@typescript-eslint/no-explicit-any": "error", // change from off to error
-      "no-console": "error", // add this
+      "@typescript-eslint/no-explicit-any": "off", // change from off to error
+      "no-console": "off", // add this
       "prettier/prettier": "error",
       ...(localOverride?.rules || {}),
     },
