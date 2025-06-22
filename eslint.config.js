@@ -9,7 +9,7 @@ let localOverride = {};
 
 try {
   // Dynamically import optional local config (ESM-compatible)
-  localOverride = (await import("./eslint.local.config.js")).default;
+  localOverride = (await import("./tests/eslint.local.config.js")).default;
   console.log("✅ Loaded local ESLint override config.");
 } catch (err) {
   console.log("ℹ️ No local override config found.");

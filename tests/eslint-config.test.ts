@@ -25,15 +25,14 @@ interface ESLintResult {
   source?: string;
 }
 
-function runESLint(filePath: string): any[] {
+function runESLint(filePath: string): ESLintResult[] {
   try {
     const output = execSync(`npx eslint ${filePath} -f json`, {
       encoding: "utf-8",
       stdio: "pipe",
     });
     const jsonStart = output.indexOf("[");
-    if (jsonStart === -1)
-      throw new Error("No JSON array found in ESLint output");
+    if (jsonStart === -1) throw new Error("No JSON array found in ESLint output");
     return JSON.parse(output.slice(jsonStart));
   } catch (err: any) {
     const output = err.stdout?.toString() || err.stderr?.toString() || "";
@@ -49,6 +48,9 @@ function runESLint(filePath: string): any[] {
     return [];
   }
 }
+
+const localConfigPath = path.join("tests", ".eslint.local.config.js");
+const backupPath = path.join("tests", ".eslint.local.config.backup.js");
 
 const testCases: {
   name: string;
@@ -85,6 +87,13 @@ const testCases: {
 test.describe("ESLint config validation (ESM)", () => {
   for (const { name, code, expectedRule } of testCases) {
     test(name, async () => {
+      // Temporarily rename local override file if present inside tests folder
+      let renamed = false;
+      try {
+        await fs.rename(localConfigPath, backupPath);
+        renamed = true;
+      } catch {}
+
       const fileName = `lint-demo-${name.replace(/[^a-z0-9\-]/gi, "-")}.ts`;
       const filePath = path.join("tests", fileName);
 
@@ -115,12 +124,15 @@ test.describe("ESLint config validation (ESM)", () => {
       }
 
       await fs.unlink(filePath);
+
+      // Restore the override file if it was renamed
+      if (renamed) {
+        await fs.rename(backupPath, localConfigPath);
+      }
     });
   }
 
-  test("should not crash if .eslint.local.config.js is missing", async () => {
-    const localConfigPath = ".eslint.local.config.js";
-    const backupPath = ".eslint.local.config.backup.js";
+  test("should not crash if tests/.eslint.local.config.js is missing", async () => {
     const filePath = "tests/lint-no-override.ts";
 
     await fs.mkdir("tests", { recursive: true });
@@ -157,7 +169,6 @@ test.describe("ESLint config validation (ESM)", () => {
   });
 
   test("should apply local override config correctly", async () => {
-    const localConfigPath = ".eslint.local.config.js";
     const configPath = "eslint.config.js";
     const filePath = "tests/lint-override-applied.ts";
     const backupConfigPath = "eslint.config.js.backup";
@@ -171,63 +182,61 @@ test.describe("ESLint config validation (ESM)", () => {
       await fs.rename(configPath, backupConfigPath);
       backedUp = true;
       console.log("⚠️ Backed up original eslint.config.js");
-    } catch {
-      // No original config found, no backup needed
-    }
+    } catch {}
 
     try {
-      // Step 1: Write override file
+      // Step 1: Write override file inside tests folder
       await fs.writeFile(
         localConfigPath,
         `export default {
-      rules: {
-        'no-console': 'off'
-      }
-    };`,
+  rules: {
+    'no-console': 'off'
+  }
+};`
       );
 
       // Step 2: Write the test ESLint config that uses the override
       await fs.writeFile(
         configPath,
         `
-    import tsParser from "@typescript-eslint/parser";
-    import tsPlugin from "@typescript-eslint/eslint-plugin";
-    import playwrightPlugin from "eslint-plugin-playwright";
-    import prettierPlugin from "eslint-plugin-prettier";
+import tsParser from "@typescript-eslint/parser";
+import tsPlugin from "@typescript-eslint/eslint-plugin";
+import playwrightPlugin from "eslint-plugin-playwright";
+import prettierPlugin from "eslint-plugin-prettier";
 
-    let localOverride = {};
+let localOverride = {};
 
-    try {
-      localOverride = (await import("./.eslint.local.config.js")).default;
-      console.log("✅ Loaded local ESLint override config.");
-    } catch (err) {
-      console.log("ℹ️ No local override config found.");
-    }
+try {
+  localOverride = (await import("./tests/.eslint.local.config.js")).default;
+  console.log("✅ Loaded local ESLint override config.");
+} catch (err) {
+  console.log("ℹ️ No local override config found.");
+}
 
-    export default [
-      {
-        ignores: [],
-      },
-      {
-        files: ["**/*.ts"],
-        languageOptions: {
-          ecmaVersion: 2021,
-          sourceType: "module",
-          parser: tsParser,
-        },
-        plugins: {
-          "@typescript-eslint": tsPlugin,
-          playwright: playwrightPlugin,
-          prettier: prettierPlugin,
-        },
-        rules: {
-          "no-console": "error",
-          "prettier/prettier": "error",
-          ...(localOverride?.rules || {})
-        },
-      },
-    ];
-  `,
+export default [
+  {
+    ignores: [],
+  },
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      ecmaVersion: 2021,
+      sourceType: "module",
+      parser: tsParser,
+    },
+    plugins: {
+      "@typescript-eslint": tsPlugin,
+      playwright: playwrightPlugin,
+      prettier: prettierPlugin,
+    },
+    rules: {
+      "no-console": "error",
+      "prettier/prettier": "error",
+      ...(localOverride?.rules || {})
+    },
+  },
+];
+`
       );
 
       // Step 3: Write test file that triggers no-console
@@ -265,18 +274,17 @@ test.describe("ESLint config validation (ESM)", () => {
   });
 
   test("should fallback gracefully if local override config is broken", async () => {
-    const localConfigPath = ".eslint.local.config.js";
     const filePath = "tests/lint-broken-override.ts";
 
     await fs.mkdir("tests", { recursive: true });
 
-    // Write invalid override
+    // Write invalid override inside tests folder
     await fs.writeFile(
       localConfigPath,
       `export default {
-        rules: {
-          'no-console': 'off',
-      }; // syntax error`,
+  rules: {
+    'no-console': 'off',
+}; // syntax error`
     );
 
     await fs.writeFile(filePath, `const test = 1;`);
