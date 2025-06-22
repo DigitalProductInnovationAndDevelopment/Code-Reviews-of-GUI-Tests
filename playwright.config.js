@@ -1,5 +1,5 @@
 // playwright.config.js (ESM-compatible)
-import { defineConfig } from '@playwright/test';
+import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: './tests',
