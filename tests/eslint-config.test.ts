@@ -184,7 +184,7 @@ test.describe("ESLint config validation (ESM)", () => {
       rules: {
         'no-console': 'off'
       }
-    };`
+    };`,
       );
 
       // Step 2: Write the test ESLint config that uses the override
