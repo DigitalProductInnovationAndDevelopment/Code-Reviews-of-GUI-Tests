@@ -12,21 +12,16 @@ jobs:
     permissions:
       contents: write # Needed for git operations (restore, commit, push) and for Prettier patch if it makes changes
       pull-requests: write # Needed for sticky PR comment
-      # Removed: pages: write and id-token: write - these are NOT needed for artifact upload
-
-    # Removed: environment block - this is NOT needed for artifact upload
-    # environment:
-    #   name: github-pages
-    #   url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
     #---------------------------------------------------
     # 0 – Checkout
     #---------------------------------------------------
-    - name: Checkout code (PR branch)
+    - name: Checkout code
       uses: actions/checkout@v3
       with:
         fetch-depth: 0
+        # Explicitly checkout the PR's head branch to allow pushing back
         ref: ${{ github.event.pull_request.head.ref }}
 
     #---------------------------------------------------
@@ -44,6 +39,7 @@ jobs:
       env:
         REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        # Use || true to allow subsequent steps even if Prettier finds issues
         npx prettier --write '**/*.{js,ts,tsx,jsx,json,yml,yaml,md}' || true
         git diff -U0 --no-color > prettier.patch || true
         if [ -s prettier.patch ]; then
@@ -56,6 +52,9 @@ jobs:
           echo "No Prettier issues found."
         fi
 
+    # IMPORTANT CHANGE: Moved this step here, immediately after Prettier.
+    # This ensures that Prettier's changes are discarded before any
+    # artifact generation or other file manipulations you want to keep/commit.
     - name: Discard Prettier changes before Git operations
       run: git restore .
 
@@ -80,85 +79,77 @@ jobs:
     #---------------------------------------------------
     - name: Run Playwright tests
       run: |
+        # Create the directory where Playwright should output its results and screenshots
+        # The 'mkdir -p' ensures the directory exists before Playwright tries to write to it.
         mkdir -p published-screenshots/html || true
         echo "Running Playwright tests, outputting artifacts to: published-screenshots"
+        # Run Playwright and direct its output to 'published-screenshots'
+        # Playwright runs headless by default in CI, so no --headless flag is needed here.
         npx playwright test --output=published-screenshots || true
+
         echo "Contents of published-screenshots after tests:" # Debugging
         ls -laR published-screenshots || true
 
-    # --- START OF ARTIFACT PREPARATION AND UPLOAD FOR SCREENSHOTS ---
+    # --- START OF NEW STEPS FOR SCREENSHOT PUBLISHING ---
 
-    # Prepare the directory for PR-specific screenshots to be uploaded as an artifact
-    - name: Prepare Playwright Screenshots for Artifact Upload
+    # Prepare the directory for PR-specific screenshots on GitHub Pages
+    - name: Prepare PR Screenshots for GitHub Pages
       if: github.event_name == 'pull_request' # Only for PRs
       run: |
-        PR_NUMBER="${{ github.event.pull_request.number }}"
-        # Define the directory where content will be structured for the artifact
-        # This will be the root of the artifact when downloaded
-        ARTIFACT_ROOT_DIR="_workflow_artifacts" # A new, clearer root for the artifact
+        # Create a unique directory for this PR's screenshots within docs/
+        # e.g., docs/pr/123/screenshots/
+        PR_DIR="docs/pr/${{ github.event.pull_request.number }}/screenshots"
+        mkdir -p "$PR_DIR"
 
-        # Create the target directory within the artifact root for this PR's screenshots
-        mkdir -p "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots"
+        # Corrected command to find and copy nested screenshots
+        # This will find all .png files in published-screenshots/html/data/ (where Playwright puts hashed images)
+        # and copy them directly into the $PR_DIR.
+        # Use 'cp -f' to force overwrite if file exists, just in case.
+        find published-screenshots/html/data -name "*.png" -exec cp -f {} "$PR_DIR/" \; || true
+        echo "Copied screenshots to $PR_DIR/"
+        ls -lh "$PR_DIR/" # For debugging, shows what was copied
 
-        # Copy the screenshots to this artifact directory
-        # We target published-screenshots/html/data as Playwright's actual image files are here
-        find published-screenshots/html/data -name "*.png" -exec cp -f {} "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots/" \; || true
-        echo "Copied screenshots to $ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots/"
-        ls -lh "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/screenshots/" # For debugging, shows what was copied
-
-    # NEW STEP: Upload the prepared directory containing screenshots as a workflow artifact
-    - name: Upload PR Screenshots Artifact
+    # Commit and Push PR Screenshots to GitHub Pages
+    - name: Commit and Push PR Screenshots to GitHub Pages
       if: github.event_name == 'pull_request' # Only for PRs
-      uses: actions/upload-artifact@v4
+      uses: EndBug/add-and-commit@v9 # Use this action to commit and push changes
       with:
-        name: pr-screenshots-${{ github.event.pull_request.number }} # A unique name for the artifact per PR
-        path: _workflow_artifacts/pr/${{ github.event.pull_request.number }}/screenshots/ # Upload only the specific screenshots
-        retention-days: 7 # Optional: how long to keep this artifact
-        if-no-files-found: ignore # Do not fail if no screenshots are found
+        add: 'docs/pr/${{ github.event.pull_request.number }}/screenshots/' # Add the new screenshot files
+        message: 'Docs: Publish Playwright screenshots for PR #${{ github.event.pull_request.number }} [skip ci]'
+        default_author: github_actions # Use GitHub Actions bot as author
+        push: true # This will push to the currently checked-out branch (your PR branch)
 
-    # Removed: Upload GitHub Pages Artifact step
-    # - name: Upload GitHub Pages Artifact
-    #   if: github.event_name == 'pull_request'
-    #   uses: actions/upload-pages-artifact@v3
-    #   with:
-    #     path: _site
-
-    # Removed: Deploy to GitHub Pages step
-    # - name: Deploy to GitHub Pages
-    #   id: deployment
-    #   if: github.event_name == 'pull_request'
-    #   uses: actions/deploy-pages@v4
-
-    # Generate Markdown for the PR Comment (now points to artifact download, not live URL)
+    # Generate Markdown for screenshots with their public URLs
     - name: Generate Screenshot Markdown for PR Comment
       id: generate_screenshot_markdown
       if: github.event_name == 'pull_request' # Only for PRs
       run: |
-        # Since we are NOT deploying to GitHub Pages for live URLs,
-        # we provide instructions to download the artifact.
-        
-        IMAGE_MARKDOWN="## 🖼️ Playwright Screenshots (Downloadable Artifacts)\n\n"
-        IMAGE_MARKDOWN+="Screenshots for this PR are available as a workflow artifact.\n"
-        IMAGE_MARKDOWN+="You can find them in the 'Artifacts' section of this workflow run's summary page.\n\n"
-        
-        # Use dynamic PR number for artifact name, enclosed in quotes for Markdown
-        IMAGE_MARKDOWN+="* **Artifact Name:** `pr-screenshots-${{ github.event.pull_request.number }}`\n"
-        
-        # Dynamic link to the current workflow run
-        RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        IMAGE_MARKDOWN+="* **Direct Link to Run:** [View Workflow Run](${RUN_URL})\n\n"
-        
-        # Check if actual screenshots were found to provide more specific message
-        if [ ! -d "published-screenshots/html/data" ] || ! find "published-screenshots/html/data" -maxdepth 1 -name "*.png" -print -quit | grep -q .; then
-            IMAGE_MARKDOWN="${IMAGE_MARKDOWN}No screenshots were found for this run.\n\n"
+        # The base URL needs to be the GitHub Pages URL for your repository.
+        # Make sure the 'digitalproductinnovationanddevelopment/Code-Reviews-of-GUI-Tests' part
+        # matches your actual GitHub repository path.
+        GITHUB_PAGES_BASE_URL="https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/pr/${{ github.event.pull_request.number }}/screenshots/"
+
+        PR_DIR="docs/pr/${{ github.event.pull_request.number }}/screenshots" # Re-define PR_DIR for this step
+
+        IMAGE_MARKDOWN=""
+        # Check if the target screenshot directory was populated
+        if [ -d "$PR_DIR" ] && find "$PR_DIR" -maxdepth 1 -name "*.png" -print -quit | grep -q .; then
+            # Now iterate over the copied files in the target directory to generate markdown
+            for img_file in "$PR_DIR"/*.png; do
+                img_name=$(basename "$img_file")
+                img_url="${GITHUB_PAGES_BASE_URL}${img_name}"
+                IMAGE_MARKDOWN+="![${img_name}](${img_url})\n\n"
+            done
+        else
+            IMAGE_MARKDOWN+="No screenshots available for this PR.\n\n"
         fi
-        
+
         echo "pr_screenshots_markdown<<EOF" >> $GITHUB_OUTPUT
         echo "$IMAGE_MARKDOWN" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
       shell: bash
 
-    # --- END OF ARTIFACT PREPARATION AND UPLOAD FOR SCREENSHOTS ---
+    # --- END OF NEW STEPS FOR SCREENSHOT PUBLISHING ---
 
     #---------------------------------------------------
     # 6 – Upload HTML report
@@ -168,6 +159,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: playwright-html-report
+        # Playwright puts HTML report in html/ subfolder of --output (after playwright.config.js change)
         path: |
           published-screenshots/html/
           published-screenshots/results.json
@@ -179,20 +171,22 @@ jobs:
     - name: Extract test summary
       id: summary
       run: |
-        REPORT_FILE="published-screenshots/results.json"
+        REPORT_FILE="published-screenshots/results.json" # Point to correct results.json location
         echo "Attempting to extract summary from: $REPORT_FILE"
 
         if [ ! -f "$REPORT_FILE" ]; then
           echo "Error: Playwright report file not found at $REPORT_FILE"
+          # Set default values if report is missing to prevent later failures
           echo "total=0" >> $GITHUB_OUTPUT
           echo "passed=0" >> "$GITHUB_OUTPUT"
           echo "failed=0" >> "$GITHUB_OUTPUT"
           echo "skipped=0" >> "$GITHUB_OUTPUT"
           echo "duration=0" >> "$GITHUB_OUTPUT"
           echo "passrate=0.00" >> "$GITHUB_OUTPUT"
-          exit 0
+          exit 0 # Allow workflow to continue even if report is missing
         fi
 
+        # Parse data from the JSON report
         TOTAL=$(jq '.stats.total' "$REPORT_FILE")
         PASSED=$(jq '.stats.expected' "$REPORT_FILE")
         FAILED=$(jq '.stats.failures' "$REPORT_FILE")
@@ -200,6 +194,7 @@ jobs:
         DURATION=$(jq '.stats.duration' "$REPORT_FILE")
         PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($TOTAL==0)?0:($PASSED/$TOTAL)*100}")
 
+        # Set outputs for subsequent steps
         echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
         echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
         echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
@@ -214,13 +209,19 @@ jobs:
     - name: Run ESLint on GUI tests
       shell: bash
       run: |
+        # Check if the 'tests' directory exists before running ESLint
         if [ -d "tests" ]; then
           echo "Running ESLint on tests directory."
+          # Output ESLint results to a JSON file for easier parsing
+          # The '|| true' allows the workflow to continue even if ESLint finds errors
+          # Add this mkdir to ensure the directory for eslint-tests.json exists
           mkdir -p reports/eslint || true
           npx eslint "tests/**/*.{js,ts,tsx}" -f json -o reports/eslint/eslint-tests.json || true
+          # Debugging: check if file was created and its size
           ls -lh reports/eslint/eslint-tests.json || true
         else
           echo "tests/ directory not found, skipping ESLint."
+          # Create an empty JSON file so subsequent steps don't fail gracefully
           mkdir -p reports/eslint || true
           echo "[]" > reports/eslint/eslint-tests.json
         fi
@@ -231,6 +232,7 @@ jobs:
       with:
         name: eslint-test-report
         path: reports/eslint/eslint-tests.json
+        # Add if-no-files-found to avoid warning if no report is generated (e.g., if ESLint fails early)
         if-no-files-found: ignore
 
     - name: Read ESLint report (preview)
@@ -238,6 +240,7 @@ jobs:
       run: |
         if [ -f "reports/eslint/eslint-tests.json" ]; then
           echo 'summary<<EOF' >> "$GITHUB_OUTPUT"
+          # Pretty print and get the first 20 lines for a summary
           jq '.' reports/eslint/eslint-tests.json | head -n 20 >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
         else
@@ -252,9 +255,10 @@ jobs:
     - name: Extract ESLint summary
       id: eslint_summary
       run: |
-        REPORT="reports/eslint/eslint-tests.json"
+        REPORT="reports/eslint/eslint-tests.json" # Update path
         if [ ! -f "$REPORT" ]; then
           echo "Error: ESLint report file not found at $REPORT. Cannot extract summary."
+          # Set defaults if report is missing
           echo "total_files=0" >> "$GITHUB_OUTPUT"
           echo "errors=0" >> "$GITHUB_OUTPUT"
           echo "warnings=0" >> "$GITHUB_OUTPUT"
@@ -269,7 +273,7 @@ jobs:
         FIXABLE_ERRORS=$(jq '[.[] | .fixableErrorCount] | add' "$REPORT")
         FIXABLE_WARNINGS=$(jq '[.[] | .fixableWarningCount] | add' "$REPORT")
 
-        echo "total_files=$TOTAL_OUTPUT" >> "$GITHUB_OUTPUT"
+        echo "total_files=$TOTAL_FILES" >> "$GITHUB_OUTPUT"
         echo "errors=$ERRORS" >> "$GITHUB_OUTPUT"
         echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
         echo "fixable_warnings=$FIXABLE_WARNINGS" >> "$GITHUB_OUTPUT"
@@ -282,19 +286,21 @@ jobs:
     - name: Generate test-flow chart
       shell: bash
       run: |
+        # Set locale for 'tr' command to behave predictably across environments
         export LC_ALL=C
-        set -e
+        set -e # Exit immediately if a command exits with a non-zero status
 
-        REPORT_FILE="published-screenshots/results.json"
+        REPORT_FILE="published-screenshots/results.json" # Point to correct results.json location
         echo "Attempting to generate flowchart from: $REPORT_FILE"
 
         if [ ! -f "$REPORT_FILE" ]; then
           echo "Error: Playwright report file not found at $REPORT_FILE for flowchart generation. Skipping chart."
-          exit 0
+          exit 0 # Exit this step gracefully if report is missing
         fi
 
         echo "graph TD" > flowchart.mmd
 
+        # Use jq to parse the JSON and format it for Mermaid, ensuring safe IDs
         jq -r '
           .suites[] as $file |
           ($file.title // "NO_FILE_TITLE") as $fileTitle |
@@ -305,15 +311,18 @@ jobs:
               [$fileTitle, $suiteTitle, $specTitle] | @tsv
         ' "$REPORT_FILE" |
         while IFS=$'\t' read -r fileTitle suiteTitle specTitle; do
+          # Sanitize titles to create valid Mermaid IDs (alphanumeric, underscores, limited length)
           fileId=$(echo "$fileTitle" | sed 's/[^a-zA-Z0-9_]/_/g' | sed 's/^_*\|_*$//g' | cut -c 1-50)
           suiteId=$(echo "${fileTitle}_${suiteTitle}" | sed 's/[^a-zA-Z0-9_]/_/g' | sed 's/^_*\|_*$//g' | cut -c 1-50)
           specId=$(echo "${fileTitle}_${suiteTitle}_${specTitle}" | sed 's/[^a-zA-Z0-9_]/_/g' | sed 's/^_*\|_*$//g' | cut -c 1-50)
 
+          # Skip if IDs become empty after sanitization
           if [ -z "$fileId" ] || [ -z "$suiteId" ] || [ -z "$specId" ]; then
             echo "Warning: Skipped a test entry due to invalid/empty IDs after sanitization. Original: File='$fileTitle', Suite='$suiteTitle', Spec='$specTitle'"
             continue
           fi
 
+          # Add nodes and edges to flowchart.mmd, checking for duplicates
           if ! grep -q "^  ${fileId}\[" flowchart.mmd; then
             echo "  ${fileId}[\"${fileTitle}\"]" >> flowchart.mmd
           fi
@@ -324,18 +333,20 @@ jobs:
           echo "  ${suiteId} --> ${specId}[\"${specTitle}\"]" >> flowchart.mmd
         done
 
+        # Configuration for Puppeteer (used by mermaid-cli)
         printf '{ "args": ["--no-sandbox","--disable-setuid-sandbox"] }\n' > puppeteer.json
 
+        # Run mermaid-cli to generate the flowchart image
         npx -y @mermaid-js/mermaid-cli@10.6.1 \
           -p puppeteer.json \
           -i flowchart.mmd \
-          -o flowchart.png || true
+          -o flowchart.png || true # Add || true to allow subsequent steps if mermaid-cli fails
 
-        ls -lh flowchart.png || true
+        ls -lh flowchart.png || true # List generated file, add || true for robustness
 
 
     - name: Show flowchart.mmd for debugging
-      run: cat flowchart.mmd || true
+      run: cat flowchart.mmd || true # Show content for debugging, add || true for robustness
 
     - name: Upload test-flow chart
       if: always()
@@ -368,7 +379,7 @@ jobs:
           *Fixable Errors:* **${{ steps.eslint_summary.outputs.fixable_errors }}**
           *Fixable Warnings:* **${{ steps.eslint_summary.outputs.fixable_warnings }}**
           ```
-          ${{ steps.lint_summary.outputs.summary }}
+          ${{ steps.lint_summary.outputs.summary }} # Keep this for the first 20 lines of raw output if desired
           ```
 
           ## Test-Flow Chart
@@ -381,7 +392,6 @@ jobs:
 
           **View Full Reports:**
           You can download the following artifacts from this workflow run's summary page:
-          * **`pr-screenshots-${{ github.event.pull_request.number }}`**: All Playwright screenshots for this PR.
           * **`playwright-html-report`**: The full interactive Playwright HTML report for this PR's branch.
           * **`eslint-test-report`**: Detailed ESLint results.
 
