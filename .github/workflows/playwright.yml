@@ -10,389 +10,383 @@ jobs:
   test:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed for git operations (restore, commit, push) and for Prettier patch if it makes changes
+      contents: write # Needed for git operations (checkout, peaceiris to push to gh-pages)
       pull-requests: write # Needed for sticky PR comment
-      # REMOVED: pages: write and id-token: write - these are NOT needed for artifact upload for Path 2
-
-    # REMOVED: environment block - this is NOT needed for artifact upload for Path 2
-    # environment:
-    #   name: github-pages
-    #   url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-    #---------------------------------------------------
-    # 0 – Checkout
-    #---------------------------------------------------
-    - name: Checkout code
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
-        ref: ${{ github.event.pull_request.head.ref }}
+      #---------------------------------------------------
+      # 0 – Checkout
+      #---------------------------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          # For PRs, explicitly checkout the PR's head branch to ensure latest changes and context
+          ref: ${{ github.event.pull_request.head.ref }}
 
-    #---------------------------------------------------
-    # 1 – reviewdog CLI
-    #---------------------------------------------------
-    - name: Setup reviewdog
-      uses: reviewdog/action-setup@v1
-      with: { reviewdog_version: latest }
+      #---------------------------------------------------
+      # 1 – reviewdog CLI (for Prettier)
+      #---------------------------------------------------
+      - name: Setup reviewdog
+        uses: reviewdog/action-setup@v1
+        with: { reviewdog_version: latest }
 
-    #---------------------------------------------------
-    # 2 – Prettier → inline review comments
-    #---------------------------------------------------
-    - name: Prettier style check (reviewdog)
-      shell: bash
-      env:
-        REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        # Use || true to allow subsequent steps even if Prettier finds issues
-        npx prettier --write '**/*.{js,ts,tsx,jsx,json,yml,yaml,md}' || true
-        git diff -U0 --no-color > prettier.patch || true
-        if [ -s prettier.patch ]; then
-          cat prettier.patch | reviewdog -f=diff \
-                                         -name="prettier" \
-                                         -reporter=github-pr-review \
-                                         -filter-mode=diff_context \
-                                         -level=warning
-        else
-          echo "No Prettier issues found."
-        fi
-
-    # NEW: Discard Prettier changes before Git operations to prevent conflicts with add-and-commit
-    - name: Discard Prettier changes before Git operations
-      run: git restore .
-
-    #---------------------------------------------------
-    # 3 – Node & deps
-    #---------------------------------------------------
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with: { node-version: 18 }
-
-    - name: Install dependencies
-      run: npm install
-
-    #---------------------------------------------------
-    # 4 – Install Playwright browsers
-    #---------------------------------------------------
-    - name: Install Playwright and browsers
-      run: npx playwright install --with-deps
-
-    #---------------------------------------------------
-    # 5 – Run Playwright tests
-    #---------------------------------------------------
-    - name: Run Playwright tests
-      run: |
-        # Create the directory where Playwright should output its results and screenshots
-        mkdir -p published-screenshots/html || true
-        echo "Running Playwright tests, outputting artifacts to: published-screenshots"
-        npx playwright test --output=published-screenshots || true
-
-        echo "Contents of published-screenshots after tests:" # Debugging
-        ls -laR published-screenshots || true
-
-    # --- START OF ARTIFACT PREPARATION AND UPLOAD FOR PLAYWRIGHT IMAGES (DIFFS, ACTUAL, EXPECTED) ---
-
-    # Prepare the directory for all Playwright-generated images to be uploaded as an artifact
-    - name: Prepare Playwright Images for Artifact Upload
-      if: github.event_name == 'pull_request' # Only for PRs
-      run: |
-        PR_NUMBER="${{ github.event.pull_request.number }}"
-        # Define the directory where content will be structured for the artifact
-        # This will be the root of the artifact when downloaded
-        ARTIFACT_ROOT_DIR="_workflow_artifacts"
-
-        # Create a specific directory for this PR's test images within the artifact root
-        # This will contain explicit screenshots, as well as .diff.png, .actual.png, .expected.png
-        mkdir -p "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/test_images"
-
-        # Copy all PNGs generated by Playwright into the artifact directory.
-        # This includes explicit screenshots and visual comparison outputs (diff, actual, expected).
-        # We target the 'published-screenshots' directory which is your Playwright output directory.
-        find published-screenshots -name "*.png" -exec cp -f {} "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/test_images/" \; || true
-        echo "Copied all PNGs from Playwright output to $ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/test_images/"
-        ls -lh "$ARTIFACT_ROOT_DIR/pr/$PR_NUMBER/test_images/" # For debugging, shows what was copied
-
-    # NEW STEP: Upload the prepared directory containing all relevant Playwright images as a workflow artifact
-    - name: Upload PR Test Images Artifact
-      if: github.event_name == 'pull_request' # Only for PRs
-      uses: actions/upload-artifact@v4
-      with:
-        name: pr-test-images-${{ github.event.pull_request.number }} # A unique name for the artifact per PR
-        path: _workflow_artifacts/pr/${{ github.event.pull_request.number }}/test_images/ # Upload only the specific images
-        retention-days: 7 # Optional: how long to keep this artifact
-        if-no-files-found: ignore # Do not fail if no images are found
-
-    # REMOVED: Steps related to GitHub Pages deployment (Commit and Push, Upload Pages Artifact, Deploy to Pages)
-    # - name: Commit and Push PR Screenshots to GitHub Pages
-    #   if: github.event_name == 'pull_request'
-    #   uses: EndBug/add-and-commit@v9
-    #   with:
-    #     add: 'docs/pr/${{ github.event.pull_request.number }}/screenshots/'
-    #     message: 'Docs: Publish Playwright screenshots for PR #${{ github.event.pull_request.number }} [skip ci]'
-    #     default_author: github_actions
-    #     push: true
-
-    # - name: Upload GitHub Pages Artifact
-    #   if: github.event_name == 'pull_request'
-    #   uses: actions/upload-pages-artifact@v3
-    #   with:
-    #     path: _site
-
-    # - name: Deploy to GitHub Pages
-    #   id: deployment
-    #   if: github.event_name == 'pull_request'
-    #   uses: actions/deploy-pages@v4
-
-    # Generate Markdown for the PR Comment (now points to artifact download, not live URL)
-    - name: Generate Test Images Markdown for PR Comment
-      id: generate_test_images_markdown
-      if: github.event_name == 'pull_request' # Only for PRs
-      run: |
-        IMAGE_MARKDOWN="## 🖼️ Playwright Test Images (Downloadable Artifacts)\n\n"
-        IMAGE_MARKDOWN+="This artifact includes all captured screenshots, as well as visual comparison diffs (`-diff.png`), actual (`-actual.png`), and expected (`-expected.png`) images if visual tests were run and failed.\n\n"
-        
-        # Use dynamic PR number for artifact name, enclosed in backticks for Markdown
-        IMAGE_MARKDOWN+="* **Artifact Name:** `pr-test-images-${{ github.event.pull_request.number }}`\n"
-        
-        # Dynamic link to the current workflow run
-        RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        IMAGE_MARKDOWN+="* **Direct Link to Run:** [View Workflow Run](${RUN_URL})\n\n"
-        
-        # Check if any PNGs were actually found to provide more specific message
-        if [ ! -d "published-screenshots" ] || ! find "published-screenshots" -name "*.png" -print -quit | grep -q .; then
-            IMAGE_MARKDOWN="${IMAGE_MARKDOWN}No test images (screenshots or visual diffs) were found for this run.\n\n"
-        fi
-        
-        echo "pr_screenshots_markdown<<EOF" >> $GITHUB_OUTPUT
-        echo "$IMAGE_MARKDOWN" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-      shell: bash
-
-    # --- END OF ARTIFACT PREPARATION AND UPLOAD FOR PLAYWRIGHT IMAGES ---
-
-    #---------------------------------------------------
-    # 6 – Upload HTML report
-    #---------------------------------------------------
-    - name: Upload HTML report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: playwright-html-report
-        path: |
-          published-screenshots/html/
-          published-screenshots/results.json
-        if-no-files-found: ignore
-
-    #---------------------------------------------------
-    # 7 – Extract test summary
-    #---------------------------------------------------
-    - name: Extract test summary
-      id: summary
-      run: |
-        REPORT_FILE="published-screenshots/results.json"
-        echo "Attempting to extract summary from: $REPORT_FILE"
-
-        if [ ! -f "$REPORT_FILE" ]; then
-          echo "Error: Playwright report file not found at $REPORT_FILE"
-          echo "total=0" >> $GITHUB_OUTPUT
-          echo "passed=0" >> "$GITHUB_OUTPUT"
-          echo "failed=0" >> "$GITHUB_OUTPUT"
-          echo "skipped=0" >> "$GITHUB_OUTPUT"
-          echo "duration=0" >> "$GITHUB_OUTPUT"
-          echo "passrate=0.00" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        TOTAL=$(jq '.stats.total' "$REPORT_FILE")
-        PASSED=$(jq '.stats.expected' "$REPORT_FILE")
-        FAILED=$(jq '.stats.failures' "$REPORT_FILE")
-        SKIPPED=$(jq '.stats.skipped' "$REPORT_FILE")
-        DURATION=$(jq '.stats.duration' "$REPORT_FILE")
-        PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($TOTAL==0)?0:($PASSED/$TOTAL)*100}")
-
-        echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
-        echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
-        echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
-        echo "skipped=$SKIPPED" >> "$GITHUB_OUTPUT"
-        echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
-        echo "passrate=$PASS_RATE" >> "$GITHUB_OUTPUT"
-
-
-    #---------------------------------------------------
-    # 8 – ESLint (tests only)
-    #---------------------------------------------------
-    - name: Run ESLint on GUI tests
-      shell: bash
-      run: |
-        if [ -d "tests" ]; then
-          echo "Running ESLint on tests directory."
-          mkdir -p reports/eslint || true
-          npx eslint "tests/**/*.{js,ts,tsx}" -f json -o reports/eslint/eslint-tests.json || true
-          ls -lh reports/eslint/eslint-tests.json || true
-        else
-          echo "tests/ directory not found, skipping ESLint."
-          mkdir -p reports/eslint || true
-          echo "[]" > reports/eslint/eslint-tests.json
-        fi
-
-    - name: Upload ESLint report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: eslint-test-report
-        path: reports/eslint/eslint-tests.json
-        if-no-files-found: ignore
-
-    - name: Read ESLint report (preview)
-      id: lint_summary
-      run: |
-        if [ -f "reports/eslint/eslint-tests.json" ]; then
-          echo 'summary<<EOF' >> "$GITHUB_OUTPUT"
-          jq '.' reports/eslint/eslint-tests.json | head -n 20 >> "$GITHUB_OUTPUT"
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-        else
-          echo 'summary<<EOF' >> "$GITHUB_OUTPUT"
-          echo 'ESLint report not generated or found.' >> "$GITHUB_OUTPUT"
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-        fi
-
-    #---------------------------------------------------
-    # 9 – Extract ESLint summary
-    #---------------------------------------------------
-    - name: Extract ESLint summary
-      id: eslint_summary
-      run: |
-        REPORT="reports/eslint/eslint-tests.json"
-        if [ ! -f "$REPORT" ]; then
-          echo "Error: ESLint report file not found at $REPORT. Cannot extract summary."
-          echo "total_files=0" >> "$GITHUB_OUTPUT"
-          echo "errors=0" >> "$GITHUB_OUTPUT"
-          echo "warnings=0" >> "$GITHUB_OUTPUT"
-          echo "fixable_errors=0" >> "$GITHUB_OUTPUT"
-          echo "fixable_warnings=0" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        TOTAL_FILES=$(jq length "$REPORT")
-        ERRORS=$(jq '[.[] | .errorCount] | add' "$REPORT")
-        WARNINGS=$(jq '[.[] | .warningCount] | add' "$REPORT")
-        FIXABLE_ERRORS=$(jq '[.[] | .fixableErrorCount] | add' "$REPORT")
-        FIXABLE_WARNINGS=$(jq '[.[] | .fixableWarningCount] | add' "$REPORT")
-
-        echo "total_files=$TOTAL_FILES" >> "$GITHUB_OUTPUT"
-        echo "errors=$ERRORS" >> "$GITHUB_OUTPUT"
-        echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
-        echo "fixable_warnings=$FIXABLE_WARNINGS" >> "$GITHUB_OUTPUT"
-        echo "fixable_errors=$FIXABLE_ERRORS" >> "$GITHUB_OUTPUT"
-
-
-    #---------------------------------------------------
-    # 10 – Generate Suite→Spec Mermaid chart (flowchart.png)
-    #---------------------------------------------------
-    - name: Generate test-flow chart
-      shell: bash
-      run: |
-        export LC_ALL=C
-        set -e
-
-        REPORT_FILE="published-screenshots/results.json"
-        echo "Attempting to generate flowchart from: $REPORT_FILE"
-
-        if [ ! -f "$REPORT_FILE" ]; then
-          echo "Error: Playwright report file not found at $REPORT_FILE for flowchart generation. Skipping chart."
-          exit 0
-        fi
-
-        echo "graph TD" > flowchart.mmd
-
-        jq -r '
-          .suites[] as $file |
-          ($file.title // "NO_FILE_TITLE") as $fileTitle |
-          $file.suites[]? as $suite |
-            ($suite.title // "NO_SUITE_TITLE") as $suiteTitle |
-            $suite.specs[]? as $spec |
-              ($spec.title // "NO_SPEC_TITLE") as $specTitle |
-              [$fileTitle, $suiteTitle, $specTitle] | @tsv
-        ' "$REPORT_FILE" |
-        while IFS=$'\t' read -r fileTitle suiteTitle specTitle; do
-          fileId=$(echo "$fileTitle" | sed 's/[^a-zA-Z0-9_]/_/g' | sed 's/^_*\|_*$//g' | cut -c 1-50)
-          suiteId=$(echo "${fileTitle}_${suiteTitle}" | sed 's/[^a-zA-Z0-9_]/_/g' | sed 's/^_*\|_*$//g' | cut -c 1-50)
-          specId=$(echo "${fileTitle}_${suiteTitle}_${specTitle}" | sed 's/[^a-zA-Z0-9_]/_/g' | sed 's/^_*\|_*$//g' | cut -c 1-50)
-
-          if [ -z "$fileId" ] || [ -z "$suiteId" ] || [ -z "$specId" ]; then
-            echo "Warning: Skipped a test entry due to invalid/empty IDs after sanitization. Original: File='$fileTitle', Suite='$suiteTitle', Spec='$specTitle'"
-            continue
+      #---------------------------------------------------
+      # 2 – Prettier → inline review comments
+      #---------------------------------------------------
+      - name: Prettier style check (reviewdog)
+        shell: bash
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Run Prettier --write to fix issues, suppress error with || true
+          npx prettier --write '**/*.{js,ts,tsx,jsx,json,yml,yaml,md}' || true
+          # Generate a diff if Prettier made changes
+          git diff -U0 --no-color > prettier.patch || true
+          if [ -s prettier.patch ]; then
+            cat prettier.patch | reviewdog -f=diff \
+                                           -name="prettier" \
+                                           -reporter=github-pr-review \
+                                           -filter-mode=diff_context \
+                                           -level=warning
+          else
+            echo "No Prettier issues found."
           fi
 
-          if ! grep -q "^  ${fileId}\[" flowchart.mmd; then
-            echo "  ${fileId}[\"${fileTitle}\"]" >> flowchart.mmd
+      # Discard Prettier changes so they don't affect subsequent git operations (like test-flow chart)
+      - name: Discard Prettier changes before Git operations
+        run: git restore .
+
+      #---------------------------------------------------
+      # 3 – Node & dependencies
+      #---------------------------------------------------
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with: { node-version: 18 } # Use a stable Node.js version
+
+      - name: Install dependencies
+        run: npm install
+
+      #---------------------------------------------------
+      # 4 – Install Playwright browsers
+      #---------------------------------------------------
+      - name: Install Playwright and browsers
+        run: npx playwright install --with-deps
+
+      #---------------------------------------------------
+      # 5 – Run Playwright tests
+      #---------------------------------------------------
+      - name: Run Playwright tests
+        run: |
+          # Ensure the Playwright output directory exists
+          # Playwright will put results/traces/videos in `published-screenshots/test-results` as per config.
+          # The HTML report generation (if not using Playwright's built-in 'html' reporter directly)
+          # will also use this base directory.
+          mkdir -p published-screenshots/html || true # Ensure html subfolder for reporter output
+          echo "Running Playwright tests, outputting artifacts to: published-screenshots"
+          # Run Playwright tests. `npx playwright test` by default runs in headless mode in CI.
+          # The `|| true` ensures the workflow continues even if tests fail, so reports can be generated.
+          npx playwright test --reporter=html,blob --output=published-screenshots || true
+
+          echo "Contents of published-screenshots after tests:" # For debugging
+          ls -laR published-screenshots || true
+
+      # --- START OF GITHUB PAGES DEPLOYMENT STEPS FOR PLAYWRIGHT REPORTS ---
+
+      # 1. Prepare Playwright Reports and Images for GitHub Pages
+      - name: Prepare Playwright Reports for GitHub Pages
+        if: github.event_name == 'pull_request' # Only prepare and deploy for Pull Requests
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          # Define the target directory structure within the `gh-pages-build` folder
+          # This will correspond to `https://<YOUR_GH_PAGES_URL>/pr/<PR_NUMBER>/`
+          GH_PAGES_TARGET_BASE_DIR="gh-pages-build/pr/$PR_NUMBER"
+
+          # Create directories for the HTML report and individual images/diffs
+          mkdir -p "$GH_PAGES_TARGET_BASE_DIR/html-report"
+          mkdir -p "$GH_PAGES_TARGET_BASE_DIR/images"      
+
+          echo "Preparing content for GitHub Pages under: $GH_PAGES_TARGET_BASE_DIR"
+
+          # Copy the entire HTML report generated by Playwright
+          if [ -d "playwright-report" ]; then # Playwright's default HTML report dir
+            echo "Found Playwright HTML report at 'playwright-report'."
+            cp -r playwright-report/* "$GH_PAGES_TARGET_BASE_DIR/html-report/" || true
+          elif [ -d "published-screenshots/html" ]; then # If using custom output path from config
+            echo "Found Playwright HTML report at 'published-screenshots/html'."
+            cp -r published-screenshots/html/* "$GH_PAGES_TARGET_BASE_DIR/html-report/" || true
+          else
+            echo "Warning: Playwright HTML report directory not found in expected locations."
           fi
-          if ! grep -q "^  ${suiteId}\[" flowchart.mmd; then
-            echo "  ${suiteId}[\"${suiteTitle}\"]" >> flowchart.mmd
-            echo "  ${fileId} --> ${suiteId}" >> flowchart.mmd
+
+          # Copy all Playwright-generated PNGs (actual, expected, diff, and any explicit screenshots)
+          # These are usually found in `published-screenshots/snapshots` or `published-screenshots/test-results`
+          # and also in the root of `published-screenshots` if --output was used broadly.
+          find published-screenshots -name "*.png" -exec cp -f {} "$GH_PAGES_TARGET_BASE_DIR/images/" \; || true
+          echo "Copied all PNGs to $GH_PAGES_TARGET_BASE_DIR/images/"
+
+          # Debugging: show the structure that will be deployed
+          echo "Contents of 'gh-pages-build' directory:"
+          ls -laR gh-pages-build || true
+
+      # 2. Deploy to GitHub Pages
+      - name: Deploy Playwright Reports to GitHub Pages
+        if: github.event_name == 'pull_request' # Only deploy for PRs
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./gh-pages-build # The local directory containing the content to publish
+          publish_branch: gh-pages     # The branch to publish to
+          # cname: 'your-custom-domain.com' # Uncomment and replace if you use a custom domain
+          # force_orphan: true # Use with caution: this can delete previous reports if not carefully managed.
+                               # It's better to manage unique paths per PR number as we do.
+
+      # 3. Generate Markdown for PR Comment (with GitHub Pages URLs)
+      - name: Generate Playwright Reports Markdown for PR Comment
+        id: generate_playwright_markdown
+        if: github.event_name == 'pull_request' # Only for PRs
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          # IMPORTANT: Adjust 'digitalproductinnovationanddevelopment/Code-Reviews-of-GUI-Tests'
+          # to match your actual GitHub username/organization and repository name.
+          GITHUB_PAGES_BASE_URL="https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests"
+
+          REPORT_URL="${GITHUB_PAGES_BASE_URL}/pr/${PR_NUMBER}/html-report/"
+          IMAGES_URL="${GITHUB_PAGES_BASE_URL}/pr/${PR_NUMBER}/images/"
+
+          COMMENT_MARKDOWN="## 📊 Playwright Reports\n\n"
+          COMMENT_MARKDOWN+="* **Full HTML Report:** [View Report](${REPORT_URL})\n"
+          COMMENT_MARKDOWN+="* **Captured Images/Diffs:** [Browse Images](${IMAGES_URL})\n\n"
+          COMMENT_MARKDOWN+="These reports are specific to this Pull Request and are hosted on GitHub Pages.\n"
+
+          echo "playwright_reports_markdown<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMENT_MARKDOWN" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        shell: bash
+
+      # --- END OF GITHUB PAGES DEPLOYMENT STEPS ---
+
+      #---------------------------------------------------
+      # 6 – Upload Playwright Result JSON (as artifact, optional)
+      #---------------------------------------------------
+      - name: Upload Playwright Result JSON
+        if: always() # Upload even if tests fail
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-json
+          path: published-screenshots/results.json # Path to the blob reporter's output
+          if-no-files-found: ignore # Don't fail if the file isn't there
+
+      #---------------------------------------------------
+      # 7 – Extract test summary from Playwright results.json
+      #---------------------------------------------------
+      - name: Extract test summary
+        id: summary
+        run: |
+          REPORT_FILE="published-screenshots/results.json"
+          echo "Attempting to extract summary from: $REPORT_FILE"
+
+          if [ ! -f "$REPORT_FILE" ]; then
+            echo "Error: Playwright report file not found at $REPORT_FILE"
+            # Set default values if report is missing to prevent later failures
+            echo "total=0" >> $GITHUB_OUTPUT
+            echo "passed=0" >> "$GITHUB_OUTPUT"
+            echo "failed=0" >> "$GITHUB_OUTPUT"
+            echo "skipped=0" >> "$GITHUB_OUTPUT"
+            echo "duration=0" >> "$GITHUB_OUTPUT"
+            echo "passrate=0.00" >> "$GITHUB_OUTPUT"
+            exit 0 # Allow workflow to continue even if report is missing
           fi
-          echo "  ${suiteId} --> ${specId}[\"${specTitle}\"]" >> flowchart.mmd
-        done
 
-        printf '{ "args": ["--no-sandbox","--disable-setuid-sandbox"] }\n' > puppeteer.json
+          TOTAL=$(jq '.stats.total' "$REPORT_FILE")
+          PASSED=$(jq '.stats.expected' "$REPORT_FILE")
+          FAILED=$(jq '.stats.failures' "$REPORT_FILE")
+          SKIPPED=$(jq '.stats.skipped' "$REPORT_FILE")
+          DURATION=$(jq '.stats.duration' "$REPORT_FILE")
+          PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($TOTAL==0)?0:($PASSED/$TOTAL)*100}")
 
-        npx -y @mermaid-js/mermaid-cli@10.6.1 \
-          -p puppeteer.json \
-          -i flowchart.mmd \
-          -o flowchart.png || true
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "skipped=$SKIPPED" >> "$GITHUB_OUTPUT"
+          echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
+          echo "passrate=$PASS_RATE" >> "$GITHUB_OUTPUT"
 
-        ls -lh flowchart.png || true
+      #---------------------------------------------------
+      # 8 – ESLint (tests only)
+      #---------------------------------------------------
+      - name: Run ESLint on GUI tests
+        shell: bash
+        run: |
+          if [ -d "tests" ]; then
+            echo "Running ESLint on tests directory."
+            mkdir -p reports/eslint || true # Ensure directory exists for output
+            # Run ESLint, output to JSON file, allow workflow to continue if errors found
+            npx eslint "tests/**/*.{js,ts,tsx}" -f json -o reports/eslint/eslint-tests.json || true
+            ls -lh reports/eslint/eslint-tests.json || true # Debugging
+          else
+            echo "tests/ directory not found, skipping ESLint."
+            mkdir -p reports/eslint || true
+            echo "[]" > reports/eslint/eslint-tests.json # Create empty file for consistent behavior
+          fi
 
+      - name: Upload ESLint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-test-report
+          path: reports/eslint/eslint-tests.json
+          if-no-files-found: ignore
 
-    - name: Show flowchart.mmd for debugging
-      run: cat flowchart.mmd || true
+      - name: Read ESLint report (preview)
+        id: lint_summary
+        run: |
+          if [ -f "reports/eslint/eslint-tests.json" ]; then
+            echo 'summary<<EOF' >> "$GITHUB_OUTPUT"
+            jq '.' reports/eslint/eslint-tests.json | head -n 20 >> "$GITHUB_OUTPUT" # Pretty print first 20 lines
+            echo 'EOF' >> "$GITHUB_OUTPUT"
+          else
+            echo 'summary<<EOF' >> "$GITHUB_OUTPUT"
+            echo 'ESLint report not generated or found.' >> "$GITHUB_OUTPUT"
+            echo 'EOF' >> "$GITHUB_OUTPUT"
+          fi
 
-    - name: Upload test-flow chart
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-flow-chart
-        path: flowchart.png
-        if-no-files-found: ignore
+      #---------------------------------------------------
+      # 9 – Extract ESLint summary
+      #---------------------------------------------------
+      - name: Extract ESLint summary
+        id: eslint_summary
+        run: |
+          REPORT="reports/eslint/eslint-tests.json"
+          if [ ! -f "$REPORT" ]; then
+            echo "Error: ESLint report file not found at $REPORT. Cannot extract summary."
+            echo "total_files=0" >> "$GITHUB_OUTPUT"
+            echo "errors=0" >> "$GITHUB_OUTPUT"
+            echo "warnings=0" >> "$GITHUB_OUTPUT"
+            echo "fixable_errors=0" >> "$GITHUB_OUTPUT"
+            echo "fixable_warnings=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TOTAL_FILES=$(jq length "$REPORT")
+          ERRORS=$(jq '[.[] | .errorCount] | add' "$REPORT")
+          WARNINGS=$(jq '[.[] | .warningCount] | add' "$REPORT")
+          FIXABLE_ERRORS=$(jq '[.[] | .fixableErrorCount] | add' "$REPORT")
+          FIXABLE_WARNINGS=$(jq '[.[] | .fixableWarningCount] | add' "$REPORT")
+          echo "total_files=$TOTAL_FILES" >> "$GITHUB_OUTPUT"
+          echo "errors=$ERRORS" >> "$GITHUB_OUTPUT"
+          echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
+          echo "fixable_warnings=$FIXABLE_WARNINGS" >> "$GITHUB_OUTPUT"
+          echo "fixable_errors=$FIXABLE_ERRORS" >> "$GITHUB_OUTPUT"
 
-    #---------------------------------------------------
-    # 11 – Sticky PR comment
-    #---------------------------------------------------
-    - name: Comment on PR with results
-      uses: marocchino/sticky-pull-request-comment@v2
-      with:
-        message: |
-          ## Playwright Test Metrics
-          *Total:* **${{ steps.summary.outputs.total }}**
-          *Passed:* **${{ steps.summary.outputs.passed }}**
-          *Failed:* **${{ steps.summary.outputs.failed }}**
-          *Skipped:* **${{ steps.summary.outputs.skipped }}**
+      #---------------------------------------------------
+      # 10 – Generate Suite→Spec Mermaid chart (flowchart.png)
+      #---------------------------------------------------
+      - name: Generate test-flow chart
+        shell: bash
+        run: |
+          export LC_ALL=C # Ensure 'tr' behaves consistently
+          set -e # Exit on first error for script robustness
 
-          *Duration:* **${{ steps.summary.outputs.duration }} ms**
-          *Pass Rate:* **${{ steps.summary.outputs.passrate }} %**
+          REPORT_FILE="published-screenshots/results.json"
+          echo "Attempting to generate flowchart from: $REPORT_FILE"
 
-          ## ESLint (GUI tests)
-          *Total files scanned:* **${{ steps.eslint_summary.outputs.total_files }}**
-          *Errors:* **${{ steps.eslint_summary.outputs.errors }}**
-          *Warnings:* **${{ steps.eslint_summary.outputs.warnings }}**
-          *Fixable Errors:* **${{ steps.eslint_summary.outputs.fixable_errors }}**
-          *Fixable Warnings:* **${{ steps.eslint_summary.outputs.fixable_warnings }}**
-          ```
-          ${{ steps.lint_summary.outputs.summary }}
-          ```
+          if [ ! -f "$REPORT_FILE" ]; then
+            echo "Error: Playwright report file not found at $REPORT_FILE for flowchart generation. Skipping chart."
+            exit 0 # Exit this step gracefully
+          fi
 
-          ## Test-Flow Chart
-          Artifact: **test-flow-chart → flowchart.png**
+          echo "graph TD" > flowchart.mmd
 
-          ## Playwright Test Images for this PR
-          ${{ steps.generate_test_images_markdown.outputs.pr_screenshots_markdown }}
+          # Use jq to parse the JSON and format for Mermaid, sanitizing IDs
+          jq -r '
+            .suites[] as $file |
+            ($file.title // "NO_FILE_TITLE") as $fileTitle |
+            $file.suites[]? as $suite |
+              ($suite.title // "NO_SUITE_TITLE") as $suiteTitle |
+              $suite.specs[]? as $spec |
+                ($spec.title // "NO_SPEC_TITLE") as $specTitle |
+                [$fileTitle, $suiteTitle, $specTitle] | @tsv
+          ' "$REPORT_FILE" |
+          while IFS=$'\t' read -r fileTitle suiteTitle specTitle; do
+            # Sanitize titles to create valid Mermaid IDs (alphanumeric, underscores, limited length)
+            fileId=$(echo "$fileTitle" | sed 's/[^a-zA-Z0-9_]/_/g' | sed 's/^_*\|_*$//g' | cut -c 1-50)
+            suiteId=$(echo "${fileTitle}_${suiteTitle}" | sed 's/[^a-zA-Z0-9_]/_/g' | sed 's/^_*\|_*$//g' | cut -c 1-50)
+            specId=$(echo "${fileTitle}_${suiteTitle}_${specTitle}" | sed 's/[^a-zA-Z0-9_]/_/g' | sed 's/^_*\|_*$//g' | cut -c 1-50)
 
-          ---
+            if [ -z "$fileId" ] || [ -z "$suiteId" ] || [ -z "$specId" ]; then
+              echo "Warning: Skipped a test entry due to invalid/empty IDs after sanitization. Original: File='$fileTitle', Suite='$suiteTitle', Spec='$specTitle'"
+              continue
+            fi
 
-          **View Full Reports:**
-          You can download the following artifacts from this workflow run's summary page:
-          * **`pr-test-images-${{ github.event.pull_request.number }}`**: All Playwright screenshots and visual diffs for this PR.
-          * **`playwright-html-report`**: The full interactive Playwright HTML report for this PR's branch.
-          * **`eslint-test-report`**: Detailed ESLint results.
+            # Add nodes and edges, checking for duplicates to avoid Mermaid syntax errors
+            if ! grep -q "^  ${fileId}\\[" flowchart.mmd; then
+              echo "  ${fileId}[\"${fileTitle}\"]" >> flowchart.mmd
+            fi
+            if ! grep -q "^  ${suiteId}\\[" flowchart.mmd; then
+              echo "  ${suiteId}[\"${suiteTitle}\"]" >> flowchart.mmd
+              echo "  ${fileId} --> ${suiteId}" >> flowchart.mmd
+            fi
+            echo "  ${suiteId} --> ${specId}[\"${specTitle}\"]" >> flowchart.mmd
+          done
 
-          _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          # Configuration for Puppeteer (used by mermaid-cli) to run in CI environment
+          printf '{ "args": ["--no-sandbox","--disable-setuid-sandbox"] }\n' > puppeteer.json
+
+          # Run mermaid-cli to generate the flowchart image
+          npx -y @mermaid-js/mermaid-cli@10.6.1 \
+            -p puppeteer.json \
+            -i flowchart.mmd \
+            -o flowchart.png || true # Add || true to allow subsequent steps if mermaid-cli fails
+
+          ls -lh flowchart.png || true # List generated file for debugging
+
+      - name: Show flowchart.mmd for debugging
+        run: cat flowchart.mmd || true
+
+      - name: Upload test-flow chart
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-flow-chart
+          path: flowchart.png
+          if-no-files-found: ignore
+
+      #---------------------------------------------------
+      # 11 – Sticky PR comment
+      #---------------------------------------------------
+      - name: Comment on PR with results
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          message: |
+            ## Playwright Test Metrics
+            *Total:* **${{ steps.summary.outputs.total }}**
+            *Passed:* **${{ steps.summary.outputs.passed }}**
+            *Failed:* **${{ steps.summary.outputs.failed }}**
+            *Skipped:* **${{ steps.summary.outputs.skipped }}**
+
+            *Duration:* **${{ steps.summary.outputs.duration }} ms**
+            *Pass Rate:* **${{ steps.summary.outputs.passrate }} %**
+
+            ${{ steps.generate_playwright_markdown.outputs.playwright_reports_markdown }} # Use the generated markdown for GH Pages links
+
+            ## ESLint (GUI tests)
+            *Total files scanned:* **${{ steps.eslint_summary.outputs.total_files }}**
+            *Errors:* **${{ steps.eslint_summary.outputs.errors }}**
+            *Warnings:* **${{ steps.eslint_summary.outputs.warnings }}**
+            *Fixable Errors:* **${{ steps.eslint_summary.outputs.fixable_errors }}**
+            *Fixable Warnings:* **${{ steps.eslint_summary.outputs.fixable_warnings }}**
+            ```
+            ${{ steps.lint_summary.outputs.summary }}
+            ```
+
+            ## Test-Flow Chart
+            Artifact: **test-flow-chart → flowchart.png**
+
+            ---
+
+            **View Full Reports (Downloadable Artifacts):**
+            You can download the following artifacts from this workflow run's summary page:
+            * **`playwright-results-json`**: The raw Playwright results in JSON format.
+            * **`eslint-test-report`**: Detailed ESLint results in JSON format.
+
+            _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
