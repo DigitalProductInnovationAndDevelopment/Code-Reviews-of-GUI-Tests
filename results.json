@@ -1,0 +1,1504 @@
+{
+  "config": {
+    "configFile": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\playwright.config.js",
+    "rootDir": "C:/Users/amari/Code-Reviews-of-GUI-Tests/tests",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 6
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "html",
+        {
+          "open": "never",
+          "outputFolder": "html"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "C:/Users/amari/Code-Reviews-of-GUI-Tests/published-screenshots",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 6
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "C:/Users/amari/Code-Reviews-of-GUI-Tests/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "updateSnapshots": "changed",
+    "updateSourceMethod": "patch",
+    "version": "1.53.1",
+    "workers": 6,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "demo-todo-app.spec.ts",
+      "file": "demo-todo-app.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "New Todo",
+          "file": "demo-todo-app.spec.ts",
+          "line": 14,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should allow me to add todo items",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4795,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-empty-chromium-win32.png, writing actual.\n"
+                        },
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-one-item-chromium-win32.png, writing actual.\n"
+                        },
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-two-items-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:25.264Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-empty-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-empty-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-empty-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-New-Todo-should-allow-me-to-add-todo-items-chromium\\todo-app-empty-actual.png"
+                        },
+                        {
+                          "name": "todo-app-one-item-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-one-item-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-one-item-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-New-Todo-should-allow-me-to-add-todo-items-chromium\\todo-app-one-item-actual.png"
+                        },
+                        {
+                          "name": "todo-app-two-items-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-two-items-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-two-items-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-New-Todo-should-allow-me-to-add-todo-items-chromium\\todo-app-two-items-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-New-Todo-should-allow-me-to-add-todo-items-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-de14671fd2e5e71cfcf4",
+              "file": "demo-todo-app.spec.ts",
+              "line": 15,
+              "column": 7
+            },
+            {
+              "title": "should clear text input field when an item is added",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 3598,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:25.274Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-New-Todo-sho-28c2c-field-when-an-item-is-added-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-3b8f34f2e93d2414c1ab",
+              "file": "demo-todo-app.spec.ts",
+              "line": 51,
+              "column": 7
+            },
+            {
+              "title": "should append new items to the bottom of the list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4144,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-default-items-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:25.248Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-default-items-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-default-items-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-default-items-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-New-Todo-sho-149e5-s-to-the-bottom-of-the-list-chromium\\todo-app-default-items-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-New-Todo-sho-149e5-s-to-the-bottom-of-the-list-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-2531b32b950949c93e0b",
+              "file": "demo-todo-app.spec.ts",
+              "line": 64,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Mark all as completed",
+          "file": "demo-todo-app.spec.ts",
+          "line": 86,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should allow me to mark all items as completed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 4152,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-all-completed-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:25.304Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-all-completed-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-all-completed-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-all-completed-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Mark-all-as--1144c-mark-all-items-as-completed-chromium\\todo-app-all-completed-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Mark-all-as--1144c-mark-all-items-as-completed-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-e38558bd3234b0b8d82c",
+              "file": "demo-todo-app.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "should allow me to clear the complete state of all items",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 4,
+                      "status": "passed",
+                      "duration": 4200,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-all-uncompleted-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:25.268Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-all-uncompleted-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-all-uncompleted-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-all-uncompleted-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Mark-all-as--1aefc-complete-state-of-all-items-chromium\\todo-app-all-uncompleted-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Mark-all-as--1aefc-complete-state-of-all-items-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-2e7d774e9c08aeb850d5",
+              "file": "demo-todo-app.spec.ts",
+              "line": 109,
+              "column": 7
+            },
+            {
+              "title": "complete all checkbox should update state when items are completed / cleared",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 5,
+                      "status": "passed",
+                      "duration": 4340,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-one-unchecked-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:25.269Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-one-unchecked-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-one-unchecked-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-one-unchecked-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Mark-all-as--f0803-items-are-completed-cleared-chromium\\todo-app-one-unchecked-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Mark-all-as--f0803-items-are-completed-cleared-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-e5befab6d7114c3aa529",
+              "file": "demo-todo-app.spec.ts",
+              "line": 122,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Item",
+          "file": "demo-todo-app.spec.ts",
+          "line": 147,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should allow me to mark items as complete",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 1102,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-first-item-completed-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:29.269Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-first-item-completed-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-first-item-completed-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-first-item-completed-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Item-should-allow-me-to-mark-items-as-complete-chromium\\todo-app-first-item-completed-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Item-should-allow-me-to-mark-items-as-complete-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-489ea41f87390de41c21",
+              "file": "demo-todo-app.spec.ts",
+              "line": 149,
+              "column": 7
+            },
+            {
+              "title": "should allow me to un-mark items as complete",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 823,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:29.736Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Item-should--41727-o-un-mark-items-as-complete-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-5710470e4e4a966b2f75",
+              "file": "demo-todo-app.spec.ts",
+              "line": 178,
+              "column": 7
+            },
+            {
+              "title": "should allow me to edit an item",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 1491,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-before-edit-chromium-win32.png, writing actual.\n"
+                        },
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-after-edit-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:29.755Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-before-edit-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-before-edit-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-before-edit-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Item-should-allow-me-to-edit-an-item-chromium\\todo-app-before-edit-actual.png"
+                        },
+                        {
+                          "name": "todo-app-after-edit-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-after-edit-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-after-edit-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Item-should-allow-me-to-edit-an-item-chromium\\todo-app-after-edit-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Item-should-allow-me-to-edit-an-item-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-1a97b61d023a429bd040",
+              "file": "demo-todo-app.spec.ts",
+              "line": 203,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Editing",
+          "file": "demo-todo-app.spec.ts",
+          "line": 229,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should hide other controls when editing",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 4,
+                      "status": "passed",
+                      "duration": 1103,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-item-editing-mode-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:29.861Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-item-editing-mode-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-item-editing-mode-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-item-editing-mode-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Editing-shou-69f34-other-controls-when-editing-chromium\\todo-item-editing-mode-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Editing-shou-69f34-other-controls-when-editing-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-28fb607624050fd82521",
+              "file": "demo-todo-app.spec.ts",
+              "line": 235,
+              "column": 7
+            },
+            {
+              "title": "should save edits on blur",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 5,
+                      "status": "passed",
+                      "duration": 720,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:29.933Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Editing-should-save-edits-on-blur-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-1bd6ee2fec1beaaf42aa",
+              "file": "demo-todo-app.spec.ts",
+              "line": 250,
+              "column": 7
+            },
+            {
+              "title": "should trim entered text",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 666,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:30.381Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Editing-should-trim-entered-text-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-53f971c12bed0d92be82",
+              "file": "demo-todo-app.spec.ts",
+              "line": 264,
+              "column": 7
+            },
+            {
+              "title": "should remove the item if an empty text string was entered",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 676,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:30.413Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Editing-shou-38188-pty-text-string-was-entered-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-10ce05380c00810d697e",
+              "file": "demo-todo-app.spec.ts",
+              "line": 278,
+              "column": 7
+            },
+            {
+              "title": "should cancel edits on escape",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 646,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:30.567Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Editing-should-cancel-edits-on-escape-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-f1199d69dfa0655fa016",
+              "file": "demo-todo-app.spec.ts",
+              "line": 290,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Counter",
+          "file": "demo-todo-app.spec.ts",
+          "line": 299,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display the current number of todo items",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 5,
+                      "status": "passed",
+                      "duration": 1051,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-counter-1-item-chromium-win32.png, writing actual.\n"
+                        },
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-counter-2-items-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:30.661Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-counter-1-item-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-counter-1-item-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-counter-1-item-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Counter-shou-c1b8c-urrent-number-of-todo-items-chromium\\todo-counter-1-item-actual.png"
+                        },
+                        {
+                          "name": "todo-counter-2-items-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-counter-2-items-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-counter-2-items-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Counter-shou-c1b8c-urrent-number-of-todo-items-chromium\\todo-counter-2-items-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Counter-shou-c1b8c-urrent-number-of-todo-items-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-bbb1bb0c9c77cda96f15",
+              "file": "demo-todo-app.spec.ts",
+              "line": 300,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Clear completed button",
+          "file": "demo-todo-app.spec.ts",
+          "line": 327,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display the correct text",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 4,
+                      "status": "passed",
+                      "duration": 788,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\clear-completed-button-visible-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:30.972Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "clear-completed-button-visible-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\clear-completed-button-visible-chromium-win32.png"
+                        },
+                        {
+                          "name": "clear-completed-button-visible-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Clear-comple-fd1bf-ld-display-the-correct-text-chromium\\clear-completed-button-visible-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Clear-comple-fd1bf-ld-display-the-correct-text-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-d1d24c10b0b14b6d95da",
+              "file": "demo-todo-app.spec.ts",
+              "line": 332,
+              "column": 7
+            },
+            {
+              "title": "should remove completed items when clicked",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 923,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-after-clearing-completed-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:31.058Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-after-clearing-completed-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-after-clearing-completed-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-after-clearing-completed-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Clear-comple-9aaec-ompleted-items-when-clicked-chromium\\todo-app-after-clearing-completed-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Clear-comple-9aaec-ompleted-items-when-clicked-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-afaa39a2add3b845087f",
+              "file": "demo-todo-app.spec.ts",
+              "line": 340,
+              "column": 7
+            },
+            {
+              "title": "should be hidden when there are no items that are completed",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 5603,
+                      "error": {
+                        "message": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveScreenshot\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByRole('button', { name: 'Clear completed' })\n  Timeout 5000ms exceeded.\n\nCall log:\n\u001b[2m  - Expect \"toHaveScreenshot(clear-completed-button-hidden.png)\" with timeout 5000ms\u001b[22m\n\u001b[2m    - generating new stable screenshot expectation\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: 'Clear completed' })\u001b[22m\n\u001b[2m  - Timeout 5000ms exceeded.\u001b[22m\n",
+                        "stack": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveScreenshot\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByRole('button', { name: 'Clear completed' })\n  Timeout 5000ms exceeded.\n\nCall log:\n\u001b[2m  - Expect \"toHaveScreenshot(clear-completed-button-hidden.png)\" with timeout 5000ms\u001b[22m\n\u001b[2m    - generating new stable screenshot expectation\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: 'Clear completed' })\u001b[22m\n\u001b[2m  - Timeout 5000ms exceeded.\u001b[22m\n\n    at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts:355:73",
+                        "location": {
+                          "file": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts",
+                          "column": 73,
+                          "line": 355
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 353 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByRole(\u001b[32m'button'\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[32m'Clear completed'\u001b[39m })\u001b[33m.\u001b[39mclick()\u001b[33m;\u001b[39m\n \u001b[90m 354 |\u001b[39m     \u001b[90m// ⭐ Visual Regression: After clearing all, button should be hidden\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 355 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mgetByRole(\u001b[32m'button'\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[32m'Clear completed'\u001b[39m }))\u001b[33m.\u001b[39mtoHaveScreenshot(\u001b[32m'clear-completed-button-hidden.png'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                                                         \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 356 |\u001b[39m\n \u001b[90m 357 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mgetByRole(\u001b[32m'button'\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[32m'Clear completed'\u001b[39m }))\u001b[33m.\u001b[39mtoBeHidden()\u001b[33m;\u001b[39m\n \u001b[90m 358 |\u001b[39m   })\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts",
+                            "column": 73,
+                            "line": 355
+                          },
+                          "message": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveScreenshot\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByRole('button', { name: 'Clear completed' })\n  Timeout 5000ms exceeded.\n\nCall log:\n\u001b[2m  - Expect \"toHaveScreenshot(clear-completed-button-hidden.png)\" with timeout 5000ms\u001b[22m\n\u001b[2m    - generating new stable screenshot expectation\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: 'Clear completed' })\u001b[22m\n\u001b[2m  - Timeout 5000ms exceeded.\u001b[22m\n\n\n\u001b[0m \u001b[90m 353 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByRole(\u001b[32m'button'\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[32m'Clear completed'\u001b[39m })\u001b[33m.\u001b[39mclick()\u001b[33m;\u001b[39m\n \u001b[90m 354 |\u001b[39m     \u001b[90m// ⭐ Visual Regression: After clearing all, button should be hidden\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 355 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mgetByRole(\u001b[32m'button'\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[32m'Clear completed'\u001b[39m }))\u001b[33m.\u001b[39mtoHaveScreenshot(\u001b[32m'clear-completed-button-hidden.png'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                                                         \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 356 |\u001b[39m\n \u001b[90m 357 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mgetByRole(\u001b[32m'button'\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[32m'Clear completed'\u001b[39m }))\u001b[33m.\u001b[39mtoBeHidden()\u001b[33m;\u001b[39m\n \u001b[90m 358 |\u001b[39m   })\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts:355:73\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:31.103Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Clear-comple-576e5-no-items-that-are-completed-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Clear-comple-576e5-no-items-that-are-completed-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts",
+                        "column": 73,
+                        "line": 355
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-4ebb083191c59dda5f31",
+              "file": "demo-todo-app.spec.ts",
+              "line": 351,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Persistence",
+          "file": "demo-todo-app.spec.ts",
+          "line": 361,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should persist its data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 1254,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-before-reload-chromium-win32.png, writing actual.\n"
+                        },
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-after-reload-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:31.222Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-before-reload-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-before-reload-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-before-reload-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Persistence-should-persist-its-data-chromium\\todo-app-before-reload-actual.png"
+                        },
+                        {
+                          "name": "todo-app-after-reload-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-after-reload-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-after-reload-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Persistence-should-persist-its-data-chromium\\todo-app-after-reload-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Persistence-should-persist-its-data-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-67ccbc7dc463cf92ee08",
+              "file": "demo-todo-app.spec.ts",
+              "line": 362,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Routing",
+          "file": "demo-todo-app.spec.ts",
+          "line": 397,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should allow me to display active items",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 928,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-active-items-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:31.253Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-active-items-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-active-items-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-active-items-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-shou-9be19--me-to-display-active-items-chromium\\todo-app-active-items-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-shou-9be19--me-to-display-active-items-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-168ac99248367a9c5f75",
+              "file": "demo-todo-app.spec.ts",
+              "line": 406,
+              "column": 7
+            },
+            {
+              "title": "should respect the back button",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 5,
+                      "status": "passed",
+                      "duration": 1700,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-all-items-route-chromium-win32.png, writing actual.\n"
+                        },
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-active-items-route-chromium-win32.png, writing actual.\n"
+                        },
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-completed-items-route-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "steps": [
+                        {
+                          "title": "Showing all items",
+                          "duration": 411
+                        },
+                        {
+                          "title": "Showing active items",
+                          "duration": 372
+                        },
+                        {
+                          "title": "Showing completed items",
+                          "duration": 338
+                        }
+                      ],
+                      "startTime": "2025-06-22T11:40:31.718Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-all-items-route-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-all-items-route-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-all-items-route-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-should-respect-the-back-button-chromium\\todo-app-all-items-route-actual.png"
+                        },
+                        {
+                          "name": "todo-app-active-items-route-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-active-items-route-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-active-items-route-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-should-respect-the-back-button-chromium\\todo-app-active-items-route-actual.png"
+                        },
+                        {
+                          "name": "todo-app-completed-items-route-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-completed-items-route-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-completed-items-route-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-should-respect-the-back-button-chromium\\todo-app-completed-items-route-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-should-respect-the-back-button-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-f4a7bfde65c589b439d6",
+              "file": "demo-todo-app.spec.ts",
+              "line": 419,
+              "column": 7
+            },
+            {
+              "title": "should allow me to display completed items",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 4,
+                      "status": "passed",
+                      "duration": 949,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-completed-items-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:31.768Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-completed-items-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-completed-items-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-completed-items-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-shou-0becb--to-display-completed-items-chromium\\todo-app-completed-items-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-shou-0becb--to-display-completed-items-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-b038b6fb9d0061cc555a",
+              "file": "demo-todo-app.spec.ts",
+              "line": 452,
+              "column": 7
+            },
+            {
+              "title": "should allow me to display all items",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 1047,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-all-items-filtered-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:31.987Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-app-all-items-filtered-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-app-all-items-filtered-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-app-all-items-filtered-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-should-allow-me-to-display-all-items-chromium\\todo-app-all-items-filtered-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-should-allow-me-to-display-all-items-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-ac5122dabccbd5dd6ae5",
+              "file": "demo-todo-app.spec.ts",
+              "line": 462,
+              "column": 7
+            },
+            {
+              "title": "should highlight the currently applied filter",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 1529,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-filter-all-selected-chromium-win32.png, writing actual.\n"
+                        },
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-filter-active-selected-chromium-win32.png, writing actual.\n"
+                        },
+                        {
+                          "text": "A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-filter-completed-selected-chromium-win32.png, writing actual.\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-22T11:40:32.188Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "todo-filter-all-selected-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-filter-all-selected-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-filter-all-selected-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-shou-5c524-he-currently-applied-filter-chromium\\todo-filter-all-selected-actual.png"
+                        },
+                        {
+                          "name": "todo-filter-active-selected-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-filter-active-selected-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-filter-active-selected-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-shou-5c524-he-currently-applied-filter-chromium\\todo-filter-active-selected-actual.png"
+                        },
+                        {
+                          "name": "todo-filter-completed-selected-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\todo-filter-completed-selected-chromium-win32.png"
+                        },
+                        {
+                          "name": "todo-filter-completed-selected-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-shou-5c524-he-currently-applied-filter-chromium\\todo-filter-completed-selected-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\published-screenshots\\demo-todo-app-Routing-shou-5c524-he-currently-applied-filter-chromium\\test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-237c74ea6ef08dd9500e",
+              "file": "demo-todo-app.spec.ts",
+              "line": 474,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2025-06-22T11:40:24.048Z",
+    "duration": 12725.823,
+    "expected": 23,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

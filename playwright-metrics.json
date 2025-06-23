@@ -1,0 +1,1279 @@
+{
+  "config": {
+    "configFile": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\playwright.config.js",
+    "rootDir": "C:/Users/amari/Code-Reviews-of-GUI-Tests/tests",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "json",
+        {
+          "outputFile": "playwright-metrics.json"
+        }
+      ],
+      [
+        "html",
+        {
+          "outputFile": "report.html",
+          "open": "never"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "C:/Users/amari/Code-Reviews-of-GUI-Tests/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "C:/Users/amari/Code-Reviews-of-GUI-Tests/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.53.1",
+    "workers": 6,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "demo-todo-app.spec.ts",
+      "file": "demo-todo-app.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "New Todo",
+          "file": "demo-todo-app.spec.ts",
+          "line": 16,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should allow me to add todo items",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 3873,
+                      "error": {
+                        "message": "Error: A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\initial-todo-page-win32.png, writing actual.",
+                        "stack": "Error: A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\initial-todo-page-win32.png, writing actual.\n    at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts:6:3",
+                        "location": {
+                          "file": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts",
+                          "column": 3,
+                          "line": 6
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 4 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m'https://demo.playwright.dev/todomvc'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 5 |\u001b[39m   \u001b[90m// This line MUST be INSIDE the beforeEach block\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 6 |\u001b[39m   \u001b[36mawait\u001b[39m expect(page)\u001b[33m.\u001b[39mtoHaveScreenshot(\u001b[32m'initial-todo-page.png'\u001b[39m)\u001b[33m;\u001b[39m \u001b[90m// Or 'main-initial-page-baseline.png' - whatever name you prefer for the screenshot\u001b[39m\n \u001b[90m   |\u001b[39m   \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 7 |\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m 8 |\u001b[39m\n \u001b[90m 9 |\u001b[39m \u001b[90m// Immediately after the closing '});' of the beforeEach, the next line should be 'const TODO_ITEMS = [...]'\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts",
+                            "column": 3,
+                            "line": 6
+                          },
+                          "message": "Error: A snapshot doesn't exist at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\initial-todo-page-win32.png, writing actual.\n\n\u001b[0m \u001b[90m 4 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m'https://demo.playwright.dev/todomvc'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 5 |\u001b[39m   \u001b[90m// This line MUST be INSIDE the beforeEach block\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 6 |\u001b[39m   \u001b[36mawait\u001b[39m expect(page)\u001b[33m.\u001b[39mtoHaveScreenshot(\u001b[32m'initial-todo-page.png'\u001b[39m)\u001b[33m;\u001b[39m \u001b[90m// Or 'main-initial-page-baseline.png' - whatever name you prefer for the screenshot\u001b[39m\n \u001b[90m   |\u001b[39m   \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 7 |\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m 8 |\u001b[39m\n \u001b[90m 9 |\u001b[39m \u001b[90m// Immediately after the closing '});' of the beforeEach, the next line should be 'const TODO_ITEMS = [...]'\u001b[39m\u001b[0m\n\u001b[2m    at C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts:6:3\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:42.191Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "initial-todo-page-expected.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts-snapshots\\initial-todo-page-win32.png"
+                        },
+                        {
+                          "name": "initial-todo-page-actual.png",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-New-Todo-should-allow-me-to-add-todo-items\\initial-todo-page-actual.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-New-Todo-should-allow-me-to-add-todo-items\\test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-New-Todo-should-allow-me-to-add-todo-items\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-New-Todo-should-allow-me-to-add-todo-items\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\tests\\demo-todo-app.spec.ts",
+                        "column": 3,
+                        "line": 6
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-1b4010d4c8b7b7d9a2dd",
+              "file": "demo-todo-app.spec.ts",
+              "line": 17,
+              "column": 7
+            },
+            {
+              "title": "should clear text input field when an item is added",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 535,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:46.973Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-New-Todo-sho-28c2c-field-when-an-item-is-added\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-New-Todo-sho-28c2c-field-when-an-item-is-added\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-4b3ad1fd04727a7189b4",
+              "file": "demo-todo-app.spec.ts",
+              "line": 43,
+              "column": 7
+            },
+            {
+              "title": "should append new items to the bottom of the list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 521,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:47.624Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-New-Todo-sho-149e5-s-to-the-bottom-of-the-list\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-New-Todo-sho-149e5-s-to-the-bottom-of-the-list\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-0a373131895df69afd0a",
+              "file": "demo-todo-app.spec.ts",
+              "line": 56,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Mark all as completed",
+          "file": "demo-todo-app.spec.ts",
+          "line": 75,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should allow me to mark all items as completed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 546,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:48.168Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Mark-all-as--1144c-mark-all-items-as-completed\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Mark-all-as--1144c-mark-all-items-as-completed\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-7efb397c2e536d47dd64",
+              "file": "demo-todo-app.spec.ts",
+              "line": 85,
+              "column": 7
+            },
+            {
+              "title": "should allow me to clear the complete state of all items",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 571,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:48.739Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Mark-all-as--1aefc-complete-state-of-all-items\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Mark-all-as--1aefc-complete-state-of-all-items\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-2aa178ecaaeda0145a3f",
+              "file": "demo-todo-app.spec.ts",
+              "line": 94,
+              "column": 7
+            },
+            {
+              "title": "complete all checkbox should update state when items are completed / cleared",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 662,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:49.334Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Mark-all-as--f0803-items-are-completed-cleared\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Mark-all-as--f0803-items-are-completed-cleared\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-a099f3d3a2d93d375833",
+              "file": "demo-todo-app.spec.ts",
+              "line": 104,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Item",
+          "file": "demo-todo-app.spec.ts",
+          "line": 125,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should allow me to mark items as complete",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 533,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:50.024Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Item-should-allow-me-to-mark-items-as-complete\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Item-should-allow-me-to-mark-items-as-complete\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-b9c9d048c0feb8944ddb",
+              "file": "demo-todo-app.spec.ts",
+              "line": 127,
+              "column": 7
+            },
+            {
+              "title": "should allow me to un-mark items as complete",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 578,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:50.576Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Item-should--41727-o-un-mark-items-as-complete\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Item-should--41727-o-un-mark-items-as-complete\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-f97fc8538976f06a38c7",
+              "file": "demo-todo-app.spec.ts",
+              "line": 152,
+              "column": 7
+            },
+            {
+              "title": "should allow me to edit an item",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 527,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:51.173Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Item-should-allow-me-to-edit-an-item\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Item-should-allow-me-to-edit-an-item\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-c6955e85e0420bd89de1",
+              "file": "demo-todo-app.spec.ts",
+              "line": 177,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Editing",
+          "file": "demo-todo-app.spec.ts",
+          "line": 197,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should hide other controls when editing",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 557,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:51.721Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Editing-shou-69f34-other-controls-when-editing\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Editing-shou-69f34-other-controls-when-editing\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-92a1422c9d1886123c3d",
+              "file": "demo-todo-app.spec.ts",
+              "line": 203,
+              "column": 7
+            },
+            {
+              "title": "should save edits on blur",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 554,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:52.297Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Editing-should-save-edits-on-blur\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Editing-should-save-edits-on-blur\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-83cb4f73a96cb642b604",
+              "file": "demo-todo-app.spec.ts",
+              "line": 213,
+              "column": 7
+            },
+            {
+              "title": "should trim entered text",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 530,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:52.871Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Editing-should-trim-entered-text\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Editing-should-trim-entered-text\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-3f0c87852c1b3b9179ea",
+              "file": "demo-todo-app.spec.ts",
+              "line": 227,
+              "column": 7
+            },
+            {
+              "title": "should remove the item if an empty text string was entered",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 579,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:53.421Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Editing-shou-38188-pty-text-string-was-entered\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Editing-shou-38188-pty-text-string-was-entered\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-e8c01ebca0a66809ad18",
+              "file": "demo-todo-app.spec.ts",
+              "line": 241,
+              "column": 7
+            },
+            {
+              "title": "should cancel edits on escape",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 589,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:54.022Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Editing-should-cancel-edits-on-escape\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Editing-should-cancel-edits-on-escape\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-a820e2dcc8b97f8142b4",
+              "file": "demo-todo-app.spec.ts",
+              "line": 253,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Counter",
+          "file": "demo-todo-app.spec.ts",
+          "line": 262,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display the current number of todo items",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 484,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:54.635Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Counter-shou-c1b8c-urrent-number-of-todo-items\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Counter-shou-c1b8c-urrent-number-of-todo-items\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-ec4deabf71487a2b7fc2",
+              "file": "demo-todo-app.spec.ts",
+              "line": 263,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Clear completed button",
+          "file": "demo-todo-app.spec.ts",
+          "line": 283,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display the correct text",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 566,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:55.140Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Clear-comple-fd1bf-ld-display-the-correct-text\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Clear-comple-fd1bf-ld-display-the-correct-text\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-8f0efebd77c1ba5283a3",
+              "file": "demo-todo-app.spec.ts",
+              "line": 288,
+              "column": 7
+            },
+            {
+              "title": "should remove completed items when clicked",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 592,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:55.731Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Clear-comple-9aaec-ompleted-items-when-clicked\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Clear-comple-9aaec-ompleted-items-when-clicked\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-e1ff45913ca773c3e0f0",
+              "file": "demo-todo-app.spec.ts",
+              "line": 293,
+              "column": 7
+            },
+            {
+              "title": "should be hidden when there are no items that are completed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 635,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:56.351Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Clear-comple-576e5-no-items-that-are-completed\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Clear-comple-576e5-no-items-that-are-completed\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-d2485797367d85ae45c9",
+              "file": "demo-todo-app.spec.ts",
+              "line": 301,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Persistence",
+          "file": "demo-todo-app.spec.ts",
+          "line": 308,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should persist its data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 679,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:57.010Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Persistence-should-persist-its-data\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Persistence-should-persist-its-data\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-d182248d893c9440c877",
+              "file": "demo-todo-app.spec.ts",
+              "line": 309,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Routing",
+          "file": "demo-todo-app.spec.ts",
+          "line": 336,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should allow me to display active items",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 713,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:57.717Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Routing-shou-9be19--me-to-display-active-items\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Routing-shou-9be19--me-to-display-active-items\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-8eda0c5c5680d1ba6844",
+              "file": "demo-todo-app.spec.ts",
+              "line": 345,
+              "column": 7
+            },
+            {
+              "title": "should respect the back button",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 891,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "steps": [
+                        {
+                          "title": "Showing all items",
+                          "duration": 46
+                        },
+                        {
+                          "title": "Showing active items",
+                          "duration": 45
+                        },
+                        {
+                          "title": "Showing completed items",
+                          "duration": 49
+                        }
+                      ],
+                      "startTime": "2025-06-23T17:43:58.465Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Routing-should-respect-the-back-button\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Routing-should-respect-the-back-button\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-6b36ccfe0eab2a750269",
+              "file": "demo-todo-app.spec.ts",
+              "line": 355,
+              "column": 7
+            },
+            {
+              "title": "should allow me to display completed items",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 740,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:43:59.391Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Routing-shou-0becb--to-display-completed-items\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Routing-shou-0becb--to-display-completed-items\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-42d28bb97d33305f7f11",
+              "file": "demo-todo-app.spec.ts",
+              "line": 381,
+              "column": 7
+            },
+            {
+              "title": "should allow me to display all items",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 832,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:44:00.160Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Routing-should-allow-me-to-display-all-items\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Routing-should-allow-me-to-display-all-items\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-6b33fb855070fc3f5209",
+              "file": "demo-todo-app.spec.ts",
+              "line": 388,
+              "column": 7
+            },
+            {
+              "title": "should highlight the currently applied filter",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 783,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-06-23T17:44:01.021Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Routing-shou-5c524-he-currently-applied-filter\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\amari\\Code-Reviews-of-GUI-Tests\\test-results\\demo-todo-app-Routing-shou-5c524-he-currently-applied-filter\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "849da1cee0c412ce5534-a3e78ab122830884be0b",
+              "file": "demo-todo-app.spec.ts",
+              "line": 397,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2025-06-23T17:43:41.310Z",
+    "duration": 20624.076999999997,
+    "expected": 23,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}
