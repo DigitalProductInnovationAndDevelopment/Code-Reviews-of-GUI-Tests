@@ -2,9 +2,9 @@ name: Playwright Tests
 
 on:
   push:
-    branches: [ main, 'pbi-2.2' ] # Trigger on pushes to main and pbi-2.2
+    branches: [ main, 'pbi-2.2' ]
   pull_request:
-    branches: [ main ] # Trigger on PRs targeting main (your pbi-2.2 PR will target main)
+    branches: [ main ]
 
 jobs:
   test:
@@ -16,69 +16,61 @@ jobs:
         fetch-depth: 0 # Important: Fetch all history to allow comparing with main
 
     # ---------------------------------------------------
-    # 1 - Fetch baselines from main branch
+    # 1 - Fetch baselines from main branch for PR comparisons
     # ---------------------------------------------------
-    - name: Fetch main branch for baseline comparison
-      # This step only makes sense for pull requests targeting 'main'
-      # or for branches that are meant to be compared against main's baselines.
-      # We'll skip it if the current branch is 'main' itself.
+    - name: Fetch main branch baselines for comparison
+      # This step runs only for pull requests targeting 'main'
+      # or for pushes to feature branches that need comparison.
+      # It ensures 'main's baselines are present in the workspace.
       if: github.ref != 'refs/heads/main'
       run: |
-        git fetch origin main:main-branch-for-baseline # Fetch main and store it in a temporary local branch
-        # Overwrite the current branch's snapshots with main's snapshots
-        git checkout main-branch-for-baseline -- tests/__snapshots__/
-        echo "Baselines from 'main' branch are now in tests/__snapshots__/ for comparison."
-      # Add this step only if you want to explicitly see the diff in CI output
-      # - name: List baselines fetched from main (for debugging)
-      #   if: github.ref != 'refs/heads/main'
-      #   run: ls -R tests/__snapshots__/
-
+        git fetch origin main:main-branch-for-baseline # Fetch main's history into a temporary local ref
+        # Overwrite the current branch's snapshots directory with main's snapshots
+        # IMPORTANT: Ensure this path matches where Playwright expects/stores snapshots
+        git checkout main-branch-for-baseline -- tests/demo-todo-app.spec.ts-snapshots/
+        echo "Baselines from 'main' branch are now copied into tests/demo-todo-app.spec.ts-snapshots/ for comparison."
 
     - uses: actions/setup-node@v4
       with:
         node-version: 20
     - name: Install dependencies
       run: npm ci
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps
 
     # ---------------------------------------------------
-    # Capture initial page screenshot (added in your previous request)
-    # ---------------------------------------------------
-    - name: Capture initial page screenshot
-      run: npx playwright test --grep "initial-todo-page.png" # Assuming you have a specific test for this, or modify your beforeEach to run without a grep if it's always desired
-
-    # ---------------------------------------------------
-    # 5 – Run Playwright tests
+    # 5 – Run Playwright tests (This runs ALL tests, including visual ones)
     # ---------------------------------------------------
     - name: Run Playwright tests
       run: npx playwright test
       env:
-        CI: 'true' # Often helpful in CI environments
+        CI: 'true' # Often helpful for CI environments
 
     # ---------------------------------------------------
-    # 6 – Upload ALL Playwright screenshots and reports
+    # 6 – Upload ALL Playwright screenshots and reports as an artifact
     # ---------------------------------------------------
     - name: Upload Playwright screenshots and reports
       if: always() # Always upload artifacts, even if tests fail
       uses: actions/upload-artifact@v4
       with:
-        name: playwright-all-screenshots-for-review
+        name: playwright-visual-comparison-report # Name of the artifact to download
         path: |
-          test-results/ # This will contain the 'after' screenshots from the current run and diffs
-          tests/**/__snapshots__/ # This will now contain the 'before' screenshots (baselines *from main* if the fetch step ran)
-          playwright-report/ # Your HTML report (optional, but good to include)
-        retention-days: 7 # Keep the artifacts for 7 days
+          test-results/ # Contains 'actual' screenshots from this run and 'diff' images
+          # Path to your baseline snapshots (now containing 'main's baselines if fetch step ran)
+          tests/demo-todo-app.spec.ts-snapshots/
+          playwright-report/ # Your HTML report, which shows expected, actual, and diff side-by-side
+        retention-days: 7 # Optional: how long to keep the report artifact
 
     # ---------------------------------------------------
-    # ... (rest of your workflow steps like ESLint, test-flow chart) ...
+    # Get Playwright Test Summary (your existing logic)
     # ---------------------------------------------------
     - name: Get Playwright Test Summary
       id: summary
       if: always()
       run: |
         # Parse test results to get summary metrics
-        # (You'll need a script or a more robust way to get these if not already in your report)
-        # For demonstration, let's assume you're parsing a JSON report
-        # For simplicity, I'm just putting placeholders, adjust as needed.
+        # You might need to adjust this section based on your actual test reporting setup
+        # For demonstration, placeholders are used.
         echo "total=10" >> "$GITHUB_OUTPUT"
         echo "passed=8" >> "$GITHUB_OUTPUT"
         echo "failed=2" >> "$GITHUB_OUTPUT"
@@ -87,7 +79,7 @@ jobs:
         echo "passrate=80" >> "$GITHUB_OUTPUT"
 
     # ---------------------------------------------------
-    # 11 – Sticky PR comment (Update this section)
+    # 11 – Sticky PR comment (Updated to guide to the HTML report)
     # ----------------------------------------------------
     - name: Comment on PR with results
       uses: marocchino/sticky-pull-request-comment@v2
@@ -101,13 +93,19 @@ jobs:
           *Duration:* **${{ steps.summary.outputs.duration }} ms**
           *Pass Rate:* **${{ steps.summary.outputs.passrate }} %**
 
-          ## Screenshots for Review:
-          **For visual regression comparison in this PR:**
-          The tests in this workflow run were executed against the **latest baselines from the `main` branch**.
+          ---
 
-          Download the `playwright-all-screenshots-for-review` artifact from this workflow run.
-          - The "Before" screenshot (baseline from `main`) is in `tests/__snapshots__/`.
-          - The "After" screenshot (captured in this run from your feature branch) is in `test-results/`.
-          - Any visual differences will also be shown as `*-diff.png` files in `test-results/`.
+          ## Visual Regression Screenshots for Review:
+          **For visual comparison, this PR's tests (from the current branch's code) are compared against the baselines from the `main` branch.**
+
+          To review the differences directly and see both the `main` (expected) and current branch (actual) screenshots side-by-side:
+          1. Go to the "Checks" or "Actions" tab for this Pull Request.
+          2. Find the "Playwright Tests" workflow run.
+          3. Look for the "Artifacts" section (usually at the bottom of the summary page for the run).
+          4. Download the artifact named **`playwright-visual-comparison-report`**.
+          5. Unzip the downloaded file.
+          6. Open the `playwright-report/index.html` file in your web browser.
+
+          This HTML report will show you the "Expected" (from `main`), "Actual" (from your branch), and any "Diff" images for all visual tests.
 
           _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
