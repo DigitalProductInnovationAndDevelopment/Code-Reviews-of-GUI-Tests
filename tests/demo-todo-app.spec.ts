@@ -1,7 +1,10 @@
+#start
 import { test, expect, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('https://demo.playwright.dev/todomvc');
+  // This line MUST be INSIDE the beforeEach block
+  await expect(page).toHaveScreenshot('initial-todo-page.png'); // Or 'main-initial-page-baseline.png' - whatever name you prefer for the screenshot
 });
 // <<< ADD THIS LINE: Capture initial page state as a baseline for CI
 
@@ -9,6 +12,7 @@ await expect(page).toHaveScreenshot('main-initial-page-baseline.png');
 
 }); 
 
+// Immediately after the closing '});' of the beforeEach, the next line should be 'const TODO_ITEMS = [...]'
 const TODO_ITEMS = [
   'buy some cheese',
   'feed the cat',
