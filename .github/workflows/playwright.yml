@@ -33,7 +33,6 @@ jobs:
       # Prettier with reviewdog - exact copy from working workflow
       #---------------------------------------------------
       - name: Prettier style check (reviewdog)
-        continue-on-error: true  
         shell: bash
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,15 +52,24 @@ jobs:
       #---------------------------------------------------
       # ESLint with reviewdog
       #---------------------------------------------------
-      - name: ESLint via reviewdog action
-        continue-on-error: true  
-        uses: reviewdog/action-eslint@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          eslint_flags: 'tests/**/*.{js,ts,tsx}'
-          level: warning
-          reporter: github-pr-review
-          filter_mode: nofilter
+      - name: ESLint check with reviewdog
+        shell: bash
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Run ESLint and output JSON
+          npx eslint tests --ext .js,.ts,.tsx -f json > eslint-output.json || true
+          
+          # Check if there are any issues
+          if [ -s eslint-output.json ] && [ "$(cat eslint-output.json)" != "[]" ]; then
+            cat eslint-output.json | reviewdog -f=eslint \
+                                              -name="eslint" \
+                                              -reporter=github-pr-review \
+                                              -filter-mode=nofilter \
+                                              -level=warning
+          else
+            echo "No ESLint issues found."
+          fi
       
       #---------------------------------------------------
       # Run your original lint.js script for reports
