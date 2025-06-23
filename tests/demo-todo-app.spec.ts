@@ -2,13 +2,12 @@ import { test, expect, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('https://demo.playwright.dev/todomvc');
-}); // <--- This '});' closes the beforeEach hook
+  // This line MUST be INSIDE the beforeEach block
+  await expect(page).toHaveScreenshot('initial-todo-page.png'); // OR 'main-initial-page-baseline.png'
+});
 
- // --- ADD THIS SINGLE LINE ---
- // This will capture a screenshot of the entire page at its initial state.
- await expect(page).toHaveScreenshot('initial-todo-page.png'); // <--- This line is now in global scope
-}); // <--- THIS IS THE EXTRA, UNMATCHED CLOSING BRACKET, causing the SyntaxError!
-
+// There should be NO extra '});' here.
+// The next lines should be 'const TODO_ITEMS = [...]'
 const TODO_ITEMS = [
   'buy some cheese',
   'feed the cat',
