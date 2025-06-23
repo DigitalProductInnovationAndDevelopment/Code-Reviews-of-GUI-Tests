@@ -3,11 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   await page.goto('https://demo.playwright.dev/todomvc');
 });
-// <<< ADD THIS LINE: Capture initial page state as a baseline for CI
 
-await expect(page).toHaveScreenshot('main-initial-page-baseline.png');
-
-}); 
 
 const TODO_ITEMS = [
   'buy some cheese',
