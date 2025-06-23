@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('https://demo.playwright.dev/todomvc');
   // This line MUST be INSIDE the beforeEach block
   await expect(page).toHaveScreenshot('initial-todo-page.png'); // OR 'main-initial-page-baseline.png'
-});
+
 
 // There should be NO extra '});' here.
 // The next lines should be 'const TODO_ITEMS = [...]'
