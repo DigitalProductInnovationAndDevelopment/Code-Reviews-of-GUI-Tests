@@ -3,11 +3,10 @@ import { test, expect, type Page } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   await page.goto('https://demo.playwright.dev/todomvc');
   // This line MUST be INSIDE the beforeEach block
-  await expect(page).toHaveScreenshot('initial-todo-page.png'); // OR 'main-initial-page-baseline.png'
+  await expect(page).toHaveScreenshot('initial-todo-page.png'); // Or 'main-initial-page-baseline.png' - whatever name you prefer for the screenshot
+});
 
-
-// There should be NO extra '});' here.
-// The next lines should be 'const TODO_ITEMS = [...]'
+// Immediately after the closing '});' of the beforeEach, the next line should be 'const TODO_ITEMS = [...]'
 const TODO_ITEMS = [
   'buy some cheese',
   'feed the cat',
