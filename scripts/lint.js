@@ -58,38 +58,71 @@ function runReviewdog(input, format, name) {
       console.log(`📝 Limited prettier diff to first 10 files (originally ${fileCount} files)`);
     }
     
-    const reviewdogArgs = [
-      `-f=${format}`,
-      `-name=${name}`,
-      '-reporter=github-pr-review',
-      '-filter-mode=added',
-      '-level=info',
-      '-fail-on-error=false'
+    // Try multiple reviewdog configurations to find what works
+    const configs = [
+      {
+        name: 'github-pr-review with nofilter',
+        args: [
+          `-f=${format}`,
+          `-name=${name}`,
+          '-reporter=github-pr-review',
+          '-filter-mode=nofilter',
+          '-level=info',
+          '-fail-on-error=false'
+        ]
+      },
+      {
+        name: 'github-pr-review with added',
+        args: [
+          `-f=${format}`,
+          `-name=${name}`,
+          '-reporter=github-pr-review',
+          '-filter-mode=added',
+          '-level=info',
+          '-fail-on-error=false'
+        ]
+      },
+      {
+        name: 'github-pr-check',
+        args: [
+          `-f=${format}`,
+          `-name=${name}`,
+          '-reporter=github-pr-check',
+          '-filter-mode=nofilter',
+          '-level=info',
+          '-fail-on-error=false'
+        ]
+      }
     ];
     
     // Save the input for debugging
     fs.writeFileSync(`artifacts/${name}-reviewdog-input.txt`, processedInput);
     console.log(`📁 Saved reviewdog input to artifacts/${name}-reviewdog-input.txt`);
     
-    const rd = spawnSync('reviewdog', reviewdogArgs, { 
-      input: processedInput, 
-      stdio: ['pipe', 'inherit', 'inherit'], 
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
+    // Try each configuration until one works
+    for (const config of configs) {
+      console.log(`🧪 Trying reviewdog config: ${config.name}`);
+      
+      const rd = spawnSync('reviewdog', config.args, { 
+        input: processedInput, 
+        stdio: ['pipe', 'inherit', 'inherit'], 
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN,
+          // Add debug logging
+          REVIEWDOG_DEBUG: '1'
+        }
+      });
+      
+      console.log(`📊 Config "${config.name}" exit code: ${rd.status}`);
+      
+      if (rd.status === 0) {
+        console.log(`✅ Success with config: ${config.name}`);
+        break;
+      } else {
+        console.log(`❌ Failed with config: ${config.name}, trying next...`);
       }
-    });
-    
-    console.log(`📊 Reviewdog exit code: ${rd.status}`);
-    
-    if (rd.error) {
-      console.error(`❌ Reviewdog error for ${name}:`, rd.error.message);
-    } else if (rd.status === 0) {
-      console.log(`✅ Reviewdog completed successfully for ${name}`);
-    } else {
-      console.warn(`⚠️  Reviewdog completed with status ${rd.status} for ${name}`);
-      console.log('📋 This might be normal if no comments were needed');
     }
     
   } catch (error) {
@@ -137,7 +170,7 @@ function runPrettier() {
     
     // Generate diff - this shows the prettier changes
     console.log('📊 Generating diff...');
-    const diff = execSync('git diff --no-color --no-prefix HEAD -- tests/', { encoding: 'utf8' });
+    const diff = execSync('git diff --no-color HEAD -- tests/', { encoding: 'utf8' });
     
     // Count changes more accurately
     const addedLines = (diff.match(/^\+(?!\+)/gm) || []).length;
@@ -290,6 +323,16 @@ if (IS_PR && HAS_REVIEWDOG_TOKEN) {
   try {
     const reviewdogVersion = execSync('reviewdog -version', { encoding: 'utf8' });
     console.log('🐕 Reviewdog version:', reviewdogVersion.trim());
+    
+    // Debug environment variables
+    console.log('🔍 Environment debug:');
+    console.log(`  - GITHUB_EVENT_NAME: ${process.env.GITHUB_EVENT_NAME}`);
+    console.log(`  - GITHUB_REPOSITORY: ${process.env.GITHUB_REPOSITORY}`);
+    console.log(`  - GITHUB_SHA: ${process.env.GITHUB_SHA}`);
+    console.log(`  - GITHUB_REF: ${process.env.GITHUB_REF}`);
+    console.log(`  - GITHUB_TOKEN: ${process.env.GITHUB_TOKEN ? 'present' : 'missing'}`);
+    console.log(`  - REVIEWDOG_GITHUB_API_TOKEN: ${process.env.REVIEWDOG_GITHUB_API_TOKEN ? 'present' : 'missing'}`);
+    
   } catch (error) {
     console.error('❌ Reviewdog not found or not working:', error.message);
   }
