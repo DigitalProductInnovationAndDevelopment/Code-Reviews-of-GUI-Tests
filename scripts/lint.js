@@ -87,41 +87,44 @@ function runPrettier() {
     
     console.log(`📝 Found ${filesToFormat.length} files needing formatting:`, filesToFormat);
     
-    // Create a temporary branch to capture pristine diff
-    const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
-    const tempBranchName = `temp-prettier-${Date.now()}`;
+    // Simple approach: stash changes, run prettier, capture diff, restore
+    console.log('💾 Stashing current changes...');
+    execSync('git stash push -m "temp-prettier-stash" || true', { stdio: 'pipe' });
     
-    // Create temp branch from current state
-    execSync(`git checkout -b ${tempBranchName}`, { stdio: 'pipe' });
-    
-    // Run prettier on temp branch
+    // Run prettier
+    console.log('🎨 Running prettier...');
     execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
     
-    // Generate detailed diff with context
-    const diffCmd = `git diff ${currentBranch}..${tempBranchName} -- tests/`;
-    const diff = execSync(diffCmd, { encoding: 'utf8' });
+    // Generate diff - this shows the prettier changes
+    console.log('📊 Generating diff...');
+    const diff = execSync('git diff --no-color HEAD -- tests/', { encoding: 'utf8' });
     
     // Count changes more accurately
-    const totalChanges = (diff.match(/^[-+](?![-+@])/gm) || []).length;
+    const addedLines = (diff.match(/^\+(?!\+)/gm) || []).length;
+    const removedLines = (diff.match(/^-(?!-)/gm) || []).length;
+    const totalChanges = addedLines + removedLines;
+    
+    console.log(`📈 Changes found: +${addedLines} -${removedLines} (total: ${totalChanges})`);
     
     // Save detailed diff for debugging
     fs.writeFileSync('artifacts/prettier-diff.txt', diff);
     fs.writeFileSync('artifacts/prettier-files.json', JSON.stringify(filesToFormat, null, 2));
     
-    console.log(`📊 Prettier changes: ${totalChanges} lines across ${filesToFormat.length} files`);
-    
-    // Show first few changes for immediate feedback
+    // Show sample of the diff
     const diffLines = diff.split('\n');
-    const sampleDiff = diffLines.slice(0, 50).join('\n');
-    console.log('First 50 lines of diff:\n', sampleDiff);
+    const sampleDiff = diffLines.slice(0, 30).join('\n');
+    console.log('Sample diff:\n', sampleDiff);
     
-    // Return to original branch
-    execSync(`git checkout ${currentBranch}`, { stdio: 'pipe' });
-    execSync(`git branch -D ${tempBranchName}`, { stdio: 'pipe' });
+    // Restore original state
+    console.log('🔄 Restoring original state...');
+    execSync('git stash pop || true', { stdio: 'pipe' });
     
-    // Run reviewdog with the detailed diff
-    if (diff && diff.trim()) {
+    // Run reviewdog with the diff if we have changes
+    if (diff && diff.trim() && totalChanges > 0) {
+      console.log('🔍 Sending to reviewdog...');
       runReviewdog(diff, 'diff', 'prettier');
+    } else {
+      console.log('📝 No substantial changes detected for reviewdog');
     }
     
     return {
@@ -134,15 +137,11 @@ function runPrettier() {
   } catch (error) {
     console.error('❌ Prettier failed:', error.message);
     
-    // Cleanup: try to return to original branch if we're stuck
+    // Cleanup: try to restore state
     try {
-      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
-      if (currentBranch.startsWith('temp-prettier-')) {
-        execSync('git checkout -', { stdio: 'pipe' });
-        execSync(`git branch -D ${currentBranch}`, { stdio: 'pipe' });
-      }
+      execSync('git stash pop || true', { stdio: 'pipe' });
     } catch (cleanupError) {
-      console.error('⚠️  Cleanup error:', cleanupError.message);
+      console.error('⚠️  Cleanup warning:', cleanupError.message);
     }
     
     return {
