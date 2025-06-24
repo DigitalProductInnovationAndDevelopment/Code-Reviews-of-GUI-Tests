@@ -69,21 +69,32 @@ function runReviewdog(input, format, name) {
       console.log(`📝 Limited prettier diff to first ${changePairCount} change pairs (targeting multiple inline comments)`);
     }
     
-    // Use github-pr-check which creates detailed check runs (no inline comment limits)
+    // Use github-pr-review with diff_context for Apply suggestion buttons
     const configs = [
       {
-        name: 'github-pr-check (detailed check runs)',
+        name: 'github-pr-review with diff_context (Apply suggestions)',
         args: [
           `-f=${format}`,
           `-name=${name}`,
-          '-reporter=github-pr-check',
-          '-filter-mode=nofilter',
+          '-reporter=github-pr-review',
+          '-filter-mode=diff_context',
           '-level=info',
           '-fail-on-error=false'
         ]
       },
       {
-        name: 'github-pr-review with nofilter (fallback)',
+        name: 'github-pr-review with added (fallback for suggestions)',
+        args: [
+          `-f=${format}`,
+          `-name=${name}`,
+          '-reporter=github-pr-review',
+          '-filter-mode=added', 
+          '-level=info',
+          '-fail-on-error=false'
+        ]
+      },
+      {
+        name: 'github-pr-review with nofilter (last resort)',
         args: [
           `-f=${format}`,
           `-name=${name}`,
@@ -124,14 +135,17 @@ function runReviewdog(input, format, name) {
       
       // Show reviewdog output for debugging
       if (rd.stdout) {
-        console.log(`📤 Reviewdog stdout: ${rd.stdout.slice(0, 200)}...`);
+        console.log(`📤 Reviewdog stdout: ${rd.stdout.slice(0, 300)}...`);
       }
       if (rd.stderr) {
-        console.log(`📤 Reviewdog stderr: ${rd.stderr.slice(0, 200)}...`);
+        console.log(`📤 Reviewdog stderr: ${rd.stderr.slice(0, 300)}...`);
       }
       
       if (rd.status === 0) {
         console.log(`✅ Success with config: ${config.name}`);
+        if (config.name.includes('diff_context')) {
+          console.log(`🎯 This should create Apply suggestion buttons!`);
+        }
         break;
       } else {
         console.log(`❌ Failed with config: ${config.name}, trying next...`);
@@ -181,9 +195,9 @@ function runPrettier() {
     console.log('🎨 Running prettier...');
     execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
     
-    // Generate diff - this shows the prettier changes
-    console.log('📊 Generating diff...');
-    const diff = execSync('git diff --no-color -U3 HEAD -- tests/', { encoding: 'utf8' });
+    // Generate diff optimized for GitHub Apply suggestion buttons
+    console.log('📊 Generating diff optimized for suggestions...');
+    const diff = execSync('git diff --no-color --unified=3 --no-prefix HEAD -- tests/', { encoding: 'utf8' });
     
     // Count changes more accurately
     const addedLines = (diff.match(/^\+(?!\+)/gm) || []).length;
