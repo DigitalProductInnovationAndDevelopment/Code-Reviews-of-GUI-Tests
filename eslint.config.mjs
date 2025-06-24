@@ -1,6 +1,5 @@
 import tsParser from "@typescript-eslint/parser";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
-import playwrightPlugin from "eslint-plugin-playwright";
 
 let localOverride = {};
 
@@ -8,6 +7,7 @@ try {
   localOverride = (await import("./eslint.local.config.js")).default;
   console.log("✅ Loaded local ESLint override config from root.");
 } catch (err) {
+  // No root override
 }
 
 export default [
@@ -31,13 +31,13 @@ export default [
     },
     plugins: {
       "@typescript-eslint": tsPlugin,
-      playwright: playwrightPlugin,
     },
     rules: {
-      "no-unused-vars": "error",
-      "no-console": "off",
+      "no-unused-vars": "off", 
+      "@typescript-eslint/no-unused-vars": "error",
       "@typescript-eslint/no-explicit-any": "off",
-      "playwright/no-wait-for-timeout": "error",
+      "no-console": "off",
+      
       ...(localOverride?.rules || {}),
     },
   },

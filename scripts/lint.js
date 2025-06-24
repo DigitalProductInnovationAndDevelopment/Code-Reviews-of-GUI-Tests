@@ -17,32 +17,41 @@ function runReviewdog(input, format, name) {
   console.log(`🔍 Running reviewdog for ${name}...`);
   
   try {
-    const rd = spawnSync(
-      'reviewdog',
-      [
-        `-f=${format}`,
-        `-name=${name}`,
-        '-reporter=github-pr-review',
-        '-filter-mode=nofilter',
-        '-level=info',
-        '-fail-on-error=false'
-      ],
-      { 
-        input: input, 
-        stdio: ['pipe', 'inherit', 'inherit'], 
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
-        }
+    const reviewdogArgs = [
+      `-f=${format}`,
+      `-name=${name}`,
+      '-reporter=github-pr-review',
+      '-filter-mode=added',  // Only show lines that were added/changed
+      '-level=info',
+      '-fail-on-error=false'
+    ];
+    
+    // For prettier, add more context to show the actual fixes
+    if (name === 'prettier') {
+      reviewdogArgs.push('-diff-strip-prefix-num=1');
+    }
+    
+    const rd = spawnSync('reviewdog', reviewdogArgs, { 
+      input: input, 
+      stdio: ['pipe', 'inherit', 'inherit'], 
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
       }
-    );
+    });
     
     if (rd.error) {
       console.error(`❌ Reviewdog error for ${name}:`, rd.error.message);
+    } else if (rd.status === 0) {
+      console.log(`✅ Reviewdog completed successfully for ${name}`);
     } else {
-      console.log(`✅ Reviewdog completed for ${name}`);
+      console.warn(`⚠️  Reviewdog completed with status ${rd.status} for ${name}`);
     }
+    
+    // Also save the input for debugging
+    fs.writeFileSync(`artifacts/${name}-reviewdog-input.txt`, input);
+    
   } catch (error) {
     console.error(`❌ Failed to run reviewdog for ${name}:`, error.message);
   }
@@ -52,36 +61,90 @@ function runPrettier() {
   console.log('\n▶ Prettier (write → diff → reviewdog)');
   
   try {
-    // Format files with Prettier
-    execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
-    
-    // Generate diff using git
-    const diff = execSync('git diff -- tests || true', { encoding: 'utf8' });
-    const files = diff ? execSync('git diff --name-only -- tests || true', { encoding: 'utf8' }).split('\n').filter(Boolean) : [];
-    const totalChanges = (diff.match(/^[+-](?![+-]{3})/gm) || []).length;
-
-    // Save diff for debugging
+    // Create artifacts directory
     fs.mkdirSync('artifacts', { recursive: true });
-    fs.writeFileSync('artifacts/prettier-diff.txt', diff);
     
-    if (diff && diff.trim()) {
-      console.log(`📝 Found ${totalChanges} formatting changes in ${files.length} files`);
-      runReviewdog(diff, 'diff', 'prettier');
-    } else {
-      console.log('✅ No prettier formatting needed');
+    // First, let's see what files prettier would change
+    let filesToCheck = '';
+    try {
+      filesToCheck = execSync('npx prettier --list-different "tests/**/*.{js,ts,tsx,json}"', { encoding: 'utf8' });
+    } catch (e) {
+      // If no files need formatting, prettier exits with code 1
+      filesToCheck = e.stdout?.toString() || '';
     }
     
-    // Clean up git changes
-    execSync('git checkout -- . || true'); 
-
+    const filesToFormat = filesToCheck.split('\n').filter(Boolean);
+    
+    if (filesToFormat.length === 0) {
+      console.log('✅ No prettier formatting needed');
+      return {
+        filesWithIssues: 0,
+        totalChanges: 0,
+        files: [],
+        sample: ''
+      };
+    }
+    
+    console.log(`📝 Found ${filesToFormat.length} files needing formatting:`, filesToFormat);
+    
+    // Create a temporary branch to capture pristine diff
+    const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
+    const tempBranchName = `temp-prettier-${Date.now()}`;
+    
+    // Create temp branch from current state
+    execSync(`git checkout -b ${tempBranchName}`, { stdio: 'pipe' });
+    
+    // Run prettier on temp branch
+    execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
+    
+    // Generate detailed diff with context
+    const diffCmd = `git diff ${currentBranch}..${tempBranchName} -- tests/`;
+    const diff = execSync(diffCmd, { encoding: 'utf8' });
+    
+    // Count changes more accurately
+    const totalChanges = (diff.match(/^[-+](?![-+@])/gm) || []).length;
+    
+    // Save detailed diff for debugging
+    fs.writeFileSync('artifacts/prettier-diff.txt', diff);
+    fs.writeFileSync('artifacts/prettier-files.json', JSON.stringify(filesToFormat, null, 2));
+    
+    console.log(`📊 Prettier changes: ${totalChanges} lines across ${filesToFormat.length} files`);
+    
+    // Show first few changes for immediate feedback
+    const diffLines = diff.split('\n');
+    const sampleDiff = diffLines.slice(0, 50).join('\n');
+    console.log('First 50 lines of diff:\n', sampleDiff);
+    
+    // Return to original branch
+    execSync(`git checkout ${currentBranch}`, { stdio: 'pipe' });
+    execSync(`git branch -D ${tempBranchName}`, { stdio: 'pipe' });
+    
+    // Run reviewdog with the detailed diff
+    if (diff && diff.trim()) {
+      runReviewdog(diff, 'diff', 'prettier');
+    }
+    
     return {
-      filesWithIssues: files.length,
+      filesWithIssues: filesToFormat.length,
       totalChanges,
-      files,
-      sample: diff.split('\n').slice(0, 20).join('\n')
+      files: filesToFormat,
+      sample: sampleDiff
     };
+    
   } catch (error) {
     console.error('❌ Prettier failed:', error.message);
+    
+    // Cleanup: try to return to original branch if we're stuck
+    try {
+      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
+      if (currentBranch.startsWith('temp-prettier-')) {
+        execSync('git checkout -', { stdio: 'pipe' });
+        execSync(`git branch -D ${currentBranch}`, { stdio: 'pipe' });
+      }
+    } catch (cleanupError) {
+      console.error('⚠️  Cleanup error:', cleanupError.message);
+    }
+    
     return {
       filesWithIssues: 0,
       totalChanges: 0,
