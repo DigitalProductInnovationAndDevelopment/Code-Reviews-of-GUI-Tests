@@ -79,7 +79,6 @@ ${lint.prettier?.sample ? `\n<details><summary>First 20-line diff sample</summar
 ---
 
 **📋 ESLint:**  
-${icon(eslint.errors === 0)}  
 ${lint.eslint?.errors ?? 0} error(s), ${lint.eslint?.warnings ?? 0} warning(s)  
 ${lint.eslint?.first ? `First error: \`${lint.eslint.first}\`` : ''}
 <sub>💡 You can modify the \`eslint.local.config.mjs\` file to design custom rules <sub>
