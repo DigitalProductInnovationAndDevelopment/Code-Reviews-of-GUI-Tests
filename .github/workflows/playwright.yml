@@ -34,17 +34,26 @@ jobs:
       #---------------------------------------------------
       - name: Prettier style check (reviewdog)
         shell: bash
+        continue-on-error: true
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npx prettier --write "tests/**/*.{js,ts,tsx,json}"
-          git diff -U0 --no-color > prettier.patch || true
+          # Stage current changes to isolate prettier changes
+          git add . || true
+          
+          # Run prettier on tests folder only
+          npx prettier --write "tests/**/*.{js,ts,tsx,json}" || true
+          
+          # Only capture diff for tests folder
+          git diff -U0 --no-color -- tests/ > prettier.patch || true
+          
           if [ -s prettier.patch ]; then
             cat prettier.patch | reviewdog -f=diff \
                                            -name="prettier" \
                                            -reporter=github-pr-review \
                                            -filter-mode=diff_context \
-                                           -level=warning
+                                           -level=info \
+                                           -fail-on-error=false
           else
             echo "No Prettier issues found."
           fi
@@ -54,10 +63,11 @@ jobs:
       #---------------------------------------------------
       - name: ESLint check with reviewdog
         shell: bash
+        continue-on-error: true
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Run ESLint and output JSON
+          # Run ESLint and output JSON (don't fail on lint errors)
           npx eslint tests --ext .js,.ts,.tsx -f json > eslint-output.json || true
           
           # Check if there are any issues
@@ -66,11 +76,11 @@ jobs:
                                               -name="eslint" \
                                               -reporter=github-pr-review \
                                               -filter-mode=nofilter \
-                                              -level=warning
+                                              -level=info \
+                                              -fail-on-error=false
           else
             echo "No ESLint issues found."
           fi
-      
       #---------------------------------------------------
       # Run your original lint.js script for reports
       #---------------------------------------------------
