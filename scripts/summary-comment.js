@@ -73,6 +73,7 @@ ${icon(play.failed === 0 && play.passed > 0)}
 ${lint.prettier?.filesWithIssues ?? 0} file(s) need formatting  
 ${lint.prettier?.files?.length ? `Files: ${lint.prettier.files.join(', ')}` : ''}  
 ${lint.prettier?.totalChanges ? `Num places to fix: ${lint.prettier.totalChanges}` : ''}  
+${lint.prettier?.totalChanges > 50 ? `\n⚠️ **Num places to fix exceed the GitHub inline comment limit, suggested to fix it locally before PR with:**\n\`\`\`bash\nnpx prettier "tests/**/*.{js,jsx,ts,tsx}" --write\n\`\`\`` : ''}
 ${lint.prettier?.sample ? `\n<details><summary>First 20-line diff sample</summary>\n\n\`\`\`diff\n${lint.prettier.sample}\n\`\`\`\n</details>` : ''}
 
 ---
@@ -80,7 +81,7 @@ ${lint.prettier?.sample ? `\n<details><summary>First 20-line diff sample</summar
 **📋 ESLint:**  
 ${lint.eslint?.errors ?? 0} error(s), ${lint.eslint?.warnings ?? 0} warning(s)  
 ${lint.eslint?.first ? `First error: \`${lint.eslint.first}\`` : ''}
-
+💡 You can modify the \`eslint.local.config.mjs\` file to design custom rules
 ---
 
 👉 **[Open Full Dashboard to see full report↗](${webUrl})**

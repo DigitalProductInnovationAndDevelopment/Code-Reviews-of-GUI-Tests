@@ -61,6 +61,14 @@ const prettierCard = card(
           '#f57f17'
         ) +
         `<ul>${p.files.map(f => `<li>${f}</li>`).join('')}</ul>` +
+        (p.totalChanges > 50 
+          ? `<div class="warning-box">
+               <strong>⚠️ Warning:</strong> Number of places to fix exceed the GitHub inline comment limit.<br>
+               <strong>Suggested:</strong> Fix it locally before PR with:
+               <pre style="margin-top:0.5em; font-size:12px">npx prettier "tests/**/*.{js,jsx,ts,tsx}" --write</pre>
+             </div>`
+          : ''
+        ) +
         `<details><summary>Diff sample (first 20 lines)</summary>${pre(
           p.sample
         )}</details>`
@@ -107,6 +115,7 @@ body{font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,san
 h1{font-size:2rem;margin-bottom:1.2rem}
 .card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:1.3rem;margin-bottom:1.3rem}
 .pill{display:inline-block;border-radius:9999px;padding:.18em .68em;font-size:12px;color:#fff;margin-right:.4em}
+.warning-box{background:#fff3cd;border:1px solid #ffeaa7;border-radius:8px;padding:1rem;margin-top:0.8em;color:#856404}
 pre{background:#2d2d2d;color:#f8f8f2;padding:1rem;border-radius:8px;overflow:auto;font-size:13px;margin-top:.6em}
 ul{margin:.6em 0 0 1.1em}
 details{margin-top:.6em}
