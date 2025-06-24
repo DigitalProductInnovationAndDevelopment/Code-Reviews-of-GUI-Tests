@@ -33,6 +33,8 @@ jobs:
       # Run your original lint.js script for reports
       #---------------------------------------------------
       - name: Run lint script for reports
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/lint.js
         continue-on-error: true
       
