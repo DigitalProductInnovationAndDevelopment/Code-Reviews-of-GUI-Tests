@@ -24,49 +24,60 @@ function runReviewdog(input, format, name) {
   try {
     let processedInput = input;
     
-    // For prettier, limit to first 10 file changes to avoid spam
+    // For prettier, limit to first 10 line changes (not files) to get meaningful coverage
     if (name === 'prettier' && input) {
       const lines = input.split('\n');
-      const fileHeaders = [];
-      let currentFileLines = [];
-      let fileCount = 0;
+      const processedLines = [];
+      let changeCount = 0;
+      let inHunk = false;
+      let fileHeader = [];
       
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         
-        // Detect new file diff header
-        if (line.startsWith('diff --git ')) {
-          if (currentFileLines.length > 0 && fileCount < 10) {
-            fileHeaders.push(...currentFileLines);
+        // Track file headers
+        if (line.startsWith('diff --git ') || line.startsWith('index ') || line.startsWith('--- ') || line.startsWith('+++ ')) {
+          fileHeader.push(line);
+          processedLines.push(line);
+          continue;
+        }
+        
+        // Track hunk headers
+        if (line.startsWith('@@')) {
+          processedLines.push(line);
+          inHunk = true;
+          continue;
+        }
+        
+        // If we're in a hunk and this is a change line
+        if (inHunk && (line.startsWith('-') || line.startsWith('+'))) {
+          if (changeCount < 20) { // Allow 20 change lines to get ~10 actual changes (- and + pairs)
+            processedLines.push(line);
+            if (line.startsWith('-') || line.startsWith('+')) {
+              changeCount++;
+            }
+          } else {
+            break; // Stop processing more changes
           }
-          
-          if (fileCount >= 10) break;
-          
-          currentFileLines = [line];
-          fileCount++;
-        } else {
-          currentFileLines.push(line);
+        } else if (inHunk) {
+          // Context lines (not changes)
+          processedLines.push(line);
         }
       }
       
-      // Add the last file if under limit
-      if (currentFileLines.length > 0 && fileCount <= 10) {
-        fileHeaders.push(...currentFileLines);
-      }
-      
-      processedInput = fileHeaders.join('\n');
-      console.log(`📝 Limited prettier diff to first 10 files (originally ${fileCount} files)`);
+      processedInput = processedLines.join('\n');
+      console.log(`📝 Limited prettier diff to first ${changeCount} change lines`);
     }
     
-    // Try multiple reviewdog configurations to find what works
+    // Try github-pr-review with different filter modes
     const configs = [
       {
-        name: 'github-pr-review with nofilter',
+        name: 'github-pr-review with diff_context (shows suggestions)',
         args: [
           `-f=${format}`,
           `-name=${name}`,
           '-reporter=github-pr-review',
-          '-filter-mode=nofilter',
+          '-filter-mode=diff_context',
           '-level=info',
           '-fail-on-error=false'
         ]
@@ -83,11 +94,11 @@ function runReviewdog(input, format, name) {
         ]
       },
       {
-        name: 'github-pr-check',
+        name: 'github-pr-review with nofilter',
         args: [
           `-f=${format}`,
           `-name=${name}`,
-          '-reporter=github-pr-check',
+          '-reporter=github-pr-review',
           '-filter-mode=nofilter',
           '-level=info',
           '-fail-on-error=false'
