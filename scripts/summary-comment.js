@@ -9,7 +9,7 @@ const { Octokit } = require('@octokit/core');
 
 const ART =
   process.env.ARTIFACTS_DIR ||
-  'artifacts'; // fallback for local testing
+  'artifacts';
 
 const readJSON = (file, fallback = {}) => {
   try {
@@ -93,13 +93,11 @@ _Automated comment updated on every push._
 
 /* ── Upsert sticky comment ── */
 (async () => {
-  // Get all comments
   const { data: comments } = await octokit.request(
     'GET /repos/{owner}/{repo}/issues/{issue_number}/comments',
     { owner, repo, issue_number: prNumber }
   );
 
-  // Find the existing sticky comment
   const existing = comments.find(
     c =>
       c.user.type === 'Bot' &&

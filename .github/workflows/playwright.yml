@@ -27,15 +27,9 @@ jobs:
       - name: Install NPM dependencies
         run: npm install
       
-      #---------------------------------------------------
-      # Setup reviewdog
-      #---------------------------------------------------
       - uses: reviewdog/action-setup@v1
         with: { reviewdog_version: latest }
       
-      #---------------------------------------------------
-      # Run your original lint.js script for reports
-      #---------------------------------------------------
       - name: Run lint script for reports  
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -44,9 +38,6 @@ jobs:
         run: node scripts/lint.js
         continue-on-error: true
       
-      #---------------------------------------------------
-      # Run your other steps
-      #---------------------------------------------------
       - name: Playwright tests
         run: node scripts/playwright-test.js
         continue-on-error: true

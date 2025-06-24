@@ -16,7 +16,7 @@ const exists = f => fs.existsSync(path.join(ART, f));
 const hasPlay  = exists('playwright-summary.json');
 const hasLint  = exists('lint-summary.json');
 const hasFlow  = exists('flowchart.png');
-const hasBadge = exists('test-summary.txt');        // created by badge step
+const hasBadge = exists('test-summary.txt');  
 
 const lines = [
   '- [x] GitHub Action triggered',
