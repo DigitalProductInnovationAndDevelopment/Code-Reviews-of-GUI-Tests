@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [main]
     
-concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: true
-  
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -93,6 +89,12 @@ jobs:
       - id: deploy
         uses: actions/deploy-pages@v4
         continue-on-error: true
+
+      - name: Retry deployment if failed
+        if: failure()
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+        timeout-minutes: 10
   
   comment_link:
     if: github.event_name == 'pull_request'
