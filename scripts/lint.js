@@ -69,26 +69,15 @@ function runReviewdog(input, format, name) {
       console.log(`📝 Limited prettier diff to first ${changePairCount} change pairs (targeting multiple inline comments)`);
     }
     
-    // Use github-pr-check which often works better for suggestions
+    // Use github-pr-check which creates detailed check runs (no inline comment limits)
     const configs = [
       {
-        name: 'github-pr-check (often better for suggestions)',
+        name: 'github-pr-check (detailed check runs)',
         args: [
           `-f=${format}`,
           `-name=${name}`,
           '-reporter=github-pr-check',
-          '-filter-mode=added',
-          '-level=info',
-          '-fail-on-error=false'
-        ]
-      },
-      {
-        name: 'github-pr-review with diff_context',
-        args: [
-          `-f=${format}`,
-          `-name=${name}`,
-          '-reporter=github-pr-review',
-          '-filter-mode=diff_context',
+          '-filter-mode=nofilter',
           '-level=info',
           '-fail-on-error=false'
         ]
