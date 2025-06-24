@@ -24,55 +24,66 @@ function runReviewdog(input, format, name) {
   try {
     let processedInput = input;
     
-    // For prettier, limit to first 50 line changes (not files) to get meaningful coverage
+    // For prettier, limit by "change pairs" (- followed by +) to get meaningful comments
     if (name === 'prettier' && input) {
       const lines = input.split('\n');
       const processedLines = [];
-      let changeCount = 0;
-      let inHunk = false;
-      let fileHeader = [];
+      let changePairCount = 0;
+      let i = 0;
       
-      for (let i = 0; i < lines.length; i++) {
+      while (i < lines.length && changePairCount < 50) {
         const line = lines[i];
         
-        // Track file headers
-        if (line.startsWith('diff --git ') || line.startsWith('index ') || line.startsWith('--- ') || line.startsWith('+++ ')) {
-          fileHeader.push(line);
+        // Always include file headers and hunk headers
+        if (line.startsWith('diff --git ') || 
+            line.startsWith('index ') || 
+            line.startsWith('--- ') || 
+            line.startsWith('+++ ') ||
+            line.startsWith('@@')) {
           processedLines.push(line);
+          i++;
           continue;
         }
         
-        // Track hunk headers
-        if (line.startsWith('@@')) {
+        // Look for change pairs (- line followed by + line)
+        if (line.startsWith('-') && i + 1 < lines.length && lines[i + 1].startsWith('+')) {
+          processedLines.push(line);      // - line
+          processedLines.push(lines[i + 1]); // + line
+          changePairCount++;
+          i += 2; // Skip both lines
+        } 
+        // Single additions or deletions
+        else if (line.startsWith('-') || line.startsWith('+')) {
           processedLines.push(line);
-          inHunk = true;
-          continue;
+          changePairCount++;
+          i++;
         }
-        
-        // If we're in a hunk and this is a change line
-        if (inHunk && (line.startsWith('-') || line.startsWith('+'))) {
-          if (changeCount < 100) { // Allow 100 change lines to get ~50 actual changes (- and + pairs)
-            processedLines.push(line);
-            if (line.startsWith('-') || line.startsWith('+')) {
-              changeCount++;
-            }
-          } else {
-            break; // Stop processing more changes
-          }
-        } else if (inHunk) {
-          // Context lines (not changes)
+        // Context lines (spaces)
+        else {
           processedLines.push(line);
+          i++;
         }
       }
       
       processedInput = processedLines.join('\n');
-      console.log(`📝 Limited prettier diff to first ${changeCount} change lines (targeting ~50 inline comments)`);
+      console.log(`📝 Limited prettier diff to first ${changePairCount} change pairs (targeting multiple inline comments)`);
     }
     
-    // Try github-pr-review with different filter modes
+    // Use github-pr-check which often works better for suggestions
     const configs = [
       {
-        name: 'github-pr-review with diff_context (shows suggestions)',
+        name: 'github-pr-check (often better for suggestions)',
+        args: [
+          `-f=${format}`,
+          `-name=${name}`,
+          '-reporter=github-pr-check',
+          '-filter-mode=added',
+          '-level=info',
+          '-fail-on-error=false'
+        ]
+      },
+      {
+        name: 'github-pr-review with diff_context',
         args: [
           `-f=${format}`,
           `-name=${name}`,
@@ -83,18 +94,7 @@ function runReviewdog(input, format, name) {
         ]
       },
       {
-        name: 'github-pr-review with added',
-        args: [
-          `-f=${format}`,
-          `-name=${name}`,
-          '-reporter=github-pr-review',
-          '-filter-mode=added',
-          '-level=info',
-          '-fail-on-error=false'
-        ]
-      },
-      {
-        name: 'github-pr-review with nofilter',
+        name: 'github-pr-review with nofilter (fallback)',
         args: [
           `-f=${format}`,
           `-name=${name}`,
@@ -110,23 +110,36 @@ function runReviewdog(input, format, name) {
     fs.writeFileSync(`artifacts/${name}-reviewdog-input.txt`, processedInput);
     console.log(`📁 Saved reviewdog input to artifacts/${name}-reviewdog-input.txt`);
     
+    // Show a sample of what we're sending to reviewdog
+    const inputLines = processedInput.split('\n');
+    console.log(`📋 Sample input (first 15 lines):`);
+    inputLines.slice(0, 15).forEach((line, i) => {
+      console.log(`${i+1}: ${line}`);
+    });
+    
     // Try each configuration until one works
     for (const config of configs) {
       console.log(`🧪 Trying reviewdog config: ${config.name}`);
       
       const rd = spawnSync('reviewdog', config.args, { 
         input: processedInput, 
-        stdio: ['pipe', 'inherit', 'inherit'], 
+        stdio: ['pipe', 'pipe', 'pipe'], // Capture all output for debugging
         encoding: 'utf8',
         env: {
           ...process.env,
-          REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN,
-          // Add debug logging
-          REVIEWDOG_DEBUG: '1'
+          REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
         }
       });
       
       console.log(`📊 Config "${config.name}" exit code: ${rd.status}`);
+      
+      // Show reviewdog output for debugging
+      if (rd.stdout) {
+        console.log(`📤 Reviewdog stdout: ${rd.stdout.slice(0, 200)}...`);
+      }
+      if (rd.stderr) {
+        console.log(`📤 Reviewdog stderr: ${rd.stderr.slice(0, 200)}...`);
+      }
       
       if (rd.status === 0) {
         console.log(`✅ Success with config: ${config.name}`);
@@ -181,7 +194,7 @@ function runPrettier() {
     
     // Generate diff - this shows the prettier changes
     console.log('📊 Generating diff...');
-    const diff = execSync('git diff --no-color HEAD -- tests/', { encoding: 'utf8' });
+    const diff = execSync('git diff --no-color -U3 HEAD -- tests/', { encoding: 'utf8' });
     
     // Count changes more accurately
     const addedLines = (diff.match(/^\+(?!\+)/gm) || []).length;
