@@ -9,30 +9,70 @@ const IS_PR =
 const HAS_REVIEWDOG_TOKEN = process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN;
 
 function runReviewdog(input, format, name) {
-  if (!IS_PR || !HAS_REVIEWDOG_TOKEN) {
-    console.log(`📝 Skipping reviewdog (IS_PR: ${IS_PR}, HAS_TOKEN: ${!!HAS_REVIEWDOG_TOKEN})`);
+  if (!IS_PR) {
+    console.log(`📝 Skipping reviewdog - not a PR (IS_PR: ${IS_PR})`);
+    return;
+  }
+  
+  if (!HAS_REVIEWDOG_TOKEN) {
+    console.log(`📝 Skipping reviewdog - no token (HAS_TOKEN: ${!!HAS_REVIEWDOG_TOKEN})`);
     return;
   }
 
   console.log(`🔍 Running reviewdog for ${name}...`);
   
   try {
+    let processedInput = input;
+    
+    // For prettier, limit to first 10 file changes to avoid spam
+    if (name === 'prettier' && input) {
+      const lines = input.split('\n');
+      const fileHeaders = [];
+      let currentFileLines = [];
+      let fileCount = 0;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Detect new file diff header
+        if (line.startsWith('diff --git ')) {
+          if (currentFileLines.length > 0 && fileCount < 10) {
+            fileHeaders.push(...currentFileLines);
+          }
+          
+          if (fileCount >= 10) break;
+          
+          currentFileLines = [line];
+          fileCount++;
+        } else {
+          currentFileLines.push(line);
+        }
+      }
+      
+      // Add the last file if under limit
+      if (currentFileLines.length > 0 && fileCount <= 10) {
+        fileHeaders.push(...currentFileLines);
+      }
+      
+      processedInput = fileHeaders.join('\n');
+      console.log(`📝 Limited prettier diff to first 10 files (originally ${fileCount} files)`);
+    }
+    
     const reviewdogArgs = [
       `-f=${format}`,
       `-name=${name}`,
       '-reporter=github-pr-review',
-      '-filter-mode=added',  // Only show lines that were added/changed
+      '-filter-mode=added',
       '-level=info',
       '-fail-on-error=false'
     ];
     
-    // For prettier, add more context to show the actual fixes
-    if (name === 'prettier') {
-      reviewdogArgs.push('-diff-strip-prefix-num=1');
-    }
+    // Save the input for debugging
+    fs.writeFileSync(`artifacts/${name}-reviewdog-input.txt`, processedInput);
+    console.log(`📁 Saved reviewdog input to artifacts/${name}-reviewdog-input.txt`);
     
     const rd = spawnSync('reviewdog', reviewdogArgs, { 
-      input: input, 
+      input: processedInput, 
       stdio: ['pipe', 'inherit', 'inherit'], 
       encoding: 'utf8',
       env: {
@@ -41,16 +81,16 @@ function runReviewdog(input, format, name) {
       }
     });
     
+    console.log(`📊 Reviewdog exit code: ${rd.status}`);
+    
     if (rd.error) {
       console.error(`❌ Reviewdog error for ${name}:`, rd.error.message);
     } else if (rd.status === 0) {
       console.log(`✅ Reviewdog completed successfully for ${name}`);
     } else {
       console.warn(`⚠️  Reviewdog completed with status ${rd.status} for ${name}`);
+      console.log('📋 This might be normal if no comments were needed');
     }
-    
-    // Also save the input for debugging
-    fs.writeFileSync(`artifacts/${name}-reviewdog-input.txt`, input);
     
   } catch (error) {
     console.error(`❌ Failed to run reviewdog for ${name}:`, error.message);
@@ -97,7 +137,7 @@ function runPrettier() {
     
     // Generate diff - this shows the prettier changes
     console.log('📊 Generating diff...');
-    const diff = execSync('git diff --no-color HEAD -- tests/', { encoding: 'utf8' });
+    const diff = execSync('git diff --no-color --no-prefix HEAD -- tests/', { encoding: 'utf8' });
     
     // Count changes more accurately
     const addedLines = (diff.match(/^\+(?!\+)/gm) || []).length;
@@ -113,7 +153,7 @@ function runPrettier() {
     // Show sample of the diff
     const diffLines = diff.split('\n');
     const sampleDiff = diffLines.slice(0, 30).join('\n');
-    console.log('Sample diff:\n', sampleDiff);
+    console.log('Sample diff (first 30 lines):\n', sampleDiff);
     
     // Restore original state
     console.log('🔄 Restoring original state...');
@@ -122,6 +162,11 @@ function runPrettier() {
     // Run reviewdog with the diff if we have changes
     if (diff && diff.trim() && totalChanges > 0) {
       console.log('🔍 Sending to reviewdog...');
+      
+      // Debug: show first few lines of what we're sending to reviewdog
+      const debugDiff = diff.split('\n').slice(0, 20).join('\n');
+      console.log('📋 First 20 lines being sent to reviewdog:\n', debugDiff);
+      
       runReviewdog(diff, 'diff', 'prettier');
     } else {
       console.log('📝 No substantial changes detected for reviewdog');
@@ -239,6 +284,16 @@ function runESLint() {
 
 // Main execution
 console.log('🚀 Starting lint checks...');
+
+// Check if reviewdog is available
+if (IS_PR && HAS_REVIEWDOG_TOKEN) {
+  try {
+    const reviewdogVersion = execSync('reviewdog -version', { encoding: 'utf8' });
+    console.log('🐕 Reviewdog version:', reviewdogVersion.trim());
+  } catch (error) {
+    console.error('❌ Reviewdog not found or not working:', error.message);
+  }
+}
 
 const prettier = runPrettier();
 const eslint = runESLint();

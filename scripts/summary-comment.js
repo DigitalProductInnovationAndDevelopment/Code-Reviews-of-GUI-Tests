@@ -81,7 +81,7 @@ ${lint.prettier?.sample ? `\n<details><summary>First 20-line diff sample</summar
 **📋 ESLint:**  
 ${lint.eslint?.errors ?? 0} error(s), ${lint.eslint?.warnings ?? 0} warning(s)  
 ${lint.eslint?.first ? `First error: \`${lint.eslint.first}\`` : ''}
-💡 You can modify the \`eslint.local.config.mjs\` file to design custom rules
+<sub>💡 You can modify the \`eslint.local.config.mjs\` file to design custom rules <sub>
 ---
 
 👉 **[Open Full Dashboard to see full report↗](${webUrl})**
