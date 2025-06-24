@@ -24,7 +24,7 @@ function runReviewdog(input, format, name) {
   try {
     let processedInput = input;
     
-    // For prettier, limit to first 10 line changes (not files) to get meaningful coverage
+    // For prettier, limit to first 50 line changes (not files) to get meaningful coverage
     if (name === 'prettier' && input) {
       const lines = input.split('\n');
       const processedLines = [];
@@ -51,7 +51,7 @@ function runReviewdog(input, format, name) {
         
         // If we're in a hunk and this is a change line
         if (inHunk && (line.startsWith('-') || line.startsWith('+'))) {
-          if (changeCount < 20) { // Allow 20 change lines to get ~10 actual changes (- and + pairs)
+          if (changeCount < 100) { // Allow 100 change lines to get ~50 actual changes (- and + pairs)
             processedLines.push(line);
             if (line.startsWith('-') || line.startsWith('+')) {
               changeCount++;
@@ -66,7 +66,7 @@ function runReviewdog(input, format, name) {
       }
       
       processedInput = processedLines.join('\n');
-      console.log(`📝 Limited prettier diff to first ${changeCount} change lines`);
+      console.log(`📝 Limited prettier diff to first ${changeCount} change lines (targeting ~50 inline comments)`);
     }
     
     // Try github-pr-review with different filter modes
