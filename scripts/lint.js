@@ -8,85 +8,6 @@ const IS_PR =
 
 const HAS_REVIEWDOG_TOKEN = process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN;
 
-// Helper function to split large hunks into smaller ones for Apply suggestions
-function splitLargeHunksForSuggestions(diff) {
-  const lines = diff.split('\n');
-  const result = [];
-  let currentFileHeader = [];
-  let changes = [];
-  let lineNumber = 1;
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    
-    if (line.startsWith('diff --git ')) {
-      // New file - process previous file's changes first
-      if (changes.length > 0) {
-        result.push(...createSmallHunks(currentFileHeader, changes));
-      }
-      
-      // Start new file
-      currentFileHeader = [line];
-      changes = [];
-      lineNumber = 1;
-      continue;
-    }
-    
-    if (line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')){
-      currentFileHeader.push(line);
-      continue;
-    }
-    
-    if (line.startsWith('@@')) {
-      // Skip original hunk header - we'll create our own smaller ones
-      continue;
-    }
-    
-    // Collect actual changes
-    if (line.startsWith('-') || line.startsWith('+') || line.startsWith(' ')) {
-      changes.push({line, originalLineNum: lineNumber});
-      if (!line.startsWith('+')) lineNumber++;
-    }
-  }
-  
-  // Process the last file
-  if (changes.length > 0) {
-    result.push(...createSmallHunks(currentFileHeader, changes));
-  }
-  
-  return result.join('\n');
-}
-
-// Create small hunks (max 8 lines each) that work with diff_context
-function createSmallHunks(fileHeader, changes) {
-  const result = [...fileHeader];
-  const chunkSize = 6; // Small chunks for Apply suggestions
-  let hunkCount = 0;
-  
-  for (let i = 0; i < changes.length && hunkCount < 20; i += chunkSize) {
-    const chunk = changes.slice(i, i + chunkSize);
-    if (chunk.length === 0) break;
-    
-    const firstLine = Math.max(1, chunk[0].originalLineNum);
-    const removedLines = chunk.filter(c => c.line.startsWith('-')).length;
-    const addedLines = chunk.filter(c => c.line.startsWith('+')).length;
-    const contextLines = chunk.filter(c => c.line.startsWith(' ')).length;
-    
-    // Create a small hunk header
-    result.push(`@@ -${firstLine},${removedLines + contextLines} +${firstLine},${addedLines + contextLines} @@`);
-    
-    // Add the changes
-    chunk.forEach(change => {
-      result.push(change.line);
-    });
-    
-    hunkCount++;
-  }
-  
-  console.log(`📦 Split into ${hunkCount} small hunks for Apply suggestions`);
-  return result;
-}
-
 function runReviewdog(input, format, name) {
   if (!IS_PR) {
     console.log(`📝 Skipping reviewdog - not a PR (IS_PR: ${IS_PR})`);
@@ -98,98 +19,64 @@ function runReviewdog(input, format, name) {
     return;
   }
 
-  console.log(`🔍 Running reviewdog for ${name}...`);
+  console.log(`🔍 Running reviewdog for ${name} (replicating ${name === 'prettier' ? 'EPMatt/reviewdog-action-prettier' : 'reviewdog/action-eslint'})...`);
   
   try {
-    let processedInput = input;
+    // Use the exact same configuration as the successful GitHub actions
+    let reviewdogArgs;
     
-    // For prettier, split large hunks into smaller ones that work with diff_context
-    if (name === 'prettier' && input) {
-      console.log(`🔧 Splitting large prettier hunks for Apply suggestions...`);
-      processedInput = splitLargeHunksForSuggestions(input);
+    if (name === 'prettier') {
+      // Replicate EPMatt/reviewdog-action-prettier@v1 configuration
+      reviewdogArgs = [
+        `-f=${format}`,
+        `-name=${name}`,
+        '-reporter=github-pr-review',
+        '-filter-mode=diff_context',  // This is key for Apply suggestions
+        '-level=info',
+        '-fail-on-error=false'
+      ];
+    } else {
+      // Replicate reviewdog/action-eslint@v1 configuration  
+      reviewdogArgs = [
+        `-f=${format}`,
+        `-name=${name}`,
+        '-reporter=github-pr-review',
+        '-filter-mode=added',
+        '-level=info', 
+        '-fail-on-error=false'
+      ];
     }
     
-    // Use github-pr-review with diff_context for Apply suggestion buttons
-    const configs = [
-      {
-        name: 'github-pr-review with diff_context (Apply suggestions)',
-        args: [
-          `-f=${format}`,
-          `-name=${name}`,
-          '-reporter=github-pr-review',
-          '-filter-mode=diff_context',
-          '-level=info',
-          '-fail-on-error=false'
-        ]
-      },
-      {
-        name: 'github-pr-review with added (fallback)',
-        args: [
-          `-f=${format}`,
-          `-name=${name}`,
-          '-reporter=github-pr-review',
-          '-filter-mode=added', 
-          '-level=info',
-          '-fail-on-error=false'
-        ]
-      },
-      {
-        name: 'github-pr-review with nofilter (last resort)',
-        args: [
-          `-f=${format}`,
-          `-name=${name}`,
-          '-reporter=github-pr-review',
-          '-filter-mode=nofilter',
-          '-level=info',
-          '-fail-on-error=false'
-        ]
-      }
-    ];
-    
     // Save the input for debugging
-    fs.writeFileSync(`artifacts/${name}-reviewdog-input.txt`, processedInput);
+    fs.writeFileSync(`artifacts/${name}-reviewdog-input.txt`, input);
     console.log(`📁 Saved reviewdog input to artifacts/${name}-reviewdog-input.txt`);
     
-    // Show a sample of what we're sending to reviewdog
-    const inputLines = processedInput.split('\n');
-    console.log(`📋 Sample input (first 15 lines):`);
-    inputLines.slice(0, 15).forEach((line, i) => {
-      console.log(`${i+1}: ${line}`);
+    console.log(`🧪 Running reviewdog with config: ${reviewdogArgs.join(' ')}`);
+    
+    const rd = spawnSync('reviewdog', reviewdogArgs, { 
+      input: input, 
+      stdio: ['pipe', 'pipe', 'pipe'],
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
+      }
     });
     
-    // Try each configuration until one works
-    for (const config of configs) {
-      console.log(`🧪 Trying reviewdog config: ${config.name}`);
-      
-      const rd = spawnSync('reviewdog', config.args, { 
-        input: processedInput, 
-        stdio: ['pipe', 'pipe', 'pipe'],
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
-        }
-      });
-      
-      console.log(`📊 Config "${config.name}" exit code: ${rd.status}`);
-      
-      // Show reviewdog output for debugging
-      if (rd.stdout) {
-        console.log(`📤 Reviewdog stdout: ${rd.stdout.slice(0, 300)}...`);
-      }
-      if (rd.stderr) {
-        console.log(`📤 Reviewdog stderr: ${rd.stderr.slice(0, 300)}...`);
-      }
-      
-      if (rd.status === 0) {
-        console.log(`✅ Success with config: ${config.name}`);
-        if (config.name.includes('diff_context')) {
-          console.log(`🎯 This should create Apply suggestion buttons!`);
-        }
-        break;
-      } else {
-        console.log(`❌ Failed with config: ${config.name}, trying next...`);
-      }
+    console.log(`📊 Reviewdog exit code: ${rd.status}`);
+    
+    // Show reviewdog output for debugging
+    if (rd.stdout) {
+      console.log(`📤 Reviewdog stdout: ${rd.stdout.slice(0, 300)}${rd.stdout.length > 300 ? '...' : ''}`);
+    }
+    if (rd.stderr) {
+      console.log(`📤 Reviewdog stderr: ${rd.stderr.slice(0, 300)}${rd.stderr.length > 300 ? '...' : ''}`);
+    }
+    
+    if (rd.status === 0) {
+      console.log(`✅ Success! Should have created ${name === 'prettier' ? 'Apply suggestion buttons' : 'inline comments'}`);
+    } else {
+      console.log(`❌ Reviewdog failed with exit code ${rd.status}`);
     }
     
   } catch (error) {
@@ -235,9 +122,9 @@ function runPrettier() {
     console.log('🎨 Running prettier...');
     execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
     
-    // Generate diff optimized for suggestions
-    console.log('📊 Generating diff optimized for suggestions...');
-    const diff = execSync('git diff --no-color --unified=3 --no-prefix HEAD -- tests/', { encoding: 'utf8' });
+    // Generate diff in the format that EPMatt/reviewdog-action-prettier expects
+    console.log('📊 Generating diff for reviewdog (EPMatt/reviewdog-action-prettier format)...');
+    const diff = execSync('git diff --no-color HEAD -- tests/', { encoding: 'utf8' });
     
     // Count changes more accurately
     const addedLines = (diff.match(/^\+(?!\+)/gm) || []).length;
@@ -259,17 +146,13 @@ function runPrettier() {
     console.log('🔄 Restoring original state...');
     execSync('git stash pop || true', { stdio: 'pipe' });
     
-    // Run reviewdog with the diff if we have changes
+    // Run reviewdog exactly like EPMatt/reviewdog-action-prettier does
     if (diff && diff.trim() && totalChanges > 0) {
-      console.log('🔍 Sending to reviewdog...');
-      
-      // Debug: show first few lines of what we're sending to reviewdog
-      const debugDiff = diff.split('\n').slice(0, 20).join('\n');
-      console.log('📋 First 20 lines being sent to reviewdog:\n', debugDiff);
+      console.log('🔍 Sending to reviewdog (replicating EPMatt/reviewdog-action-prettier)...');
       
       runReviewdog(diff, 'diff', 'prettier');
     } else {
-      console.log('📝 No substantial changes detected for reviewdog');
+      console.log('📝 No substantial changes detected');
     }
     
     return {
@@ -367,6 +250,8 @@ function runESLint() {
   if (raw && (errors > 0 || warnings > 0)) {
     // Save the ESLint results for debugging
     fs.writeFileSync('artifacts/eslint-results.json', raw);
+    
+    console.log('🔍 Sending to reviewdog (replicating reviewdog/action-eslint)...');
     runReviewdog(raw, 'eslint', 'eslint');
   } else {
     console.log('✅ No ESLint issues found');
