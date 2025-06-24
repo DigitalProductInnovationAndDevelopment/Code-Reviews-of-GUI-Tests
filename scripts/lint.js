@@ -8,6 +8,85 @@ const IS_PR =
 
 const HAS_REVIEWDOG_TOKEN = process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN;
 
+// Helper function to split large hunks into smaller ones for Apply suggestions
+function splitLargeHunksForSuggestions(diff) {
+  const lines = diff.split('\n');
+  const result = [];
+  let currentFileHeader = [];
+  let changes = [];
+  let lineNumber = 1;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    if (line.startsWith('diff --git ')) {
+      // New file - process previous file's changes first
+      if (changes.length > 0) {
+        result.push(...createSmallHunks(currentFileHeader, changes));
+      }
+      
+      // Start new file
+      currentFileHeader = [line];
+      changes = [];
+      lineNumber = 1;
+      continue;
+    }
+    
+    if (line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')){
+      currentFileHeader.push(line);
+      continue;
+    }
+    
+    if (line.startsWith('@@')) {
+      // Skip original hunk header - we'll create our own smaller ones
+      continue;
+    }
+    
+    // Collect actual changes
+    if (line.startsWith('-') || line.startsWith('+') || line.startsWith(' ')) {
+      changes.push({line, originalLineNum: lineNumber});
+      if (!line.startsWith('+')) lineNumber++;
+    }
+  }
+  
+  // Process the last file
+  if (changes.length > 0) {
+    result.push(...createSmallHunks(currentFileHeader, changes));
+  }
+  
+  return result.join('\n');
+}
+
+// Create small hunks (max 8 lines each) that work with diff_context
+function createSmallHunks(fileHeader, changes) {
+  const result = [...fileHeader];
+  const chunkSize = 6; // Small chunks for Apply suggestions
+  let hunkCount = 0;
+  
+  for (let i = 0; i < changes.length && hunkCount < 20; i += chunkSize) {
+    const chunk = changes.slice(i, i + chunkSize);
+    if (chunk.length === 0) break;
+    
+    const firstLine = Math.max(1, chunk[0].originalLineNum);
+    const removedLines = chunk.filter(c => c.line.startsWith('-')).length;
+    const addedLines = chunk.filter(c => c.line.startsWith('+')).length;
+    const contextLines = chunk.filter(c => c.line.startsWith(' ')).length;
+    
+    // Create a small hunk header
+    result.push(`@@ -${firstLine},${removedLines + contextLines} +${firstLine},${addedLines + contextLines} @@`);
+    
+    // Add the changes
+    chunk.forEach(change => {
+      result.push(change.line);
+    });
+    
+    hunkCount++;
+  }
+  
+  console.log(`📦 Split into ${hunkCount} small hunks for Apply suggestions`);
+  return result;
+}
+
 function runReviewdog(input, format, name) {
   if (!IS_PR) {
     console.log(`📝 Skipping reviewdog - not a PR (IS_PR: ${IS_PR})`);
@@ -24,49 +103,10 @@ function runReviewdog(input, format, name) {
   try {
     let processedInput = input;
     
-    // For prettier, limit by "change pairs" (- followed by +) to get meaningful comments
+    // For prettier, split large hunks into smaller ones that work with diff_context
     if (name === 'prettier' && input) {
-      const lines = input.split('\n');
-      const processedLines = [];
-      let changePairCount = 0;
-      let i = 0;
-      
-      while (i < lines.length && changePairCount < 50) {
-        const line = lines[i];
-        
-        // Always include file headers and hunk headers
-        if (line.startsWith('diff --git ') || 
-            line.startsWith('index ') || 
-            line.startsWith('--- ') || 
-            line.startsWith('+++ ') ||
-            line.startsWith('@@')) {
-          processedLines.push(line);
-          i++;
-          continue;
-        }
-        
-        // Look for change pairs (- line followed by + line)
-        if (line.startsWith('-') && i + 1 < lines.length && lines[i + 1].startsWith('+')) {
-          processedLines.push(line);      // - line
-          processedLines.push(lines[i + 1]); // + line
-          changePairCount++;
-          i += 2; // Skip both lines
-        } 
-        // Single additions or deletions
-        else if (line.startsWith('-') || line.startsWith('+')) {
-          processedLines.push(line);
-          changePairCount++;
-          i++;
-        }
-        // Context lines (spaces)
-        else {
-          processedLines.push(line);
-          i++;
-        }
-      }
-      
-      processedInput = processedLines.join('\n');
-      console.log(`📝 Limited prettier diff to first ${changePairCount} change pairs (targeting multiple inline comments)`);
+      console.log(`🔧 Splitting large prettier hunks for Apply suggestions...`);
+      processedInput = splitLargeHunksForSuggestions(input);
     }
     
     // Use github-pr-review with diff_context for Apply suggestion buttons
@@ -83,7 +123,7 @@ function runReviewdog(input, format, name) {
         ]
       },
       {
-        name: 'github-pr-review with added (fallback for suggestions)',
+        name: 'github-pr-review with added (fallback)',
         args: [
           `-f=${format}`,
           `-name=${name}`,
@@ -123,7 +163,7 @@ function runReviewdog(input, format, name) {
       
       const rd = spawnSync('reviewdog', config.args, { 
         input: processedInput, 
-        stdio: ['pipe', 'pipe', 'pipe'], // Capture all output for debugging
+        stdio: ['pipe', 'pipe', 'pipe'],
         encoding: 'utf8',
         env: {
           ...process.env,
@@ -195,7 +235,7 @@ function runPrettier() {
     console.log('🎨 Running prettier...');
     execSync('npx prettier --write "tests/**/*.{js,ts,tsx,json}"', { stdio: 'inherit' });
     
-    // Generate diff optimized for GitHub Apply suggestion buttons
+    // Generate diff optimized for suggestions
     console.log('📊 Generating diff optimized for suggestions...');
     const diff = execSync('git diff --no-color --unified=3 --no-prefix HEAD -- tests/', { encoding: 'utf8' });
     
