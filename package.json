@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Prototype to address the challenge of reviewing GUI tests",
   "main": "index.js",
-  "type": "module",
 
   "scripts": {
     "format:check": "prettier --check \"tests/**/*.{js,ts,tsx,json}\"",
@@ -36,8 +35,9 @@
     "@playwright/test": "^1.52.0",
     "eslint": "^8.0.0",
     "prettier": "^3.3.2",
-    "@typescript-eslint/parser": "^7.0.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@types/node": "^24.0.3",
+    "@typescript-eslint/eslint-plugin": "^8.34.1",
+    "@typescript-eslint/parser": "^8.34.1",
     "eslint-plugin-playwright": "^1.0.0",
     "eslint-plugin-prettier": "^5.0.0",
     "@octokit/core": "^5.0.0",
