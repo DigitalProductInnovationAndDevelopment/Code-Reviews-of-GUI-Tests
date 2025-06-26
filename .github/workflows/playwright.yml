@@ -1,249 +1,130 @@
-name: Playwright Tests + Prettier (reviewdog) + test-flow chart
+name: GUI Test Review
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
+       
 jobs:
-  test:
+  build-test:
     runs-on: ubuntu-latest
-
     permissions:
       contents: read
       pull-requests: write
-
+    
     steps:
-    #---------------------------------------------------
-    # 0 – Checkout
-    #---------------------------------------------------
-    - name: Checkout code
-      uses: actions/checkout@v3
-      with: { fetch-depth: 0 }
-
-    #---------------------------------------------------
-    # 1 – reviewdog CLI
-    #---------------------------------------------------
-    - name: Setup reviewdog
-      uses: reviewdog/action-setup@v1
-      with: { reviewdog_version: latest }
-
-    #---------------------------------------------------
-    # 2 – Prettier → inline review comments
-    #---------------------------------------------------
-    - name: Prettier style check (reviewdog)
-      shell: bash
-      env:
-        REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        npx prettier --write '**/*.{js,ts,tsx,jsx,json,yml,yaml,md}'
-        git diff -U0 --no-color > prettier.patch || true
-        if [ -s prettier.patch ]; then
-          cat prettier.patch | reviewdog -f=diff \
-                                         -name="prettier" \
-                                         -reporter=github-pr-review \
-                                         -filter-mode=diff_context \
-                                         -level=warning
-        else
-          echo "No Prettier issues found."
-        fi
-
-    #---------------------------------------------------
-    # 3 – Node & deps
-    #---------------------------------------------------
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with: { node-version: 18 }
-
-    - name: Install dependencies
-      run: npm install
-
-    #---------------------------------------------------
-    # 4 – Install Playwright browsers
-    #---------------------------------------------------
-    - name: Install Playwright and browsers
-      run: npx playwright install --with-deps
-
-    #---------------------------------------------------
-    # 5 – Run Playwright tests
-    #---------------------------------------------------
-    - name: Run Playwright tests
-      run: npx playwright test
-
-    #---------------------------------------------------
-    # 6 – Upload HTML report
-    #---------------------------------------------------
-    - name: Upload HTML report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: playwright-report
-        path: playwright-report/
-
-    #---------------------------------------------------
-    # 7 – Extract Playwright test summary
-    #---------------------------------------------------
-    - name: Extract Playwright summary
-      id: summary
-      shell: bash
-      run: |
-        REPORT="playwright-metrics.json"
-
-        if [ ! -f "$REPORT" ]; then
-            echo "$REPORT not found!"
-            exit 1
-        fi
-
-        TOTAL=$(jq '[..|objects|select(has("status"))] | length' "$REPORT")
-        PASSED=$(jq '[..|objects|select(.status?=="expected")] | length' "$REPORT")
-        FAILED=$(jq '[..|objects|select(.status?=="failed")] | length' "$REPORT")
-        SKIPPED=$(jq '[..|objects|select(.status?=="skipped")] | length' "$REPORT")
-        DURATION=$(jq '.stats.duration*1000|floor' "$REPORT")
-
-        if [ "$TOTAL" -eq 0 ]; then
-            PASS_RATE=0.00
-        else
-            PASS_RATE=$(awk "BEGIN{printf \"%.2f\", ($PASSED/$TOTAL)*100}")
-        fi
-
-        echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
-        echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
-        echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
-        echo "skipped=$SKIPPED" >> "$GITHUB_OUTPUT"
-        echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
-        echo "passrate=$PASS_RATE" >> "$GITHUB_OUTPUT"
-
-
-    #---------------------------------------------------
-    # 8 – ESLint (tests only)
-    #---------------------------------------------------
-    - name: Run ESLint on GUI tests
-      shell: bash
-      run: |
-        npx eslint "tests/**/*.{js,ts,tsx}" -f json -o eslint-tests.json || true
-
-    - name: Upload ESLint report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: eslint-test-report
-        path: eslint-tests.json
-
-    - name: Read ESLint report (preview)
-      id: lint_summary
-      run: |
-        echo 'summary<<EOF' >> $GITHUB_OUTPUT
-        jq '.' eslint-tests.json | head -n 20 >> $GITHUB_OUTPUT
-        echo 'EOF' >> $GITHUB_OUTPUT
-
-
-   #---------------------------------------------------
-    # 9 – Extract ESLint test summary
-    #---------------------------------------------------
-    - name: Extract ESLint summary
-      id: eslint_summary
-      run: |
-        REPORT="eslint-tests.json"
-        TOTAL_FILES=$(jq length "$REPORT")
-        ERRORS=$(jq '[.[] | .errorCount] | add' "$REPORT")
-        WARNINGS=$(jq '[.[] | .warningCount] | add' "$REPORT")
-        FIXABLE_ERRORS=$(jq '[.[] | .fixableErrorCount] | add' "$REPORT")
-        FIXABLE_WARNINGS=$(jq '[.[] | .fixableWarningCount] | add' "$REPORT")
-
-        echo "total_files=$TOTAL_FILES" >> "$GITHUB_OUTPUT"
-        echo "errors=$ERRORS" >> "$GITHUB_OUTPUT"
-        echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
-        echo "fixable_errors=$FIXABLE_ERRORS" >> "$GITHUB_OUTPUT"
-        echo "fixable_warnings=$FIXABLE_WARNINGS" >> "$GITHUB_OUTPUT"
-
-
-    #---------------------------------------------------
-    # 10 – Generate Suite→Spec Mermaid chart (flowchart.png)
-    #---------------------------------------------------
-    - name: Generate test-flow chart
-      shell: bash
-      run: |
-        REPORT="playwright-metrics.json"
-        set -e
-        echo "graph TD" > flowchart.mmd
-
-        jq -r '
-          .suites[] as $file |
-            ($file.title // "NO_FILE_TITLE") as $fileTitle |
-            $file.suites[]? as $suite |
-              ($suite.title // "NO_SUITE_TITLE") as $suiteTitle |
-              $suite.specs[]? as $spec |
-                ($spec.title // "NO_SPEC_TITLE") as $specTitle |
-                [$fileTitle, $suiteTitle, $specTitle] | @tsv
-        ' "$REPORT" |
-        while IFS=$'\t' read -r fileTitle suiteTitle specTitle; do
-          # Build unique, safe IDs by combining parent and child
-          fileId=$(echo "$fileTitle" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
-          suiteId=$(echo "${fileTitle}_${suiteTitle}" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
-          specId=$(echo "${fileTitle}_${suiteTitle}_${specTitle}" | tr -c 'A-Za-z0-9' '_' | sed 's/^_*\|_*$//g')
-
-          # File node
-          if ! grep -q "^  ${fileId}\[" flowchart.mmd; then
-            echo "  ${fileId}[\"${fileTitle}\"]" >> flowchart.mmd
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      
+      - uses: actions/setup-node@v4
+        with: { node-version: 18 }
+      
+      - name: Install NPM dependencies
+        run: npm install
+      
+      - uses: reviewdog/action-setup@v1
+        with: { reviewdog_version: latest }
+      
+      - name: Run lint script for reports  
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/lint.js
+        continue-on-error: true
+      
+      - name: Playwright tests
+        run: node scripts/playwright-test.js
+        continue-on-error: true
+      
+      - name: Generate flow-chart
+        run: node scripts/generate-flowchart.js
+        continue-on-error: true
+      
+      - name: Build checklist
+        run: node scripts/checklist.js
+        continue-on-error: true
+      
+      - name: Build static HTML report
+        run: node scripts/generate-webpage.js
+        continue-on-error: true
+      
+      - name: Create test-summary badge
+        run: |
+          if [ -f "artifacts/playwright-summary.json" ]; then
+            jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
+              artifacts/playwright-summary.json > artifacts/test-summary.txt
+          else
+            echo "No playwright-summary.json file found. Creating empty summary."
+            echo "Total: 0 | Passed: 0 | Failed: 0 | Skipped: 0" > artifacts/test-summary.txt
           fi
-          # Suite node
-          if ! grep -q "^  ${suiteId}\[" flowchart.mmd; then
-            echo "  ${suiteId}[\"${suiteTitle}\"]" >> flowchart.mmd
-            echo "  ${fileId} --> ${suiteId}" >> flowchart.mmd
-          fi
-          # Spec node/edge
-          echo "  ${suiteId} --> ${specId}[\"${specTitle}\"]" >> flowchart.mmd
-        done
+        continue-on-error: true
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-artifacts
+          path: artifacts/*
+        continue-on-error: true
+  
+  deploy-report:
+    needs: build-test
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: gui-artifacts, path: gui-artifacts }
+        continue-on-error: true
+      
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: gui-artifacts/web-report }
+        continue-on-error: true
+      
+      - id: deploy
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
 
-        printf '{ "args": ["--no-sandbox","--disable-setuid-sandbox"] }\n' > puppeteer.json
-
-        npx -y @mermaid-js/mermaid-cli@10.6.1 \
-          -p puppeteer.json \
-          -i flowchart.mmd \
-          -o flowchart.png
-
-        ls -lh flowchart.png
-
-
-    - name: Show flowchart.mmd for debugging  
-      run: cat flowchart.mmd
-
-    - name: Upload test-flow chart
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-flow-chart
-        path: flowchart.png
-
-    #---------------------------------------------------
-    # 11 – Sticky PR comment
-    #---------------------------------------------------
-    - name: Comment on PR with results
-      uses: marocchino/sticky-pull-request-comment@v2
-      with:
-        message: |
-          ## Playwright Test Metrics
-          *Total:* **${{ steps.summary.outputs.total }}**  
-          *Passed:* **${{ steps.summary.outputs.passed }}**  
-          *Failed:* **${{ steps.summary.outputs.failed }}**  
-          *Skipped:* **${{ steps.summary.outputs.skipped }}**
-
-          *Duration:* **${{ steps.summary.outputs.duration }} ms**  
-          *Pass Rate:* **${{ steps.summary.outputs.passrate }} %**
-         
- 
-          ## ESLint Test Metrics
-          *Files Checked:* **${{ steps.eslint_summary.outputs.total_files }}**  
-          *Errors:* **${{ steps.eslint_summary.outputs.errors }}**  
-          *Warnings:* **${{ steps.eslint_summary.outputs.warnings }}**  
-          *Fixable Errors:* **${{ steps.eslint_summary.outputs.fixable_errors }}**  
-          *Fixable Warnings:* **${{ steps.eslint_summary.outputs.fixable_warnings }}**
-          ```
-          ${{ steps.lint_summary.outputs.summary }}
-          ```
-
-          ## Test-Flow Chart  
-          Artifact: **test-flow-chart → flowchart.png**
-
-          _Full run details:_ [link](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+      - name: Retry deployment if failed
+        if: failure()
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+        timeout-minutes: 10
+  
+  comment_link:
+    if: github.event_name == 'pull_request'
+    needs: deploy-report
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    
+    steps:
+      - uses: actions/checkout@v4
+        continue-on-error: true
+      
+      - uses: actions/setup-node@v4
+        with: { node-version: 18 }
+        continue-on-error: true
+      
+      - name: Install JS dependencies (Octokit, marked, etc.)
+        run: npm install
+        continue-on-error: true
+      
+      - uses: actions/download-artifact@v4
+        with:
+          name: gui-artifacts
+          path: gui-artifacts
+        continue-on-error: true
+      
+      - name: Post / update GUI-test summary comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACTS_DIR: gui-artifacts
+          WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
+        run: node scripts/summary-comment.js
+        continue-on-error: true

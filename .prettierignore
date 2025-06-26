@@ -1,8 +1,4 @@
-# Ignore dependency tree
-node_modules/**
-
-# Ignore workflow YAML (prevents permission issue)
-.github/workflows/**
-
-# Ignore test output
-playwright-report/**
+# .prettierignore  – stops Prettier from touching lock files & node_modules
+node_modules/
+*.lock
+!tests/**  
