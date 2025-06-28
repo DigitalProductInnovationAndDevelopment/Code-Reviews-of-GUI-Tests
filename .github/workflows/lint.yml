@@ -2,9 +2,9 @@ name: Playwright Tests + ESLint + Prettier + Test Flow Chart
 
 on:
   push:
-    branches: [feature/ESLinter]
+    branches: [main]
   pull_request:
-    branches: [feature/ESLinter]
+    branches: [main]
     types: [opened, synchronize, reopened]
 
 jobs:
