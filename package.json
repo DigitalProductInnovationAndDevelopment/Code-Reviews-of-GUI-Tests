@@ -2,7 +2,6 @@
   "name": "code-reviews-of-gui-tests",
   "version": "1.0.0",
   "description": "Prototype to address the challenge of reviewing GUI tests",
-  "type": "module",
   "main": "index.js",
   "scripts": {
     "format:check": "prettier --check \"tests/**/*.{js,ts,tsx,json}\"",
@@ -34,8 +33,6 @@
     "@typescript-eslint/eslint-plugin": "^8.35.0",
     "@typescript-eslint/parser": "^8.35.0",
     "eslint": "^8.0.0",
-    "eslint-plugin-playwright": "^2.2.0",
-    "eslint-plugin-prettier": "^5.5.0",
     "jq": "^1.6.0",
     "marked": "15.0.12",
     "prettier": "^3.3.2"
