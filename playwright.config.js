@@ -1,7 +1,8 @@
-const { defineConfig } = require('@playwright/test');
+// playwright.config.js (ESM-compatible)
+import { defineConfig } from "@playwright/test";
 
-module.exports = defineConfig({
-  testDir: './tests',
+export default defineConfig({
+  testDir: "./tests",
   use: {
     headless: true,
     screenshot: 'on',
