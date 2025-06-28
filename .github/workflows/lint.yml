@@ -1,6 +1,5 @@
 name: Playwright Tests + ESLint + Prettier + Test Flow Chart
 
-
 on:
   push:
     branches: [feature/ESLinter]
