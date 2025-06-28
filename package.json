@@ -5,26 +5,38 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "lint": "eslint . --ext .ts,.tsx,.js"
+    "format:check": "prettier --check \"tests/**/*.{js,ts,tsx,json}\"",
+    "format:write": "prettier --write \"tests/**/*.{js,ts,tsx,json}\"",
+    "lint:eslint": "eslint tests --format=json -o artifacts/eslint.json",
+    "lint": "npm run format:check && npm run lint:eslint",
+    "test:gui": "playwright test",
+    "flowchart": "node scripts/generate-flowchart.js",
+    "checklist": "node scripts/checklist.js",
+    "review": "node scripts/summary-comment.js",
+    "dev": "npm run lint && npm run test:gui && npm run flowchart && npm run checklist"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "bugs": {
     "url": "https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/issues"
   },
   "homepage": "https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests#readme",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "devDependencies": {
+    "@mermaid-js/mermaid-cli": "10.6.1",
+    "@octokit/core": "^5.0.0",
     "@playwright/test": "^1.52.0",
     "@types/node": "^24.0.3",
-    "@typescript-eslint/eslint-plugin": "^8.34.1",
-    "@typescript-eslint/parser": "^8.34.1",
-    "eslint": "^9.29.0",
+    "@typescript-eslint/eslint-plugin": "^8.35.0",
+    "@typescript-eslint/parser": "^8.35.0",
+    "eslint": "^8.0.0",
+    "jq": "^1.6.0",
+    "marked": "15.0.12",
+    "prettier": "^3.3.2",
     "eslint-plugin-playwright": "^2.2.0",
     "eslint-plugin-prettier": "^5.5.0"
   }
