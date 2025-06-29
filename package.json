@@ -29,12 +29,10 @@
     "@mermaid-js/mermaid-cli": "10.6.1",
     "@octokit/core": "^5.0.0",
     "@playwright/test": "^1.52.0",
-    "@types/node": "^24.0.7",
+    "@types/node": "^24.0.3",
     "@typescript-eslint/eslint-plugin": "^8.35.0",
     "@typescript-eslint/parser": "^8.35.0",
     "eslint": "^8.0.0",
-    "eslint-plugin-playwright": "^2.2.0",
-    "eslint-plugin-prettier": "^5.5.1",
     "jq": "^1.6.0",
     "marked": "15.0.12",
     "prettier": "^3.3.2"
