@@ -1,3 +1,3 @@
 git add .
-git commit -m "assistanttest"
+git commit -m "flowchart adjustments"
 git push
