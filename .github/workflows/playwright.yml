@@ -46,6 +46,32 @@ jobs:
           # Move the contents of the report to the pr-report directory
           mv playwright-report/* artifacts/pr-report/ || echo "No PR report found to move."
         continue-on-error: true
+      
+      # --- The rest of your original steps ---
+      - name: Generate flow-chart
+        run: node scripts/generate-flowchart.js
+        continue-on-error: true
+      
+      - name: Build checklist
+        run: node scripts/checklist.js
+        continue-on-error: true
+      
+      - name: Build static HTML report
+        run: node scripts/generate-webpage.js
+        continue-on-error: true
+      
+      - name: Create test-summary badge
+        run: |
+          # This step might need to be updated to handle two summaries
+          echo "Summary generation may need updates for comparison." > artifacts/test-summary.txt
+        continue-on-error: true
+      
+      # This will now upload the parent 'artifacts' directory, which contains both reports
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-artifacts
+          path: artifacts/
+        continue-on-error: true
 
       # --- Run tests on the main branch's version of the tests ---
       - name: Run Playwright tests on main branch version
@@ -78,36 +104,6 @@ jobs:
           mkdir -p artifacts/main-report
           # Move the contents of the report to the main-report directory
           mv playwright-report/* artifacts/main-report/ || echo "No main branch report found to move."
-        continue-on-error: true
-
-      # --- Restore the PR's version of the files to avoid side-effects ---
-      - name: Restore PR version of test files
-        run: git checkout HEAD -- tests/ playwright.config.js
-      
-      # --- The rest of your original steps ---
-      - name: Generate flow-chart
-        run: node scripts/generate-flowchart.js
-        continue-on-error: true
-      
-      - name: Build checklist
-        run: node scripts/checklist.js
-        continue-on-error: true
-      
-      - name: Build static HTML report
-        run: node scripts/generate-webpage.js
-        continue-on-error: true
-      
-      - name: Create test-summary badge
-        run: |
-          # This step might need to be updated to handle two summaries
-          echo "Summary generation may need updates for comparison." > artifacts/test-summary.txt
-        continue-on-error: true
-      
-      # This will now upload the parent 'artifacts' directory, which contains both reports
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gui-artifacts
-          path: artifacts/
         continue-on-error: true
   
   # Deploy and comment jobs remain the same.
