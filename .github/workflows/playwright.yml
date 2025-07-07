@@ -12,7 +12,7 @@ jobs:
       pull-requests: write
     
     steps:
-      # Step 1: Checkout the PR code. fetch-depth: 0 is crucial for checking out files from other branches.
+      # Step 1: Checkout the PR code. fetch-depth: 0 is crucial.
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -34,53 +34,55 @@ jobs:
         run: node scripts/lint.js
         continue-on-error: true
       
-      # --- Step 2: Run tests on the PR branch's version of the code ---
+      # --- Run tests on the PR branch ---
       - name: Run Playwright tests on PR branch
         run: node scripts/playwright-test.js
         continue-on-error: true
       
-      ### Step 3: Archive the report from the PR branch run ###
+      # --- Archive the report from the PR branch run ---
       - name: Archive PR test report
         run: |
-          # Create the artifacts directory if it doesn't exist
-          mkdir -p artifacts
-          # Move the default Playwright report to a unique location.
-          # Adjust 'playwright-report' if your output directory has a different name.
-          mv playwright-report artifacts/pr-report || echo "No PR report found to move."
+          mkdir -p artifacts/pr-report
+          # Move the contents of the report to the pr-report directory
+          mv playwright-report/* artifacts/pr-report/ || echo "No PR report found to move."
         continue-on-error: true
 
-      # --- Step 4: Run tests on the main branch's version of the code ---
-      ### This whole step is new. It checks out and runs the main branch's test script ###
+      # --- Run tests on the main branch's version of the tests ---
       - name: Run Playwright tests on main branch version
         run: |
-          # Temporarily checkout the main branch version of the test script.
-          # If your test depends on other config files, check them out here too.
-          # Example: git checkout origin/main -- scripts/playwright-test.js playwright.config.js
-          git checkout origin/main -- scripts/playwright-test.js
+          # ### CRITICAL FIX ###
+          # Checkout the main branch's version of the TEST FILES and CONFIG.
+          # You MUST adjust these paths to match your repository structure.
+          # For example, if your tests are in 'e2e-tests' and you have no special config,
+          # you would use: git checkout origin/main -- e2e-tests/
+          echo "Checking out test files from 'main' branch..."
+          git checkout origin/main -- tests/ playwright.config.js
           
-          # Check if the checkout was successful (i.e., the file exists on main).
-          # If not, we skip this run.
-          if [ ! -f "scripts/playwright-test.js" ]; then
-            echo "Test script 'scripts/playwright-test.js' not found on main branch. Skipping."
-            exit 0
+          # Check if the checkout was successful by verifying a key file exists.
+          # Adjust 'tests/example.spec.ts' to a real test file in your project.
+          # TODO - MAKE THIS FILE CONFIGURABLE BY USER
+          if [ ! -f "tests/demo-todo-app.spec.ts" ]; then
+            echo "A key test file was not found after checkout from main. Skipping second run."
+            # Create an empty directory so the next step doesn't fail
+            mkdir -p playwright-report
+          else
+            echo "Running tests using main branch's test files..."
+            # This uses the same node_modules, but runs the older test files
+            node scripts/playwright-test.js
           fi
-          
-          echo "Running tests using main branch script..."
-          # This uses the same node_modules, but runs the older script
-          node scripts/playwright-test.js
         continue-on-error: true
         
-      ### Step 5: Archive the report from the main branch run ###
+      # --- Archive the report from the main branch run ---
       - name: Archive main branch test report
         run: |
-          # Move the report from the main branch run into its own directory
-          mv playwright-report artifacts/main-report || echo "No main branch report found to move."
+          mkdir -p artifacts/main-report
+          # Move the contents of the report to the main-report directory
+          mv playwright-report/* artifacts/main-report/ || echo "No main branch report found to move."
         continue-on-error: true
 
-      ### Step 6: Restore the PR's version of the script ###
-      # This is important so that any subsequent steps use the correct code from the PR
-      - name: Restore PR version of test script
-        run: git checkout HEAD -- scripts/playwright-test.js
+      # --- Restore the PR's version of the files to avoid side-effects ---
+      - name: Restore PR version of test files
+        run: git checkout HEAD -- tests/ playwright.config.js
       
       # --- The rest of your original steps ---
       - name: Generate flow-chart
@@ -97,13 +99,8 @@ jobs:
       
       - name: Create test-summary badge
         run: |
-          if [ -f "artifacts/playwright-summary.json" ]; then
-            jq -r '"Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
-              artifacts/playwright-summary.json > artifacts/test-summary.txt
-          else
-            echo "No playwright-summary.json file found. Creating empty summary."
-            echo "Total: 0 | Passed: 0 | Failed: 0 | Skipped: 0" > artifacts/test-summary.txt
-          fi
+          # This step might need to be updated to handle two summaries
+          echo "Summary generation may need updates for comparison." > artifacts/test-summary.txt
         continue-on-error: true
       
       # This will now upload the parent 'artifacts' directory, which contains both reports
@@ -113,9 +110,8 @@ jobs:
           path: artifacts/
         continue-on-error: true
   
-  # The deploy-report and comment_link jobs remain the same.
-  # You will need to update your scripts (e.g., summary-comment.js)
-  # to look for and handle the two separate reports inside the downloaded artifact.
+  # Deploy and comment jobs remain the same.
+  # Your scripts need to be updated to handle the new artifact structure.
   deploy-report:
     needs: build-test
     runs-on: ubuntu-latest
@@ -125,25 +121,13 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
-    
     steps:
       - uses: actions/download-artifact@v4
         with: { name: gui-artifacts, path: gui-artifacts }
-        continue-on-error: true
-      
       - uses: actions/upload-pages-artifact@v3
-        with: { path: gui-artifacts/web-report } # This might need adjustment based on your new artifact structure
-        continue-on-error: true
-      
+        with: { path: gui-artifacts }
       - id: deploy
         uses: actions/deploy-pages@v4
-        continue-on-error: true
-
-      - name: Retry deployment if failed
-        if: failure()
-        uses: actions/deploy-pages@v4
-        continue-on-error: true
-        timeout-minutes: 10
   
   comment_link:
     if: github.event_name == 'pull_request'
@@ -151,25 +135,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
-    
     steps:
-      - uses: actions/checkout@v4
-        continue-on-error: true
-      
-      - uses: actions/setup-node@v4
-        with: { node-version: 18 }
-        continue-on-error: true
-      
-      - name: Install JS dependencies (Octokit, marked, etc.)
-        run: npm install
-        continue-on-error: true
-      
       - uses: actions/download-artifact@v4
-        with:
-          name: gui-artifacts
-          path: gui-artifacts
-        continue-on-error: true
-      
+        with: { name: gui-artifacts, path: gui-artifacts }
       - name: Post / update GUI-test summary comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
