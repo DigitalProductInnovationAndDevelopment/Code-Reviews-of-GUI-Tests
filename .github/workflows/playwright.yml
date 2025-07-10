@@ -49,7 +49,7 @@ jobs:
         run: |
           rm -rf tests
           cp -r base-tests tests
-          npx playwright test --output=base-report || echo "Base run skipped or failed"
+          npx playwright test --reporter=html --output=base-report || echo "Base run skipped or failed"
 
       - name: Generate HTML report for base
         run: |
@@ -60,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: base-playwright-html-report
-          path: base-html-report/
+          path: base-report/playwright-report/
       
       - name: Save PR version of test files
         run: |
