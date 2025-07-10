@@ -45,13 +45,15 @@ jobs:
             fi
           done
 
-      # Run Playwright tests on base version
       - name: Run Playwright on base version
         run: |
           rm -rf tests
           cp -r base-tests tests
-          npx playwright test --reporter=html --output=base-report || echo "Base test run failed or skipped"
-          npx playwright show-report base-report --reporter=html --output=base-html-report
+          npx playwright test --output=base-report || echo "Base run skipped or failed"
+
+      - name: Generate HTML report for base
+        run: |
+          npx playwright show-report base-report --output=base-html-report
 
       - name: Upload base HTML report
         if: always()
