@@ -58,12 +58,24 @@ jobs:
         with:
           name: base-playwright-report
           path: base-report/
+      
+      - name: Save PR version of test files
+        run: |
+          if [ -d tests ]; then
+            mkdir -p pr-tests
+            cp -r tests/ pr-tests/
+          else
+            echo "tests/ directory not found; skipping copy."
+          fi
 
-      # Restore PR version of test files
       - name: Restore PR version of test files
         run: |
-          rm -rf tests
-          cp -r pr-tests tests
+          if [ -d pr-tests ]; then
+            rm -rf tests
+            cp -r pr-tests tests
+          else
+            echo "No pr-tests directory found to restore from."
+          fi
       
       - name: Playwright tests
         run: node scripts/playwright-test.js
