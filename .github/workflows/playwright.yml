@@ -50,14 +50,15 @@ jobs:
         run: |
           rm -rf tests
           cp -r base-tests tests
-          npx playwright test --output=base-report || echo "Base test run skipped or failed"
+          npx playwright test --reporter=html --output=base-report || echo "Base test run failed or skipped"
+          npx playwright show-report base-report --reporter=html --output=base-html-report
 
-      - name: Upload base test report
+      - name: Upload base HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: base-playwright-report
-          path: base-report/
+          name: base-playwright-html-report
+          path: base-html-report/
       
       - name: Save PR version of test files
         run: |
