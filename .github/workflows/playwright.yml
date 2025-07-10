@@ -53,7 +53,7 @@ jobs:
 
       - name: Generate HTML report for base
         run: |
-          npx playwright show-report base-report --output=base-html-report
+          npx playwright test --reporter=html --output=base-report
 
       - name: Upload base HTML report
         if: always()
