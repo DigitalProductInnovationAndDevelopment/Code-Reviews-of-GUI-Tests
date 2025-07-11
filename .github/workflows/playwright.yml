@@ -12,7 +12,6 @@ jobs:
       pull-requests: write
     
     steps:
-      # Step 1: Checkout the PR code. fetch-depth: 0 is crucial.
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -83,6 +82,7 @@ jobs:
           else
             echo "{}" > artifacts/playwright-summary-main.json
           fi
+
         
       # --- Archive the report from the main branch run ---
       - name: Archive main branch test report
