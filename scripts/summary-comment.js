@@ -1,127 +1,123 @@
 #!/usr/bin/env node
 /**
- * Posts or updates a sticky "GUI Test Review" comment on PRs.
+ * summary-comment.js  – posts / updates a sticky “GUI Test Review” comment.
+ * Shows PR-branch vs. main-branch metrics for:
+ *   • Playwright
+ *   • Prettier
+ *   • ESLint
+ * Plus the checklist and a link to the live dashboard.
  */
 
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 const { Octokit } = require('@octokit/core');
 
-const ART =
-  process.env.ARTIFACTS_DIR ||
-  'artifacts';
+const ART = process.env.ARTIFACTS_DIR || 'artifacts';
 
-const readJSON = (file, fallback = {}) => {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(ART, file), 'utf8'));
-  } catch {
-    return fallback;
-  }
+/* ---------- helpers ---------- */
+const readJSON = (file, fallback={}) => {
+  try { return JSON.parse(fs.readFileSync(path.join(ART,file),'utf8')); }
+  catch { return fallback; }
 };
+const icon = (ok,warn=false)=> ok ? '✅' : warn ? '⚠️' : '❌';
 
-const play = readJSON('playwright-summary.json');
-const lint = readJSON('lint-summary.json');
-const checklistMD = (() => {
-  try {
-    return fs.readFileSync(path.join(ART, 'checklist.md'), 'utf8');
-  } catch {
-    return '';
-  }
+/* ---------- load artefacts ---------- */
+const playPR   = readJSON('playwright-summary-pr.json');
+const playMain = readJSON('playwright-summary-main.json');
+
+const lintPR   = readJSON('lint-summary-pr.json', readJSON('lint-summary.json'));  // fall back
+const lintMain = readJSON('lint-summary-main.json', { prettier:{}, eslint:{} });
+
+const checklistMD = (()=>{
+  try { return fs.readFileSync(path.join(ART,'checklist.md'),'utf8'); }
+  catch { return ''; }
 })();
 
-const webUrl = process.env.WEB_REPORT_URL;
+/* link root to Pages site */
+const rootUrl = process.env.WEB_REPORT_URL || '';
+const prLink   = '[PR&nbsp;report&nbsp;↗](pr-report/index.html)';
+const mainLink = '[Main&nbsp;report&nbsp;↗](main-report/index.html)';
 
-const icon = (ok, warn = false) => (ok ? '✅' : warn ? '⚠️' : '❌');
+/* ---------- GitHub context ---------- */
+const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,'utf8'));
+const prNumber = event.pull_request?.number ??
+                 (event.issue?.pull_request && event.issue.number);
+if (!prNumber) { console.error('Not a PR event'); process.exit(0); }
 
-const prNumber = (() => {
-  const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-  if (event.pull_request) return event.pull_request.number;
-  if (event.issue && event.issue.pull_request) return event.issue.number;
-  throw new Error('Not a PR event');
-})();
-
-const owner = process.env.GITHUB_REPOSITORY?.split('/')[0];
-const repo = process.env.GITHUB_REPOSITORY?.split('/')[1];
-
+const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
 const token = process.env.GITHUB_TOKEN;
-if (!token) {
-  console.error('GITHUB_TOKEN missing');
-  process.exit(1);
-}
+if (!token) { console.error('GITHUB_TOKEN missing'); process.exit(1); }
 
 const octokit = new Octokit({ auth: token });
 
-/* ── Compose comment ── */
+/* ---------- Compose comment body ---------- */
 const body = `
 # 🔍 **GUI Test Review**
 
-<details open>
-<summary><b>Checklist</b></summary>
+<details open><summary><b>Checklist</b></summary>
 
 ${checklistMD || '_No checklist found_'}
 </details>
 
 ---
 
-**Playwright**:  
-${icon(play.failed === 0 && play.passed > 0)}  
-**Total:** ${play.total ?? 0} ✅ ${play.passed ?? 0} ❌ ${play.failed ?? 0} ⏭️ ${play.skipped ?? 0} ${play.pass_rate !== undefined ? `(Pass-rate ${play.pass_rate}%)` : ''} ${play.duration !== undefined ? `• Duration ${play.duration} ms` : ''}
+### ▶️ Playwright
+
+| Run | Total | Passed | Failed | Skipped | Pass-rate | Duration |
+|-----|------:|-------:|-------:|--------:|-----------|---------:|
+| **PR**   | ${playPR.total??0} | ${playPR.passed??0} | ${playPR.failed??0} | ${playPR.skipped??0} | ${playPR.pass_rate??0}% | ${playPR.duration??0} ms |
+| **Main** | ${playMain.total??0} | ${playMain.passed??0} | ${playMain.failed??0} | ${playMain.skipped??0} | ${playMain.pass_rate??0}% | ${playMain.duration??0} ms |
+
+${prLink} • ${mainLink}
 
 ---
 
-**🎨 Prettier:**  
-${lint.prettier?.filesWithIssues ?? 0} file(s) need formatting  
-${lint.prettier?.files?.length ? `Files: ${lint.prettier.files.join(', ')}` : ''}  
-${lint.prettier?.totalChanges ? `Num places to fix: ${lint.prettier.totalChanges}` : ''}  
-${lint.prettier?.totalChanges > 50 ? `\n⚠️ **Num places to fix exceed the GitHub inline comment limit, suggested to fix it locally before PR with:**\n\`\`\`bash\nnpx prettier "tests/**/*.{js,jsx,ts,tsx}" --write\n\`\`\`` : ''}
-${lint.prettier?.sample ? `\n<details><summary>First 20-line diff sample</summary>\n\n\`\`\`diff\n${lint.prettier.sample}\n\`\`\`\n</details>` : ''}
+### 🎨 Prettier
+
+| Run | Affected files | Places to fix |
+|-----|--------------:|--------------:|
+| **PR**   | ${lintPR.prettier?.filesWithIssues ?? 0} | ${lintPR.prettier?.totalChanges ?? 0} |
+| **Main** | ${lintMain.prettier?.filesWithIssues ?? 0} | ${lintMain.prettier?.totalChanges ?? 0} |
+
+${lintPR.prettier?.files?.length ? `**Files (PR):** ${lintPR.prettier.files.join(', ')}` : '_No Prettier issues in PR_'}
+${lintPR.prettier?.sample ? `\n<details><summary>PR diff sample (first 20 lines)</summary>\n\n\`\`\`diff\n${lintPR.prettier.sample}\n\`\`\`\n</details>` : ''}
 
 ---
 
-**📋 ESLint:**  
-${lint.eslint?.errors ?? 0} error(s), ${lint.eslint?.warnings ?? 0} warning(s)  
-${lint.eslint?.first ? `First error: \`${lint.eslint.first}\`` : ''}
-<sub>💡 You can modify the \`eslint.local.config.mjs\` file to design custom rules <sub>
+### 📋 ESLint
+
+| Run | Errors | Warnings | Fixable Err | Fixable Warn |
+|-----|-------:|---------:|------------:|-------------:|
+| **PR**   | ${lintPR.eslint?.errors ?? 0} | ${lintPR.eslint?.warnings ?? 0} | ${lintPR.eslint?.fixableErrors ?? 0} | ${lintPR.eslint?.fixableWarnings ?? 0} |
+| **Main** | ${lintMain.eslint?.errors ?? 0} | ${lintMain.eslint?.warnings ?? 0} | ${lintMain.eslint?.fixableErrors ?? 0} | ${lintMain.eslint?.fixableWarnings ?? 0} |
+
+${lintPR.eslint?.first ? `First PR error: \`${lintPR.eslint.first}\`` : '_No ESLint errors in PR_'}
+
 ---
 
-👉 **[Open Full Dashboard to see full report↗](${webUrl})**
+👉 **[Open full dashboard ↗](${rootUrl || 'index.html'})**
 
----
-
-_Automated comment updated on every push._
+_Automated comment — updates on every push._
 `;
 
-/* ── Upsert sticky comment ── */
-(async () => {
-  const { data: comments } = await octokit.request(
+/* ---------- upsert sticky comment ---------- */
+(async()=>{
+  const {data:comments}=await octokit.request(
     'GET /repos/{owner}/{repo}/issues/{issue_number}/comments',
     { owner, repo, issue_number: prNumber }
   );
-
-  const existing = comments.find(
-    c =>
-      c.user.type === 'Bot' &&
-      c.body.startsWith('# 🔍 **GUI Test Review**')
-  );
-
-  if (existing) {
-    await octokit.request('PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}', {
-      owner,
-      repo,
-      comment_id: existing.id,
-      body
-    });
+  const existing = comments.find(c=>c.user.type==='Bot' && c.body.startsWith('# 🔍 **GUI Test Review**'));
+  if (existing){
+    await octokit.request(
+      'PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}',
+      { owner, repo, comment_id: existing.id, body }
+    );
     console.log('🔄 Updated GUI-test summary comment.');
   } else {
-    await octokit.request('POST /repos/{owner}/{repo}/issues/{issue_number}/comments', {
-      owner,
-      repo,
-      issue_number: prNumber,
-      body
-    });
+    await octokit.request(
+      'POST /repos/{owner}/{repo}/issues/{issue_number}/comments',
+      { owner, repo, issue_number: prNumber, body }
+    );
     console.log('💬 Created GUI-test summary comment.');
   }
-})().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+})().catch(err=>{ console.error(err); process.exit(1); });
