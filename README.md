@@ -339,4 +339,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Enhancing GUI test reviews through visual context integration • Built with ❤️ at TUM**
