@@ -31,7 +31,25 @@ This helps catch:
 ### Basic Usage
 
 ```yaml
-a
+name: GUI Test Review
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      pages: write
+      id-token: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run GUI Test Review
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### Advanced Usage with Comparison Testing
