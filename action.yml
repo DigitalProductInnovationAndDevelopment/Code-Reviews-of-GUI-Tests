@@ -1,0 +1,505 @@
+name: 'GUI Test Code Review'
+description: 'Comprehensive GUI testing with Playwright, code quality checks, visual reporting, and automated PR comments'
+author: 'Digital Product Innovation and Development'
+
+branding:
+  icon: 'check-square'
+  color: 'blue'
+
+inputs:
+  github-token:
+    description: 'GitHub token for API access and reviewdog integration'
+    required: true
+    default: ${{ github.token }}
+  
+  test-files:
+    description: 'Glob pattern for test files to run'
+    required: false
+    default: 'tests/**/*.spec.{js,ts,tsx}'
+  
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '18'
+  
+  enable-pr-comments:
+    description: 'Whether to post PR comments with test results'
+    required: false
+    default: 'true'
+  
+  enable-github-pages:
+    description: 'Whether to deploy report to GitHub Pages'
+    required: false
+    default: 'true'
+  
+  reviewdog-reporter:
+    description: 'Reviewdog reporter type (github-pr-review, github-check)'
+    required: false
+    default: 'github-pr-review'
+  
+  eslint-config:
+    description: 'Custom ESLint configuration file path'
+    required: false
+    default: ''
+  
+  prettier-config:
+    description: 'Custom Prettier configuration file path'
+    required: false
+    default: ''
+  
+  artifacts-retention-days:
+    description: 'Number of days to retain artifacts'
+    required: false
+    default: '30'
+  
+  web-report-url:
+    description: 'Base URL for the web report (auto-generated if not provided)'
+    required: false
+    default: ''
+  
+  fail-on-test-failure:
+    description: 'Whether to fail the action if tests fail'
+    required: false
+    default: 'false'
+  
+  playwright-config:
+    description: 'Path to Playwright configuration file'
+    required: false
+    default: 'playwright.config.js'
+  
+  enable-comparison-testing:
+    description: 'Whether to run tests against both PR and main branch versions'
+    required: false
+    default: 'true'
+  
+  main-branch:
+    description: 'Main branch name for comparison testing'
+    required: false
+    default: 'main'
+  
+  key-test-file:
+    description: 'Key test file to verify successful checkout from main branch'
+    required: false
+    default: 'tests/demo-todo-app.spec.ts'
+  
+  test-paths-to-checkout:
+    description: 'Space-separated paths to checkout from main branch for comparison'
+    required: false
+    default: 'tests/ playwright.config.js'
+
+outputs:
+  test-results:
+    description: 'JSON summary of test results'
+    value: ${{ steps.test-summary.outputs.results }}
+  
+  artifacts-path:
+    description: 'Path to generated artifacts'
+    value: ${{ steps.setup.outputs.artifacts-path }}
+  
+  report-url:
+    description: 'URL to the deployed web report'
+    value: ${{ steps.deploy-report.outputs.page_url }}
+  
+  pass-rate:
+    description: 'Test pass rate percentage'
+    value: ${{ steps.test-summary.outputs.pass-rate }}
+  
+  total-tests:
+    description: 'Total number of tests executed'
+    value: ${{ steps.test-summary.outputs.total-tests }}
+  
+  eslint-errors:
+    description: 'Number of ESLint errors found'
+    value: ${{ steps.lint-summary.outputs.eslint-errors }}
+  
+  prettier-issues:
+    description: 'Number of files with Prettier formatting issues'
+    value: ${{ steps.lint-summary.outputs.prettier-issues }}
+  
+  pr-test-results:
+    description: 'JSON summary of PR branch test results'
+    value: ${{ steps.test-summary.outputs.pr-results }}
+  
+  main-test-results:
+    description: 'JSON summary of main branch test results'
+    value: ${{ steps.test-summary.outputs.main-results }}
+  
+  comparison-summary:
+    description: 'Comparison between PR and main branch test results'
+    value: ${{ steps.test-summary.outputs.comparison-summary }}
+  
+  tests-regression:
+    description: 'Whether tests show regression compared to main branch'
+    value: ${{ steps.test-summary.outputs.tests-regression }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup environment
+      id: setup
+      shell: bash
+      run: |
+        echo "artifacts-path=artifacts" >> $GITHUB_OUTPUT
+        mkdir -p artifacts
+        echo "✅ Environment setup complete"
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+    
+    - name: Install dependencies
+      shell: bash
+      run: |
+        if [ -f "package.json" ]; then
+          npm install
+          echo "✅ Dependencies installed"
+        else
+          echo "⚠️ No package.json found, skipping npm install"
+        fi
+    
+    - name: Install Playwright browsers
+      shell: bash
+      run: |
+        npx playwright install --with-deps
+        echo "✅ Playwright browsers installed"
+    
+    - name: Setup reviewdog
+      uses: reviewdog/action-setup@v1
+      if: github.event_name == 'pull_request'
+      with:
+        reviewdog_version: latest
+    
+    - name: Run linting and code quality checks
+      id: lint
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
+        REVIEWDOG_REPORTER: ${{ inputs.reviewdog-reporter }}
+        ESLINT_CONFIG: ${{ inputs.eslint-config }}
+        PRETTIER_CONFIG: ${{ inputs.prettier-config }}
+      run: |
+        if [ -f "${{ github.action_path }}/scripts/lint.js" ]; then
+          node "${{ github.action_path }}/scripts/lint.js"
+        elif [ -f "scripts/lint.js" ]; then
+          node scripts/lint.js
+        else
+          echo "⚠️ Lint script not found, skipping linting"
+        fi
+        echo "✅ Linting completed"
+      continue-on-error: true
+    
+    - name: Run Playwright tests on PR branch
+      id: playwright-pr
+      shell: bash
+      env:
+        PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
+        TEST_FILES: ${{ inputs.test-files }}
+      run: |
+        echo "🧪 Running Playwright tests on PR branch..."
+        if [ -f "${{ github.action_path }}/scripts/playwright-test.js" ]; then
+          node "${{ github.action_path }}/scripts/playwright-test.js"
+        elif [ -f "scripts/playwright-test.js" ]; then
+          node scripts/playwright-test.js
+        else
+          # Fallback to direct Playwright execution
+          npx playwright test ${{ inputs.test-files }}
+        fi
+        echo "✅ PR branch tests completed"
+      continue-on-error: true
+    
+    - name: Copy PR Playwright summary
+      shell: bash
+      run: |
+        if [[ -f artifacts/playwright-summary.json ]]; then
+          cp artifacts/playwright-summary.json artifacts/playwright-summary-pr.json
+          echo "✅ PR summary copied"
+        else
+          echo "{}" > artifacts/playwright-summary-pr.json
+          echo "⚠️ No PR summary found, created empty file"
+        fi
+      continue-on-error: true
+    
+    - name: Archive PR test report
+      shell: bash
+      run: |
+        mkdir -p artifacts/pr-report
+        if [ -d "playwright-report" ] && [ "$(ls -A playwright-report)" ]; then
+          mv playwright-report/* artifacts/pr-report/ || echo "No PR report contents to move"
+          echo "✅ PR report archived"
+        else
+          echo "⚠️ No PR report found to archive"
+        fi
+      continue-on-error: true
+    
+    - name: Run Playwright tests on main branch version
+      id: playwright-main
+      if: inputs.enable-comparison-testing == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        MAIN_BRANCH: ${{ inputs.main-branch }}
+        KEY_TEST_FILE: ${{ inputs.key-test-file }}
+        TEST_PATHS: ${{ inputs.test-paths-to-checkout }}
+      run: |
+        echo "🔄 Checking out test files from '$MAIN_BRANCH' branch..."
+        
+        # Checkout the main branch's version of test files and config
+        git checkout origin/$MAIN_BRANCH -- $TEST_PATHS
+        
+        # Verify checkout was successful by checking for key test file
+        if [ ! -f "$KEY_TEST_FILE" ]; then
+          echo "⚠️ Key test file '$KEY_TEST_FILE' not found after checkout from $MAIN_BRANCH. Skipping main branch tests."
+          mkdir -p playwright-report
+          echo "{}" > artifacts/playwright-summary-main.json
+        else
+          echo "✅ Successfully checked out test files from $MAIN_BRANCH"
+          echo "🧪 Running tests using main branch's test files..."
+          
+          # Run tests with main branch test files
+          if [ -f "${{ github.action_path }}/scripts/playwright-test.js" ]; then
+            node "${{ github.action_path }}/scripts/playwright-test.js"
+          elif [ -f "scripts/playwright-test.js" ]; then
+            node scripts/playwright-test.js
+          else
+            npx playwright test ${{ inputs.test-files }}
+          fi
+          echo "✅ Main branch tests completed"
+        fi
+      continue-on-error: true
+    
+    - name: Copy main Playwright summary
+      if: inputs.enable-comparison-testing == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        if [[ -f artifacts/playwright-summary.json ]]; then
+          cp artifacts/playwright-summary.json artifacts/playwright-summary-main.json
+          echo "✅ Main branch summary copied"
+        else
+          echo "{}" > artifacts/playwright-summary-main.json
+          echo "⚠️ No main branch summary found, created empty file"
+        fi
+      continue-on-error: true
+    
+    - name: Archive main branch test report
+      if: inputs.enable-comparison-testing == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        mkdir -p artifacts/main-report
+        if [ -d "playwright-report" ] && [ "$(ls -A playwright-report)" ]; then
+          mv playwright-report/* artifacts/main-report/ || echo "No main branch report contents to move"
+          echo "✅ Main branch report archived"
+        else
+          echo "⚠️ No main branch report found to archive"
+        fi
+      continue-on-error: true
+    
+    - name: Restore PR version of test files
+      if: inputs.enable-comparison-testing == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        TEST_PATHS: ${{ inputs.test-paths-to-checkout }}
+      run: |
+        echo "🔄 Restoring PR version of test files..."
+        git checkout HEAD -- $TEST_PATHS
+        echo "✅ PR test files restored"
+      continue-on-error: true
+    
+    - name: Generate flowchart visualization
+      id: flowchart
+      shell: bash
+      run: |
+        if [ -f "${{ github.action_path }}/scripts/generate-flowchart.js" ]; then
+          node "${{ github.action_path }}/scripts/generate-flowchart.js"
+        elif [ -f "scripts/generate-flowchart.js" ]; then
+          node scripts/generate-flowchart.js
+        else
+          echo "⚠️ Flowchart script not found, skipping visualization"
+        fi
+        echo "✅ Flowchart generation completed"
+      continue-on-error: true
+    
+    - name: Build checklist
+      id: checklist
+      shell: bash
+      run: |
+        if [ -f "${{ github.action_path }}/scripts/checklist.js" ]; then
+          node "${{ github.action_path }}/scripts/checklist.js"
+        elif [ -f "scripts/checklist.js" ]; then
+          node scripts/checklist.js
+        else
+          echo "⚠️ Checklist script not found, skipping checklist generation"
+        fi
+        echo "✅ Checklist generation completed"
+      continue-on-error: true
+    
+    - name: Build static HTML report
+      id: html-report
+      shell: bash
+      run: |
+        if [ -f "${{ github.action_path }}/scripts/generate-webpage.js" ]; then
+          node "${{ github.action_path }}/scripts/generate-webpage.js"
+        elif [ -f "scripts/generate-webpage.js" ]; then
+          node scripts/generate-webpage.js
+        else
+          echo "⚠️ Webpage script not found, skipping HTML report"
+        fi
+        echo "✅ HTML report generation completed"
+      continue-on-error: true
+    
+    - name: Create test summary with comparison
+      id: test-summary
+      shell: bash
+      run: |
+        echo "📊 Creating test summary with PR vs Main comparison..."
+        
+        # Initialize variables
+        PR_TOTAL=0; PR_PASSED=0; PR_FAILED=0; PR_SKIPPED=0; PR_RATE=0
+        MAIN_TOTAL=0; MAIN_PASSED=0; MAIN_FAILED=0; MAIN_SKIPPED=0; MAIN_RATE=0
+        REGRESSION="false"
+        
+        # Process PR branch results
+        if [ -f "artifacts/playwright-summary-pr.json" ]; then
+          if command -v jq &> /dev/null; then
+            PR_TOTAL=$(jq -r '.total // 0' artifacts/playwright-summary-pr.json)
+            PR_PASSED=$(jq -r '.passed // 0' artifacts/playwright-summary-pr.json)
+            PR_FAILED=$(jq -r '.failed // 0' artifacts/playwright-summary-pr.json)
+            PR_SKIPPED=$(jq -r '.skipped // 0' artifacts/playwright-summary-pr.json)
+            PR_RATE=$(jq -r '.pass_rate // 0' artifacts/playwright-summary-pr.json)
+            
+            # Create PR summary line
+            jq -r '"PR   : Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
+              artifacts/playwright-summary-pr.json > artifacts/test-summary.txt
+          else
+            echo "PR   : Total: 0 | Passed: 0 | Failed: 0 | Skipped: 0" > artifacts/test-summary.txt
+          fi
+        else
+          echo "PR   : Total: 0 | Passed: 0 | Failed: 0 | Skipped: 0" > artifacts/test-summary.txt
+        fi
+        
+        # Process main branch results (if comparison testing is enabled)
+        if [ -f "artifacts/playwright-summary-main.json" ] && [ "${{ inputs.enable-comparison-testing }}" = "true" ]; then
+          if command -v jq &> /dev/null; then
+            MAIN_TOTAL=$(jq -r '.total // 0' artifacts/playwright-summary-main.json)
+            MAIN_PASSED=$(jq -r '.passed // 0' artifacts/playwright-summary-main.json)
+            MAIN_FAILED=$(jq -r '.failed // 0' artifacts/playwright-summary-main.json)
+            MAIN_SKIPPED=$(jq -r '.skipped // 0' artifacts/playwright-summary-main.json)
+            MAIN_RATE=$(jq -r '.pass_rate // 0' artifacts/playwright-summary-main.json)
+            
+            # Append main summary line
+            jq -r '"Main : Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
+              artifacts/playwright-summary-main.json >> artifacts/test-summary.txt
+          else
+            echo "Main : Total: 0 | Passed: 0 | Failed: 0 | Skipped: 0" >> artifacts/test-summary.txt
+          fi
+          
+          # Detect regression (more failures in PR than main, or lower pass rate)
+          if [ "$PR_FAILED" -gt "$MAIN_FAILED" ] || [ $(echo "$PR_RATE < $MAIN_RATE" | bc -l 2>/dev/null || echo "0") -eq 1 ]; then
+            REGRESSION="true"
+          fi
+        else
+          echo "Main : Comparison disabled or no main branch results" >> artifacts/test-summary.txt
+        fi
+        
+        # Create comparison summary
+        COMPARISON_JSON="{\"pr\":{\"total\":$PR_TOTAL,\"passed\":$PR_PASSED,\"failed\":$PR_FAILED,\"skipped\":$PR_SKIPPED,\"pass_rate\":$PR_RATE},\"main\":{\"total\":$MAIN_TOTAL,\"passed\":$MAIN_PASSED,\"failed\":$MAIN_FAILED,\"skipped\":$MAIN_SKIPPED,\"pass_rate\":$MAIN_RATE},\"regression\":$REGRESSION}"
+        
+        # Set outputs
+        echo "results={\"total\":$PR_TOTAL,\"passed\":$PR_PASSED,\"failed\":$PR_FAILED,\"pass_rate\":$PR_RATE}" >> $GITHUB_OUTPUT
+        echo "pr-results={\"total\":$PR_TOTAL,\"passed\":$PR_PASSED,\"failed\":$PR_FAILED,\"skipped\":$PR_SKIPPED,\"pass_rate\":$PR_RATE}" >> $GITHUB_OUTPUT
+        echo "main-results={\"total\":$MAIN_TOTAL,\"passed\":$MAIN_PASSED,\"failed\":$MAIN_FAILED,\"skipped\":$MAIN_SKIPPED,\"pass_rate\":$MAIN_RATE}" >> $GITHUB_OUTPUT
+        echo "comparison-summary=$COMPARISON_JSON" >> $GITHUB_OUTPUT
+        echo "tests-regression=$REGRESSION" >> $GITHUB_OUTPUT
+        echo "total-tests=$PR_TOTAL" >> $GITHUB_OUTPUT
+        echo "pass-rate=$PR_RATE" >> $GITHUB_OUTPUT
+        
+        echo "✅ Test summary with comparison created"
+        echo "📋 PR Branch: $PR_TOTAL tests, $PR_PASSED passed, $PR_FAILED failed ($PR_RATE% pass rate)"
+        if [ "${{ inputs.enable-comparison-testing }}" = "true" ]; then
+          echo "📋 Main Branch: $MAIN_TOTAL tests, $MAIN_PASSED passed, $MAIN_FAILED failed ($MAIN_RATE% pass rate)"
+          echo "📊 Regression detected: $REGRESSION"
+        fi
+      continue-on-error: true
+    
+    - name: Extract lint summary
+      id: lint-summary
+      shell: bash
+      run: |
+        if [ -f "artifacts/lint-summary.json" ]; then
+          if command -v jq &> /dev/null; then
+            ESLINT_ERRORS=$(jq -r '.eslint.errors // 0' artifacts/lint-summary.json)
+            PRETTIER_ISSUES=$(jq -r '.prettier.filesWithIssues // 0' artifacts/lint-summary.json)
+          else
+            ESLINT_ERRORS=0
+            PRETTIER_ISSUES=0
+          fi
+          echo "eslint-errors=$ESLINT_ERRORS" >> $GITHUB_OUTPUT
+          echo "prettier-issues=$PRETTIER_ISSUES" >> $GITHUB_OUTPUT
+        else
+          echo "eslint-errors=0" >> $GITHUB_OUTPUT
+          echo "prettier-issues=0" >> $GITHUB_OUTPUT
+        fi
+        echo "✅ Lint summary extracted"
+      continue-on-error: true
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: gui-test-artifacts
+        path: artifacts/
+        retention-days: ${{ inputs.artifacts-retention-days }}
+      continue-on-error: true
+    
+    - name: Deploy to GitHub Pages
+      id: deploy-report
+      if: inputs.enable-github-pages == 'true' && always()
+      uses: actions/deploy-pages@v4
+      with:
+        artifact_name: gui-test-artifacts
+        path: artifacts/web-report
+      continue-on-error: true
+    
+    - name: Post PR comment
+      if: inputs.enable-pr-comments == 'true' && github.event_name == 'pull_request' && always()
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        ARTIFACTS_DIR: artifacts
+        WEB_REPORT_URL: ${{ inputs.web-report-url || steps.deploy-report.outputs.page_url || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
+      run: |
+        if [ -f "${{ github.action_path }}/scripts/summary-comment.js" ]; then
+          node "${{ github.action_path }}/scripts/summary-comment.js"
+        elif [ -f "scripts/summary-comment.js" ]; then
+          node scripts/summary-comment.js
+        else
+          echo "⚠️ Summary comment script not found, skipping PR comment"
+        fi
+        echo "✅ PR comment processing completed"
+      continue-on-error: true
+    
+    - name: Check test results
+      if: inputs.fail-on-test-failure == 'true'
+      shell: bash
+      run: |
+        if [ -f "artifacts/playwright-summary.json" ]; then
+          if command -v jq &> /dev/null; then
+            FAILED=$(jq -r '.failed // 0' artifacts/playwright-summary.json)
+            if [ "$FAILED" -gt 0 ]; then
+              echo "❌ Tests failed: $FAILED failures detected"
+              exit 1
+            fi
+          fi
+        fi
+        echo "✅ Test results check passed"
+    
+    - name: Final summary
+      if: always()
+      shell: bash
+      run: |
+        echo "🎉 GUI Test Code Review Action completed!"
+        echo "📊 Check the artifacts and reports for detailed results"
+        if [ -f "artifacts/test-summary.txt" ]; then
+          echo "📋 Test Summary:"
+          cat artifacts/test-summary.txt
+        fi
