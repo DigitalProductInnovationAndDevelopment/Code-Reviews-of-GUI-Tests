@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
  * summary-comment.js
- * - Upserts a sticky PR comment.
- * - Shows Playwright (PR vs. Main), Prettier & ESLint (PR only).
- * - Links to the HTML Playwright reports on GitHub Pages via WEB_REPORT_URL.
+ * - Upserts a sticky PR comment that shows:
+ *     • Checklist
+ *     • Playwright (PR row always, Main row if available)
+ *     • Prettier & ESLint (PR only)
+ * - No Playwright-report links in the comment body.
  */
 
 const fs = require('fs');
@@ -12,38 +14,24 @@ const { Octokit } = require('@octokit/core');
 
 const ART = process.env.ARTIFACTS_DIR || 'artifacts';
 
-/* ---------- helpers ---------- */
+/* helper to read JSON safely */
 const readJSON = (f, d = {}) => {
   try { return JSON.parse(fs.readFileSync(path.join(ART, f), 'utf8')); }
   catch { return d; }
 };
 
-/* ---------- load artefacts ---------- */
+/* summaries */
 const playPR   = readJSON('playwright-summary-pr.json');
 const playMain = readJSON('playwright-summary-main.json');
-const hasMainPlay = fs.existsSync(path.join(ART, 'playwright-summary-main.json'));
+const hasMain  = fs.existsSync(path.join(ART, 'playwright-summary-main.json'));
 
-const lintPR = readJSON('lint-summary-pr.json', readJSON('lint-summary.json'));
-
+const lintPR   = readJSON('lint-summary-pr.json', readJSON('lint-summary.json'));
 const checklist = (() => {
   try { return fs.readFileSync(path.join(ART, 'checklist.md'), 'utf8'); }
   catch { return ''; }
 })();
 
-/* ---------- build absolute Playwright links ---------- */
-const baseURL = (process.env.WEB_REPORT_URL || '').replace(/\/+$/, '') + '/';
-
-const prExists   = fs.existsSync(path.join(ART, 'pr-report/index.html'));
-const mainExists = fs.existsSync(path.join(ART, 'main-report/index.html'));
-
-const linkParts = [];
-if (prExists)   linkParts.push(`[PR&nbsp;report&nbsp;↗](${baseURL}pr-report/index.html)`);
-if (mainExists) linkParts.push(`[Main&nbsp;report&nbsp;↗](${baseURL}main-report/index.html)`);
-else if (prExists) linkParts.push('_No report for Main branch in this action run_');
-
-const playLinks = linkParts.length ? linkParts.join(' • ') : '_No HTML reports_';
-
-/* ---------- GitHub context ---------- */
+/* GitHub context */
 const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
 const prNumber =
   event.pull_request?.number ??
@@ -53,14 +41,13 @@ if (!prNumber) { console.error('Not a PR event'); process.exit(0); }
 const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-/* ---------- markdown blocks ---------- */
+/* markdown blocks */
 const mdChecklist = checklist || '_No checklist found_';
-
-const mdPlaywright = `
+const mdPlay = `
 | Run | Total | Passed | Failed | Skipped | Pass-rate | Duration |
 |-----|------:|-------:|-------:|--------:|-----------|---------:|
-| **PR**   | ${playPR.total ?? 0} | ${playPR.passed ?? 0} | ${playPR.failed ?? 0} | ${playPR.skipped ?? 0} | ${playPR.pass_rate ?? 0}% | ${playPR.duration ?? 0} ms |
-${hasMainPlay ? `| **Main** | ${playMain.total ?? 0} | ${playMain.passed ?? 0} | ${playMain.failed ?? 0} | ${playMain.skipped ?? 0} | ${playMain.pass_rate ?? 0}% | ${playMain.duration ?? 0} ms |` : ''}`;
+| **PR**   | ${playPR.total??0} | ${playPR.passed??0} | ${playPR.failed??0} | ${playPR.skipped??0} | ${playPR.pass_rate??0}% | ${playPR.duration??0} ms |
+${hasMain ? `| **Main** | ${playMain.total??0} | ${playMain.passed??0} | ${playMain.failed??0} | ${playMain.skipped??0} | ${playMain.pass_rate??0}% | ${playMain.duration??0} ms |` : ''}`;
 
 const mdPrettier = `
 | Metric | PR |
@@ -76,10 +63,10 @@ const mdESLint = `
 | **Fixable Errors** | ${lintPR.eslint?.fixableErrors  ?? 0} |
 | **Fixable Warns**  | ${lintPR.eslint?.fixableWarnings?? 0} |`;
 
-/* ---------- dashboard root URL ---------- */
+/* dashboard root (absolute if workflow provided it) */
 const dashboardURL = process.env.WEB_REPORT_URL || 'index.html';
 
-/* ---------- final comment body ---------- */
+/* final comment body */
 const body = `
 # 🔍 **GUI Test Review**
 
@@ -92,9 +79,7 @@ ${mdChecklist}
 
 ### ▶️ Playwright
 
-${mdPlaywright}
-
-${playLinks}
+${mdPlay}
 
 ---
 
@@ -123,7 +108,7 @@ ${lintPR.eslint?.first
 _Automated comment — updates on every push._
 `;
 
-/* ---------- upsert sticky comment ---------- */
+/* upsert sticky comment */
 (async () => {
   const { data: comments } = await octokit.request(
     'GET /repos/{owner}/{repo}/issues/{issue_number}/comments',
@@ -135,7 +120,7 @@ _Automated comment — updates on every push._
 
   const endpoint = existing
     ? 'PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}'
-    : 'POST  /repos/{owner}/{repo}/issues/{issue_number}/comments';
+    : 'POST /repos/{owner}/{repo}/issues/{issue_number}/comments'; // ← fixed double-space
   const params = existing
     ? { owner, repo, comment_id: existing.id, body }
     : { owner, repo, issue_number: prNumber, body };
