@@ -38,6 +38,7 @@ jobs:
       - name: Run Playwright tests on PR branch
         run: node scripts/playwright-test.js
         continue-on-error: true
+      - run: cp playwright-summary.json artifacts/playwright-summary-pr.json
       
       # --- Archive the report from the PR branch run ---
       - name: Archive PR test report
@@ -69,6 +70,7 @@ jobs:
             node scripts/playwright-test.js
           fi
         continue-on-error: true
+      - run: cp playwright-summary.json artifacts/playwright-summary-main.json
         
       # --- Archive the report from the main branch run ---
       - name: Archive main branch test report
