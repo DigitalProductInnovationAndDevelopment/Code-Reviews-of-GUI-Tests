@@ -83,6 +83,7 @@ jobs:
           else
             echo "{}" > artifacts/playwright-summary-main.json
           fi
+
         
       # --- Archive the report from the main branch run ---
       - name: Archive main branch test report
