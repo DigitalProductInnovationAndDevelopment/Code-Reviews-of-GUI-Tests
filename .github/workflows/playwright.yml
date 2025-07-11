@@ -96,7 +96,6 @@ jobs:
       - name: Restore PR version of test files
         run: git checkout HEAD -- tests/ playwright.config.js
       
-      # --- The rest of the original steps ---
       - name: Generate flow-chart
         run: node scripts/generate-flowchart.js
         continue-on-error: true
