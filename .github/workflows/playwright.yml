@@ -3,79 +3,60 @@ name: GUI Test Review
 on:
   pull_request:
     branches: [main]
-       
+
 jobs:
+# ────────────────────────────────────────────────────────────
   build-test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    
+    permissions: { contents: read, pull-requests: write }
+
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      
+
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
-      
-      - name: Install NPM dependencies
-        run: npm install
-      
+
+      - run: npm install                   # deps for scripts & project
+
       - uses: reviewdog/action-setup@v1
         with: { reviewdog_version: latest }
-      
-      - name: Run lint script for reports  
+
+      - name: Run lint (reviewdog + summaries)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/lint.js
         continue-on-error: true
-      
-      # --- Run tests on the PR branch ---
-      - name: Run Playwright tests on PR branch
-        run: node scripts/playwright-test.js
-        continue-on-error: true
-      - name: Copy PR Playwright summary
+
+      # ── Playwright on PR branch ───────────────────────────
+      - name: Playwright tests (PR)
+        run: node scripts/playwright-test.js || true
+
+      - name: Copy PR summary JSON
         run: |
+          mkdir -p artifacts
           if [[ -f artifacts/playwright-summary.json ]]; then
             cp artifacts/playwright-summary.json artifacts/playwright-summary-pr.json
           else
-            echo "{}" > artifacts/playwright-summary-pr.json   # keep script from showing zeros
+            echo "{}" > artifacts/playwright-summary-pr.json
           fi
-      
-      # --- Archive the report from the PR branch run ---
-      - name: Archive PR test report
+
+      - name: Archive PR HTML report
         run: |
           mkdir -p artifacts/pr-report
-          # Move the contents of the report to the pr-report directory
-          mv playwright-report/* artifacts/pr-report/ || echo "No PR report found to move."
+          mv playwright-report/* artifacts/pr-report/ || echo "no report"
         continue-on-error: true
 
-      # --- Run tests on the main branch's version of the tests ---
-      - name: Run Playwright tests on main branch version
+      # ── Playwright on MAIN branch test files ──────────────
+      - name: Playwright tests (Main test files)
         run: |
-          # ### CRITICAL FIX ###
-          # Checkout the main branch's version of the TEST FILES and CONFIG.
-          # adjust these paths to match the repository structure.
-          echo "Checking out test files from 'main' branch..."
-          git checkout origin/main -- tests/ playwright.config.js
-          
-          # Check if the checkout was successful by verifying a key file exists.
-          # Adjust 'tests/example.spec.ts' to a real test file in your project.
-          # TODO - MAKE THIS FILE CONFIGURABLE BY USER
-          if [ ! -f "tests/demo-todo-app.spec.ts" ]; then
-            echo "A key test file was not found after checkout from main. Skipping second run."
-            # Create an empty directory so the next step doesn't fail
-            mkdir -p playwright-report
-          else
-            echo "Running tests using main branch's test files..."
-            # This uses the same node_modules, but runs the older test files
-            node scripts/playwright-test.js
-          fi
+          git checkout origin/main -- tests/ playwright.config.js || true
+          node scripts/playwright-test.js || true
         continue-on-error: true
-      - name: Copy main Playwright summary
+
+      - name: Copy Main summary JSON
         run: |
           if [[ -f artifacts/playwright-summary.json ]]; then
             cp artifacts/playwright-summary.json artifacts/playwright-summary-main.json
@@ -83,119 +64,67 @@ jobs:
             echo "{}" > artifacts/playwright-summary-main.json
           fi
 
-        
-      # --- Archive the report from the main branch run ---
-      - name: Archive main branch test report
+      - name: Archive Main HTML report
         run: |
           mkdir -p artifacts/main-report
-          # Move the contents of the report to the main-report directory
-          mv playwright-report/* artifacts/main-report/ || echo "No main branch report found to move."
+          mv playwright-report/* artifacts/main-report/ || echo "no report"
         continue-on-error: true
 
-      # --- Restore the PR's version of the files to avoid side-effects ---
-      - name: Restore PR version of test files
-        run: git checkout HEAD -- tests/ playwright.config.js
-      
-      - name: Generate flow-chart
-        run: node scripts/generate-flowchart.js
-        continue-on-error: true
-      
-      - name: Build checklist
-        run: node scripts/checklist.js
-        continue-on-error: true
-      
-      - name: Build static HTML report
-        run: node scripts/generate-webpage.js
-        continue-on-error: true
-      
-      - name: Create test-summary file
-        shell: bash
-        run: |
-          # PR branch summary  ──────────────────────────────────────────────
-          if [[ -f artifacts/playwright-summary-pr.json ]]; then
-            jq -r '"PR   : Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
-              artifacts/playwright-summary-pr.json \
-              > artifacts/test-summary.txt
-          else
-            echo "PR   : Total: 0 | Passed: 0 | Failed: 0 | Skipped: 0" > artifacts/test-summary.txt
-          fi
+      # ── Restore checkout & generate artifacts ─────────────
+      - run: git checkout HEAD -- tests/ playwright.config.js
 
-          # main branch summary ────────────────────────────────────────────
-          if [[ -f artifacts/playwright-summary-main.json ]]; then
-            jq -r '"Main : Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
-              artifacts/playwright-summary-main.json \
-              >> artifacts/test-summary.txt
-          else
-            echo "Main : Total: 0 | Passed: 0 | Failed: 0 | Skipped: 0" >> artifacts/test-summary.txt
-          fi
+      - run: node scripts/generate-flowchart.js   || true
+      - run: node scripts/checklist.js            || true
+      - run: node scripts/generate-webpage.js     || true
+
+      - name: Create text summary
+        run: node scripts/make-text-summary.js || true    # (your existing bash block may stay)
         continue-on-error: true
 
-      
-      # This will now upload the parent 'artifacts' directory, which contains both reports
       - uses: actions/upload-artifact@v4
-        with:
-          name: gui-artifacts
-          path: artifacts/
-        continue-on-error: true
-  
+        with: { name: gui-artifacts, path: artifacts/ }
+# ────────────────────────────────────────────────────────────
   deploy-report:
     needs: build-test
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
+    permissions: { pages: write, id-token: write }
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
-    
+
+    outputs:                # <── expose the URL
+      page_url: ${{ steps.deploy.outputs.page_url }}
+
     steps:
       - uses: actions/download-artifact@v4
         with: { name: gui-artifacts, path: gui-artifacts }
-        continue-on-error: true
-      
+
       - uses: actions/upload-pages-artifact@v3
         with: { path: gui-artifacts/web-report }
-        continue-on-error: true
-      
+
       - id: deploy
         uses: actions/deploy-pages@v4
-        continue-on-error: true
-
-      - name: Retry deployment if failed
-        if: failure()
-        uses: actions/deploy-pages@v4
-        continue-on-error: true
-        timeout-minutes: 10
-  
+# ────────────────────────────────────────────────────────────
   comment_link:
     if: github.event_name == 'pull_request'
     needs: deploy-report
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    
+    permissions: { pull-requests: write }
+
     steps:
       - uses: actions/checkout@v4
-        continue-on-error: true
-      
+
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
-        continue-on-error: true
-      
-      - name: Install JS dependencies (Octokit, marked, etc.)
-        run: npm install
-        continue-on-error: true
-      
+
+      - run: npm install         # octokit, marked, etc.
+
       - uses: actions/download-artifact@v4
-        with:
-          name: gui-artifacts
-          path: gui-artifacts
-        continue-on-error: true
-      
-      - name: Post / update GUI-test summary comment
+        with: { name: gui-artifacts, path: gui-artifacts }
+
+      - name: Post / update summary comment
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN:  ${{ secrets.GITHUB_TOKEN }}
           ARTIFACTS_DIR: gui-artifacts
-          WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
+          WEB_REPORT_URL: ${{ needs.deploy-report.outputs.page_url }}
         run: node scripts/summary-comment.js
-        continue-on-error: true
