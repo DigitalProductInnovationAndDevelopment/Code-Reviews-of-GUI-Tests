@@ -77,7 +77,6 @@ ${prLink} • ${mainLink}
 | Run | Affected files | Places to fix |
 |-----|--------------:|--------------:|
 | **PR**   | ${lintPR.prettier?.filesWithIssues ?? 0} | ${lintPR.prettier?.totalChanges ?? 0} |
-| **Main** | ${lintMain.prettier?.filesWithIssues ?? 0} | ${lintMain.prettier?.totalChanges ?? 0} |
 
 ${lintPR.prettier?.files?.length ? `**Files (PR):** ${lintPR.prettier.files.join(', ')}` : '_No Prettier issues in PR_'}
 ${lintPR.prettier?.sample ? `\n<details><summary>PR diff sample (first 20 lines)</summary>\n\n\`\`\`diff\n${lintPR.prettier.sample}\n\`\`\`\n</details>` : ''}
@@ -89,7 +88,6 @@ ${lintPR.prettier?.sample ? `\n<details><summary>PR diff sample (first 20 lines)
 | Run | Errors | Warnings | Fixable Err | Fixable Warn |
 |-----|-------:|---------:|------------:|-------------:|
 | **PR**   | ${lintPR.eslint?.errors ?? 0} | ${lintPR.eslint?.warnings ?? 0} | ${lintPR.eslint?.fixableErrors ?? 0} | ${lintPR.eslint?.fixableWarnings ?? 0} |
-| **Main** | ${lintMain.eslint?.errors ?? 0} | ${lintMain.eslint?.warnings ?? 0} | ${lintMain.eslint?.fixableErrors ?? 0} | ${lintMain.eslint?.fixableWarnings ?? 0} |
 
 ${lintPR.eslint?.first ? `First PR error: \`${lintPR.eslint.first}\`` : '_No ESLint errors in PR_'}
 
