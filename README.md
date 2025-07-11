@@ -1,62 +1,128 @@
-# GUI Test Code Review Action
+# GUI-Based Testing Code Review GitHub Extension
 
-A comprehensive GitHub Action for reviewing GUI tests with **dual-branch comparison testing**, automated code quality checks, visual reporting, and intelligent PR comments.
+**A GitHub Action for enhancing code review processes for automated GUI tests by integrating visual context directly into GitHub pull requests.**
 
-## 🚀 Features
+*Developed for the Digital Product Innovation and Development Seminar at Technical University of Munich (TUM)*
 
-- **🔄 Dual-Branch Testing**: Compare test results between PR branch and main branch
-- **🧪 Playwright Testing**: Run comprehensive GUI tests with detailed reporting
-- **📊 Regression Detection**: Automatically detect test regressions in PRs
-- **📋 Code Quality**: ESLint and Prettier integration with reviewdog for inline PR comments
-- **📊 Visual Reports**: Generate flowcharts and interactive HTML dashboards
-- **🔗 GitHub Integration**: Automated PR comments with test results and checklists
-- **🌐 GitHub Pages**: Deploy test reports to GitHub Pages automatically
-- **📦 Artifact Management**: Comprehensive artifact collection and retention
+## 🎯 Project Overview
 
-## 🎯 Dual-Branch Testing
+### Purpose
+This GitHub Action addresses the challenge of reviewing GUI-based tests by automatically capturing and displaying visual context (screenshots, test flows, and metadata) directly within GitHub pull requests. Using Playwright as the testing framework, the system eliminates the need for reviewers to run tests locally, making the review process more efficient and accessible.
 
-This action's key feature is **comparison testing**: it runs your tests twice during PR reviews:
+### Problem Statement
+Code reviews on GitHub often lack visual information for GUI-based tests, making it harder for reviewers to assess what was tested. Testers frequently need to run tests locally, leading to inefficiencies and communication gaps between developers, testers, and reviewers.
 
-1. **PR Branch Tests**: Tests with your current changes
-2. **Main Branch Tests**: Tests with the main branch version of test files
-3. **Automatic Comparison**: Identifies regressions and improvements
+### Solution
+This tool automates the capture and display of relevant visuals and metadata within pull requests, providing:
+- **Visual context** of the tested user interface directly in PRs
+- **Reduced need** for local test execution, saving time and effort
+- **Improved collaboration** through clearer communication during code reviews
 
-This helps catch:
-- Tests that pass on main but fail with your changes
-- New tests that weren't in the main branch
-- Performance regressions in test execution
+## 👥 Stakeholders
+
+| Stakeholder | Role | Primary Interests |
+|-------------|------|-------------------|
+| **Test Engineer/Developer** | Writes and reviews GUI-based tests, submits PRs | Quick, clear feedback on test results with screenshots and UI flow—without re-running tests locally |
+| **Code Reviewer** | Reviews pull requests and approves changes | Full context on what was tested and changed to make informed decisions |
+
+## 🚀 Key Features
+
+### 🔄 **Visual Comparison Testing**
+- Executes tests on both PR branch and main branch
+- Provides side-by-side visual comparisons
+- Automatically detects GUI test regressions
+
+### 📊 **Comprehensive Visual Feedback**
+- Interactive dashboards with test results
+- Visual flowcharts showing test execution paths
+- Screenshot capture and diff analysis
+- Integrated code quality metrics
+
+### 📋 **Automated Review Assistance**
+- Dynamic checklists for code reviewers
+- Inline code quality feedback via reviewdog
+- Context information linking changes to requirements
+- Automated PR comments with visual summaries
+
+### 🎨 **Enhanced Developer Experience**
+- No local test execution required for reviewers
+- Visual representation of GUI test logic
+- Configurable ESLint and Prettier integration
+- Comprehensive artifact management
+
+## 📖 User Stories & Requirements
+
+### Epic 1: Testing Files Quality Assurance
+**Goal**: Help testers/developers produce review-ready test scripts
+
+- **US1**: Create and commit GUI test scripts for automatic review
+- **US3**: Use checklists to ensure code readiness and reduce review friction
+- **US5**: Configurable ESLint setup for consistent Playwright test code quality
+
+### Epic 2: Context Feedback for Testing
+**Goal**: Provide actionable feedback and context without manual testing
+
+- **US2**: Receive visual feedback (screenshots, diffs) to understand impact
+- **US4**: Supply context information linking changes to requirements & UX specs
+
+### Epic 3: Visual and Linting Feedback for Reviewers
+**Goal**: Provide necessary visual and automated quality feedback
+
+- **US6**: Inspect test visuals and lint feedback in pull requests
+- **US7**: Compare current PR with base branch version
+- **US8**: Verify adherence to team-defined style guidelines
+- **US10**: See parser/linter quickfix suggestions in PRs
+
+### Epic 4: Review Assistance & Flow Visualization
+**Goal**: Highlight issues beyond basic style and ensure good practices
+
+- **US9**: Ensure required checklist completion before PR approval
+- **US11**: Detect mixed levels of abstraction in test code
+- **US12**: Visualize test flow as simplified diagrams
+
+## 🔧 Inputs
+
+| Input | Description | Required | Default |
+|-------|-------------|----------|---------|
+| `github-token` | GitHub token for API access and reviewdog integration | Yes | `${{ github.token }}` |
+| `test-files` | Glob pattern for GUI test files to analyze | No | `tests/**/*.spec.{js,ts,tsx}` |
+| `node-version` | Node.js version to use | No | `18` |
+| `enable-pr-comments` | Post comprehensive PR comments with visual feedback | No | `true` |
+| `enable-github-pages` | Deploy visual dashboard to GitHub Pages | No | `true` |
+| `reviewdog-reporter` | Reviewdog reporter for inline code quality feedback | No | `github-pr-review` |
+| `artifacts-retention-days` | Days to retain test artifacts and screenshots | No | `30` |
+| `web-report-url` | Base URL for visual dashboard | No | `''` (auto-generated) |
+| `fail-on-test-failure` | Fail action if GUI tests fail | No | `false` |
+| `playwright-config` | Path to Playwright configuration file | No | `playwright.config.js` |
+| `enable-visual-comparison` | Enable visual comparison between PR and main branch | No | `true` |
+| `main-branch` | Main branch name for visual comparison testing | No | `main` |
+| `key-test-file` | Key test file to verify successful main branch checkout | No | `tests/demo-todo-app.spec.ts` |
+
+## 📤 Outputs
+
+| Output | Description |
+|--------|-------------|
+| `test-results` | Comprehensive JSON summary of GUI test results |
+| `visual-artifacts-path` | Path to generated visual artifacts and screenshots |
+| `dashboard-url` | URL to the deployed visual testing dashboard |
+| `test-pass-rate` | GUI test pass rate percentage |
+| `total-gui-tests` | Total number of GUI tests executed |
+| `code-quality-score` | Overall code quality score based on linting results |
+| `pr-test-results` | JSON summary of PR branch GUI test results |
+| `main-test-results` | JSON summary of main branch GUI test results |
+| `visual-comparison` | Visual comparison analysis between PR and main branch |
+| `gui-regression-detected` | Whether GUI test regression was detected in PR |
+| `review-checklist-status` | Status of the code review checklist completion |
 
 ## 📋 Quick Start
 
-### Basic Usage
+### Basic Usage for Code Reviews
 
 ```yaml
-name: GUI Test Review
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      pages: write
-      id-token: write
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Run GUI Test Review
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### Advanced Usage with Comparison Testing
-
-```yaml
-name: Comprehensive GUI Testing with Comparison
-on: [push, pull_request]
+name: GUI Test Code Review
+on:
+  pull_request:
+    branches: [main]
 
 jobs:
   gui-test-review:
@@ -70,100 +136,69 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Required for comparison testing
+          fetch-depth: 0  # Required for visual comparison
       
-      - name: Run GUI Test Review with Comparison
+      - name: GUI-Based Testing Code Review
         uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          test-files: 'tests/**/*.spec.{js,ts,tsx}'
-          enable-comparison-testing: 'true'
-          main-branch: 'main'
-          key-test-file: 'tests/your-key-test.spec.ts'
-          test-paths-to-checkout: 'tests/ playwright.config.js'
+          enable-visual-comparison: 'true'
+          key-test-file: 'tests/your-main-test.spec.ts'
+```
+
+### Advanced Configuration
+
+```yaml
+name: Comprehensive GUI Test Analysis
+on: [push, pull_request]
+
+jobs:
+  gui-analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      pages: write
+      id-token: write
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Advanced GUI Test Review
+        id: gui-review
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          test-files: 'tests/**/*.spec.{js,ts}'
+          enable-visual-comparison: 'true'
+          reviewdog-reporter: 'github-pr-review'
+          artifacts-retention-days: '30'
           fail-on-test-failure: 'false'
-          
-      # Use comparison outputs in subsequent steps
-      - name: Check for regressions
-        if: steps.test-review.outputs.tests-regression == 'true'
+      
+      # Use outputs for further analysis
+      - name: Check for GUI regressions
+        if: steps.gui-review.outputs.gui-regression-detected == 'true'
         run: |
-          echo "⚠️ Test regression detected!"
-          echo "PR Results: ${{ steps.test-review.outputs.pr-test-results }}"
-          echo "Main Results: ${{ steps.test-review.outputs.main-test-results }}"
+          echo "⚠️ GUI test regression detected!"
+          echo "Dashboard: ${{ steps.gui-review.outputs.dashboard-url }}"
+          echo "Quality Score: ${{ steps.gui-review.outputs.code-quality-score }}/100"
 ```
 
-## 🔄 Comparison Testing Configuration
-
-### Key Configuration Options
-
-- **`enable-comparison-testing`**: Set to `false` to disable dual-branch testing
-- **`main-branch`**: Configure your main branch name (default: `main`)
-- **`key-test-file`**: A test file that must exist for validation (customize for your project)
-- **`test-paths-to-checkout`**: Which files/directories to checkout from main branch
-
-### Important Notes
-
-1. **Fetch Depth**: Use `fetch-depth: 0` in your checkout step for comparison testing
-2. **Key Test File**: Update `key-test-file` to match a real test file in your project
-3. **File Paths**: Customize `test-paths-to-checkout` based on your project structure
-
-## 🔧 Inputs
-
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `github-token` | GitHub token for API access | Yes | `${{ github.token }}` |
-| `test-files` | Glob pattern for test files | No | `tests/**/*.spec.{js,ts,tsx}` |
-| `node-version` | Node.js version to use | No | `18` |
-| `enable-pr-comments` | Post PR comments with results | No | `true` |
-| `enable-github-pages` | Deploy report to GitHub Pages | No | `true` |
-| `reviewdog-reporter` | Reviewdog reporter type | No | `github-pr-review` |
-| `eslint-config` | Custom ESLint config path | No | `''` |
-| `prettier-config` | Custom Prettier config path | No | `''` |
-| `artifacts-retention-days` | Days to retain artifacts | No | `30` |
-| `web-report-url` | Base URL for web report | No | `''` (auto-generated) |
-| `fail-on-test-failure` | Fail action if tests fail | No | `false` |
-| `playwright-config` | Playwright config file path | No | `playwright.config.js` |
-| `enable-comparison-testing` | Enable dual-branch comparison | No | `true` |
-| `main-branch` | Main branch name for comparison | No | `main` |
-| `key-test-file` | Key test file to verify checkout | No | `tests/demo-todo-app.spec.ts` |
-| `test-paths-to-checkout` | Paths to checkout from main | No | `tests/ playwright.config.js` |
-
-## 📤 Outputs
-
-| Output | Description |
-|--------|-------------|
-| `test-results` | JSON summary of test results |
-| `artifacts-path` | Path to generated artifacts |
-| `report-url` | URL to the deployed web report |
-| `pass-rate` | Test pass rate percentage |
-| `total-tests` | Total number of tests executed |
-| `eslint-errors` | Number of ESLint errors found |
-| `prettier-issues` | Number of files with Prettier issues |
-| `pr-test-results` | JSON summary of PR branch test results |
-| `main-test-results` | JSON summary of main branch test results |
-| `comparison-summary` | Complete comparison between PR and main |
-| `tests-regression` | Whether tests show regression vs main |
-
-## 🏗️ Project Structure
-
-Your project should have the following structure:
+## 🏗️ Required Project Structure
 
 ```
-your-repo/
-├── tests/                     # Test files
-│   └── *.spec.{js,ts,tsx}    # Playwright test files
-├── scripts/                   # Action scripts (optional - included in action)
-│   ├── lint.js
-│   ├── playwright-test.js
-│   ├── generate-flowchart.js
-│   ├── checklist.js
-│   ├── generate-webpage.js
-│   └── summary-comment.js
-├── package.json              # Dependencies
-├── playwright.config.js      # Playwright configuration
-├── .eslintrc.json           # ESLint configuration
-├── .prettierrc.json         # Prettier configuration
-└── README.md
+your-gui-project/
+├── tests/                          # GUI test files
+│   ├── *.spec.{js,ts,tsx}         # Playwright test files
+│   └── fixtures/                   # Test data and fixtures
+├── scripts/                        # Action scripts (auto-included)
+├── package.json                    # Dependencies
+├── playwright.config.js            # Playwright configuration
+├── .eslintrc.json                  # ESLint configuration
+├── .prettierrc.json               # Prettier configuration
+└── README.md                       # Project documentation
 ```
 
 ## 📦 Required Dependencies
@@ -187,231 +222,121 @@ Add these to your `package.json`:
 }
 ```
 
-## 🎯 What This Action Does
+## 🎯 What This Action Delivers
 
-### 1. **Dual-Branch Comparison Testing** 🔄
-- Runs tests on your PR branch with current changes
-- Checks out and runs tests with main branch test files
-- Compares results to detect regressions automatically
-- Archives separate reports for both test runs
+### 1. **Visual Context Integration** 📊
+- Automatic screenshot capture during GUI test execution
+- Side-by-side visual comparisons between PR and main branch
+- Visual flowcharts showing test execution paths
+- Interactive dashboards for comprehensive analysis
 
-### 2. **Code Quality Checks** 📋
-- Runs ESLint with configurable rules
-- Checks Prettier formatting
-- Integrates with reviewdog for inline PR comments
-- Generates detailed lint summaries
+### 2. **Automated Code Quality Assurance** 📋
+- ESLint integration with Playwright-specific rules
+- Prettier formatting checks
+- Inline PR comments via reviewdog
+- Custom rules for detecting mixed abstraction levels
 
-### 3. **GUI Testing** 🧪
-- Executes Playwright tests
-- Generates comprehensive test reports
-- Creates test result summaries
-- Handles test failures gracefully
+### 3. **Enhanced Review Process** 🔍
+- Dynamic checklists ensuring review completeness
+- Context information linking changes to requirements
+- Comprehensive PR comments with visual summaries
+- Regression detection and alerting
 
-### 4. **Visual Reporting** 📊
-- Creates Mermaid flowcharts showing test structure
-- Generates interactive HTML dashboards
-- Builds completion checklists
-- Produces downloadable artifacts
+### 4. **Developer Productivity** ⚡
+- Eliminates need for local test execution by reviewers
+- Provides immediate visual feedback on changes
+- Automated artifact management and retention
+- Configurable quality gates and failure policies
 
-### 5. **GitHub Integration** 🔗
-- Posts/updates PR comments with comparison results
-- Deploys reports to GitHub Pages
-- Manages artifact uploads
-- Provides detailed test summaries with regression detection
+## 📊 Generated Artifacts
 
-## 🔄 Workflow Integration
+### Visual Reports
+- **Interactive Dashboard**: Complete test analysis with visual elements
+- **Flowchart Diagrams**: Mermaid-generated test execution flows
+- **Screenshot Archives**: Before/after comparisons and failure captures
+- **HTML Reports**: Detailed Playwright test results with visual context
 
-### For Pull Requests
+### Data Artifacts
+- **Test Summaries**: JSON format for both PR and main branch results
+- **Code Quality Reports**: ESLint and Prettier analysis results
+- **Checklist Status**: Review completion tracking
+- **Regression Analysis**: Automated comparison results
 
-```yaml
-name: PR Review
-on:
-  pull_request:
-    branches: [main]
+### Integration Artifacts
+- **PR Comments**: Comprehensive visual feedback for reviewers
+- **GitHub Pages**: Deployed dashboards for persistent access
+- **Artifact Storage**: Configurable retention for historical analysis
 
-jobs:
-  review:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: GUI Test Review
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          enable-pr-comments: 'true'
-          enable-github-pages: 'false'
-```
+## 🔍 Architecture Overview
 
-### For Main Branch with Deployment
+### System Flow
+1. **Developer** commits GUI test changes and opens PR
+2. **GitHub Action** triggers automated analysis workflow
+3. **Playwright Runner** executes tests on both PR and main branches
+4. **Visual Processor** captures screenshots and generates comparisons
+5. **Quality Analyzer** runs ESLint/Prettier checks with reviewdog integration
+6. **Report Generator** creates interactive dashboards and flowcharts
+7. **Integration Layer** posts comprehensive feedback to PR
+8. **Reviewer** accesses visual context without local test execution
 
-```yaml
-name: Main Branch Testing
-on:
-  push:
-    branches: [main]
+### Quality Requirements Compliance
 
-jobs:
-  test-and-deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: GUI Test Review
-        id: test-review
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          enable-pr-comments: 'false'
-          enable-github-pages: 'true'
-          fail-on-test-failure: 'true'
-```
+#### Maintainability (NFR-M)
+- ✅ Automated lint enforcement via GitHub Actions
+- ✅ Standardized checklists validated before merge
+- ✅ Inline style feedback with clear violation messages
+- ✅ Auto re-evaluation on test code updates
 
-## 🛠️ Configuration Examples
+#### Usability (NFR-U)
+- ✅ Side-by-side screenshots and UI diffs in PRs
+- ✅ One-click navigation between related artifacts
+- ✅ Unified view of visuals, lint results, and checklists
 
-### ESLint Configuration (`.eslintrc.json`)
+#### Traceability (NFR-TR)
+- ✅ Requirement linking in PR descriptions
+- ✅ Metadata retention in merge commits
+- ✅ Context preservation for audit trails
 
-```json
-{
-  "env": {
-    "browser": true,
-    "es2021": true,
-    "node": true
-  },
-  "extends": [
-    "eslint:recommended",
-    "@typescript-eslint/recommended"
-  ],
-  "parser": "@typescript-eslint/parser",
-  "parserOptions": {
-    "ecmaVersion": "latest",
-    "sourceType": "module"
-  },
-  "plugins": [
-    "@typescript-eslint",
-    "playwright"
-  ],
-  "rules": {
-    "playwright/no-wait-for-timeout": "error"
-  }
-}
-```
-
-### Prettier Configuration (`.prettierrc.json`)
-
-```json
-{
-  "printWidth": 100,
-  "singleQuote": true,
-  "semi": true,
-  "trailingComma": "es5"
-}
-```
-
-### Playwright Configuration (`playwright.config.js`)
-
-```javascript
-module.exports = {
-  testDir: './tests',
-  reporter: [
-    ['html'],
-    ['json', { outputFile: 'playwright-metrics.json' }]
-  ],
-  use: {
-    baseURL: 'http://localhost:3000',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure'
-  },
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    }
-  ]
-};
-```
-
-## 📊 Generated Reports
-
-### 1. **HTML Dashboard**
-- Interactive test results
-- Code quality metrics
-- Visual flowcharts
-- Downloadable artifacts
-
-### 2. **PR Comments**
-- Test pass/fail summary
-- Code quality issues
-- Links to full reports
-- Completion checklist
-
-### 3. **Artifacts**
-- `playwright-summary-pr.json` - PR branch test results
-- `playwright-summary-main.json` - Main branch test results  
-- `lint-summary.json` - Code quality results
-- `flowchart.png` - Visual test structure
-- `checklist.md` - Completion status
-- `pr-report/` - PR branch HTML test report
-- `main-report/` - Main branch HTML test report
-- `web-report/` - Combined HTML dashboard
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-1. **Permission Errors**
-   - Ensure proper permissions in your workflow
-   - Check `contents`, `pull-requests`, and `pages` permissions
-
-2. **Missing Dependencies**
-   - Verify all required packages in `package.json`
-   - Check Node.js version compatibility
-
-3. **Test Failures**
-   - Use `fail-on-test-failure: 'false'` for non-blocking behavior
-   - Check Playwright configuration
-   - Verify test file paths
-
-4. **Reviewdog Issues**
-   - Ensure `GITHUB_TOKEN` has proper permissions
-   - Check PR event context
-   - Verify reviewdog reporter settings
+#### Performance (NFR-P)
+- ✅ Incremental analysis of only changed files
+- ✅ Optimized screenshot capture and processing
+- ✅ Efficient artifact storage and retrieval
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+This project was developed as part of the Digital Product Innovation and Development Seminar at TUM. Contributions are welcome for:
 
-## 🙏 Acknowledgments
+- Enhancing visual comparison algorithms
+- Improving code quality detection rules
+- Extending framework support beyond Playwright
+- Adding new visualization types
+- Optimizing performance for large test suites
 
-- Built with [Playwright](https://playwright.dev/)
-- Powered by [reviewdog](https://github.com/reviewdog/reviewdog)
-- Visualizations with [Mermaid](https://mermaid-js.github.io/)
-- GitHub integration via [Octokit](https://octokit.github.io/)
+## 📄 Academic Context
 
-## License
+**Course**: Digital Product Innovation and Development Seminar  
+**Institution**: Technical University of Munich (TUM), Germany  
+**Date**: June 1, 2025  
+**Stakeholder**: Andreas Bauer (Blekinge Institute of Technology)
 
-This work (source code) is licensed under [MIT](./LICENSE)
+### Project Team
+- Alice Mota
+- Amarilda Memushaj  
+- Baris Arslan (CI/CD)
+- Kalp Aghada (Project Manager)
+- Xiaomin Qiu
+
+## 📚 References
+
+Based on research in GUI-based testing code reviews:
+- "Code review guidelines for GUI-based testing artifacts" - Bauer et al. (2023)
+- "When GUI-based Testing Meets Code Reviews" - Bauer et al. (unpublished)
+- "Integrated Visual Software Analytics on the GitHub Platform" - Scheibel et al. (2024)
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+**Enhancing GUI test reviews through visual context integration • Built with ❤️ at TUM**
