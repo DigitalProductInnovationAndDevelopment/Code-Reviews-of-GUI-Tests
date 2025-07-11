@@ -138,6 +138,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARTIFACTS_DIR: gui-artifacts
-          WEB_REPORT_URL: ${{ needs.deploy-report.outputs.page_url }}
+          WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/index.html
         run: node scripts/summary-comment.js
         continue-on-error: true
