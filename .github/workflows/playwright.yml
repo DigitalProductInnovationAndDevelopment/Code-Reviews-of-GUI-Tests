@@ -95,11 +95,28 @@ jobs:
         run: node scripts/generate-webpage.js
         continue-on-error: true
       
-      - name: Create test-summary badge
+      - name: Create test-summary file
+        shell: bash
         run: |
-          # This step might need to be updated to handle two summaries
-          echo "Summary generation may need updates for comparison." > artifacts/test-summary.txt
+          # PR branch summary  ──────────────────────────────────────────────
+          if [[ -f artifacts/playwright-summary-pr.json ]]; then
+            jq -r '"PR   : Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
+              artifacts/playwright-summary-pr.json \
+              > artifacts/test-summary.txt
+          else
+            echo "PR   : Total: 0 | Passed: 0 | Failed: 0 | Skipped: 0" > artifacts/test-summary.txt
+          fi
+
+          # main branch summary ────────────────────────────────────────────
+          if [[ -f artifacts/playwright-summary-main.json ]]; then
+            jq -r '"Main : Total: \(.total) | Passed: \(.passed) | Failed: \(.failed) | Skipped: \(.skipped)"' \
+              artifacts/playwright-summary-main.json \
+              >> artifacts/test-summary.txt
+          else
+            echo "Main : Total: 0 | Passed: 0 | Failed: 0 | Skipped: 0" >> artifacts/test-summary.txt
+          fi
         continue-on-error: true
+
       
       # This will now upload the parent 'artifacts' directory, which contains both reports
       - uses: actions/upload-artifact@v4
@@ -117,13 +134,25 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
+    
     steps:
       - uses: actions/download-artifact@v4
         with: { name: gui-artifacts, path: gui-artifacts }
+        continue-on-error: true
+      
       - uses: actions/upload-pages-artifact@v3
-        with: { path: gui-artifacts }
+        with: { path: gui-artifacts/web-report }
+        continue-on-error: true
+      
       - id: deploy
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Retry deployment if failed
+        if: failure()
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+        timeout-minutes: 10
   
   comment_link:
     if: github.event_name == 'pull_request'
@@ -131,9 +160,25 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
+    
     steps:
+      - uses: actions/checkout@v4
+        continue-on-error: true
+      
+      - uses: actions/setup-node@v4
+        with: { node-version: 18 }
+        continue-on-error: true
+      
+      - name: Install JS dependencies (Octokit, marked, etc.)
+        run: npm install
+        continue-on-error: true
+      
       - uses: actions/download-artifact@v4
-        with: { name: gui-artifacts, path: gui-artifacts }
+        with:
+          name: gui-artifacts
+          path: gui-artifacts
+        continue-on-error: true
+      
       - name: Post / update GUI-test summary comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
