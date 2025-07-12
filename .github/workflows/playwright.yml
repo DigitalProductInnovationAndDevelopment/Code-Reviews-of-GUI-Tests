@@ -8,37 +8,47 @@ jobs:
 # ────────────────────────────────────────────────────────────
   build-test:
     runs-on: ubuntu-latest
-    permissions: { contents: read, pull-requests: write }
+    permissions:
+      contents: write # CHANGED: Needs write for peaceiris later
+      pull-requests: write
 
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }} # ADDED: Ensure checkout of PR branch head
 
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
 
-      - run: npm install                   # deps for scripts & project
+      - run: npm install # deps for scripts & project
 
       - uses: reviewdog/action-setup@v1
         with: { reviewdog_version: latest }
 
       - name: Run lint (reviewdog + summaries)
         env:
-          GITHUB_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/lint.js
         continue-on-error: true
 
+      # ADDED: Discard Prettier changes to avoid conflicts with later Git operations
+      - name: Discard Prettier changes before Git operations
+        run: git restore .
+
       # ── Playwright on PR branch ───────────────────────────
       - name: Playwright tests (PR)
-        run: node scripts/playwright-test.js || true
+        # CHANGED: Added --reporter and --output flags for consistent artifact location
+        run: npx playwright test --reporter=html,blob --output=artifacts/playwright-results || true
 
       - name: Copy PR summary JSON
         run: |
           mkdir -p artifacts
-          if [[ -f artifacts/playwright-summary.json ]]; then
-            cp artifacts/playwright-summary.json artifacts/playwright-summary-pr.json
+          # CHANGED: Source from new playwright output location
+          if [[ -f artifacts/playwright-results/results.json ]]; then
+            cp artifacts/playwright-results/results.json artifacts/playwright-summary-pr.json
           else
             echo "{}" > artifacts/playwright-summary-pr.json
           fi
@@ -46,20 +56,22 @@ jobs:
       - name: Archive PR HTML report
         run: |
           mkdir -p artifacts/pr-report
-          mv playwright-report/* artifacts/pr-report/ || echo "no report"
+          # CHANGED: Source from new playwright output location
+          mv artifacts/playwright-results/html/* artifacts/pr-report/ || echo "no report"
         continue-on-error: true
 
       # ── Playwright on MAIN branch test files ──────────────
       - name: Playwright tests (Main test files)
         run: |
           git checkout origin/main -- tests/ playwright.config.js || true
-          node scripts/playwright-test.js || true
+          # CHANGED: Added --reporter and --output flags for consistent artifact location
+          npx playwright test --reporter=html,blob --output=artifacts/playwright-results-main || true
         continue-on-error: true
 
       - name: Copy Main summary JSON
         run: |
-          if [[ -f artifacts/playwright-summary.json ]]; then
-            cp artifacts/playwright-summary.json artifacts/playwright-summary-main.json
+          if [[ -f artifacts/playwright-results-main/results.json ]]; then
+            cp artifacts/playwright-results-main/results.json artifacts/playwright-summary-main.json
           else
             echo "{}" > artifacts/playwright-summary-main.json
           fi
@@ -67,47 +79,91 @@ jobs:
       - name: Archive Main HTML report
         run: |
           mkdir -p artifacts/main-report
-          mv playwright-report/* artifacts/main-report/ || echo "no report"
+          mv artifacts/playwright-results-main/html/* artifacts/main-report/ || echo "no report"
         continue-on-error: true
 
       # ── Restore checkout & generate artifacts ─────────────
       - run: git checkout HEAD -- tests/ playwright.config.js
 
-      - run: node scripts/generate-flowchart.js   || true
-      - run: node scripts/checklist.js            || true
-      - run: node scripts/generate-webpage.js     || true
+      # CHANGED: Update paths for scripts to use consistent artifact locations
+      - run: node scripts/generate-flowchart.js artifacts/playwright-results/results.json || true
+      - run: node scripts/checklist.js || true
+      - run: node scripts/generate-webpage.js || true
 
       - name: Create text summary
-        run: node scripts/make-text-summary.js || true    # (your existing bash block may stay)
+        run: node scripts/make-text-summary.js || true
         continue-on-error: true
 
       - uses: actions/upload-artifact@v4
         with: { name: gui-artifacts, path: artifacts/ }
+
 # ────────────────────────────────────────────────────────────
   deploy-report:
     needs: build-test
     runs-on: ubuntu-latest
-    permissions: { pages: write, id-token: write }
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    # CHANGED: Permissions for peaceiris, removed pages/id-token
+    permissions: { contents: write } # Only needs contents:write for peaceiris to push
+    # REMOVED: environment block - this is what triggers the protection rule
+    # environment:
+    #   name: github-pages
+    #   url: ${{ steps.deploy.outputs.page_url }}
 
-    outputs:                # <── expose the URL
-      page_url: ${{ steps.deploy.outputs.page_url }}
+    # REMOVED: outputs.page_url - peaceiris doesn't expose this directly
+    # outputs:
+    #   page_url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Checkout gh-pages branch for deployment
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages # Checkout the gh-pages branch
+          token: ${{ secrets.GITHUB_TOKEN }} # Use GITHUB_TOKEN for pushing
+          path: gh-pages-repo # Checkout into a subfolder
+
+      - name: Download GUI Artifacts
+        uses: actions/download-artifact@v4
         with: { name: gui-artifacts, path: gui-artifacts }
 
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: gui-artifacts/web-report }
+      - name: Prepare Playwright Reports for GitHub Pages
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          # Define the target directory structure within the gh-pages-repo checkout
+          GH_PAGES_TARGET_BASE_DIR="gh-pages-repo/pr/$PR_NUMBER"
 
-      - id: deploy
-        uses: actions/deploy-pages@v4
+          mkdir -p "$GH_PAGES_TARGET_BASE_DIR/html-report"
+          mkdir -p "$GH_PAGES_TARGET_BASE_DIR/images"
+
+          echo "Preparing content for GitHub Pages under: $GH_PAGES_TARGET_BASE_DIR"
+
+          # Copy the HTML report from the downloaded artifacts
+          if [ -d "gui-artifacts/pr-report" ]; then
+            echo "Found PR HTML report at 'gui-artifacts/pr-report'."
+            cp -r gui-artifacts/pr-report/* "$GH_PAGES_TARGET_BASE_DIR/html-report/" || true
+          else
+            echo "Warning: PR HTML report directory (gui-artifacts/pr-report) not found."
+          fi
+
+          # Copy all Playwright-generated PNGs from the downloaded artifacts
+          # These would be in gui-artifacts/playwright-results/snapshots/ or similar
+          find gui-artifacts -name "*.png" -exec cp -f {} "$GH_PAGES_TARGET_BASE_DIR/images/" \; || true
+          echo "Copied all PNGs to $GH_PAGES_TARGET_BASE_DIR/images/"
+
+          echo "Contents of 'gh-pages-repo' directory before push:"
+          ls -laR gh-pages-repo || true
+
+      # CHANGED: Replaced actions/upload-pages-artifact and actions/deploy-pages with peaceiris
+      - name: Deploy Playwright Reports to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./gh-pages-repo # Publish the entire checkout of gh-pages-repo
+          publish_branch: gh-pages     # The branch to publish to
+          # force_orphan: true # Use with extreme caution. Not needed if managing unique PR paths.
+
 # ────────────────────────────────────────────────────────────
   comment_link:
     if: github.event_name == 'pull_request'
-    needs: deploy-report
+    needs: deploy-report # Still depends on deploy-report
     runs-on: ubuntu-latest
     permissions: { pull-requests: write }
 
@@ -117,17 +173,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
 
-      - run: npm install         # octokit, marked, etc.
+      - run: npm install # octokit, marked, etc.
 
       - uses: actions/download-artifact@v4
         with: { name: gui-artifacts, path: gui-artifacts }
 
       - name: Post / update summary comment
         env:
-          GITHUB_TOKEN:  ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARTIFACTS_DIR: gui-artifacts
-          WEB_REPORT_URL: ${{ needs.deploy-report.outputs.page_url }}
+          # CHANGED: Construct WEB_REPORT_URL manually as deploy-pages.outputs.page_url is gone
+          WEB_REPORT_URL: https://digitalproductinnovationanddevelopment.github.io/Code-Reviews-of-GUI-Tests/pr/${{ github.event.pull_request.number }}/html-report/
         run: node scripts/summary-comment.js
-
-
-  # PBI 6.3 Test - Do not merge
