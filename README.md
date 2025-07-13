@@ -248,29 +248,6 @@ Add these to your `package.json`:
 7. **Integration Layer** posts comprehensive feedback to PR
 8. **Reviewer** accesses visual context without local test execution
 
-### Quality Requirements Compliance
-
-#### Maintainability (NFR-M)
-- ✅ Automated lint enforcement via GitHub Actions
-- ✅ Standardized checklists validated before merge
-- ✅ Inline style feedback with clear violation messages
-- ✅ Auto re-evaluation on test code updates
-
-#### Usability (NFR-U)
-- ✅ Side-by-side screenshots and UI diffs in PRs
-- ✅ One-click navigation between related artifacts
-- ✅ Unified view of visuals, lint results, and checklists
-
-#### Traceability (NFR-TR)
-- ✅ Requirement linking in PR descriptions
-- ✅ Metadata retention in merge commits
-- ✅ Context preservation for audit trails
-
-#### Performance (NFR-P)
-- ✅ Incremental analysis of only changed files
-- ✅ Optimized screenshot capture and processing
-- ✅ Efficient artifact storage and retrieval
-
 ## 🤝 Contributing
 
 This project was developed as part of the Digital Product Innovation and Development Seminar at TUM. Contributions are welcome for:
