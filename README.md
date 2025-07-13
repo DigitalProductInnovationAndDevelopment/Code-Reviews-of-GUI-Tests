@@ -33,7 +33,7 @@ This tool automates the capture and display of relevant visuals and metadata wit
 - Automatically detects GUI test regressions
 
 ### 📊 **Comprehensive Visual Feedback**
-- Interactive dashboards with test results
+- Interactive report with test results
 - Visual flowcharts showing test execution paths
 - Screenshot capture and diff analysis
 - Integrated code quality metrics
@@ -41,44 +41,13 @@ This tool automates the capture and display of relevant visuals and metadata wit
 ### 📋 **Automated Review Assistance**
 - Dynamic checklists for code reviewers
 - Inline code quality feedback via reviewdog
-- Context information linking changes to requirements
-- Automated PR comments with visual summaries
+- Automated PR comments with test summaries
 
 ### 🎨 **Enhanced Developer Experience**
 - No local test execution required for reviewers
 - Visual representation of GUI test logic
 - Configurable ESLint and Prettier integration
 - Comprehensive artifact management
-
-## 📖 User Stories & Requirements
-
-### Epic 1: Testing Files Quality Assurance
-**Goal**: Help testers/developers produce review-ready test scripts
-
-- **US1**: Create and commit GUI test scripts for automatic review
-- **US3**: Use checklists to ensure code readiness and reduce review friction
-- **US5**: Configurable ESLint setup for consistent Playwright test code quality
-
-### Epic 2: Context Feedback for Testing
-**Goal**: Provide actionable feedback and context without manual testing
-
-- **US2**: Receive visual feedback (screenshots, diffs) to understand impact
-- **US4**: Supply context information linking changes to requirements & UX specs
-
-### Epic 3: Visual and Linting Feedback for Reviewers
-**Goal**: Provide necessary visual and automated quality feedback
-
-- **US6**: Inspect test visuals and lint feedback in pull requests
-- **US7**: Compare current PR with base branch version
-- **US8**: Verify adherence to team-defined style guidelines
-- **US10**: See parser/linter quickfix suggestions in PRs
-
-### Epic 4: Review Assistance & Flow Visualization
-**Goal**: Highlight issues beyond basic style and ensure good practices
-
-- **US9**: Ensure required checklist completion before PR approval
-- **US11**: Detect mixed levels of abstraction in test code
-- **US12**: Visualize test flow as simplified diagrams
 
 ## 🔧 Inputs
 
@@ -228,7 +197,7 @@ Add these to your `package.json`:
 - Automatic screenshot capture during GUI test execution
 - Side-by-side visual comparisons between PR and main branch
 - Visual flowcharts showing test execution paths
-- Interactive dashboards for comprehensive analysis
+- Interactive report for comprehensive analysis
 
 ### 2. **Automated Code Quality Assurance** 📋
 - ESLint integration with Playwright-specific rules
