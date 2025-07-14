@@ -3,6 +3,7 @@ name: GUI Test Review
 on:
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
 # ────────────────────────────────────────────────────────────
