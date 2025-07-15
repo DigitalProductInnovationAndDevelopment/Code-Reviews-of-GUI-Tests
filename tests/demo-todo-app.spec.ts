@@ -1,4 +1,3 @@
-//try to see if code runs without any protection rule
 import { test, expect, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
@@ -14,6 +13,9 @@ const TODO_ITEMS = [
 
 test.describe('New Todo', () => {
   test('should allow me to add todo items', async ({ page }) => {
+    // This was your first visual assertion
+    // await expect(page).toHaveScreenshot('initial-empty-state.png'); // Capture initial state
+
     // create a new todo locator
     const newTodo = page.getByPlaceholder('What needs to be done?');
 
@@ -91,6 +93,9 @@ test.describe('Mark all as completed', () => {
     // Ensure all todos have 'completed' class.
     await expect(page.getByTestId('todo-item')).toHaveClass(['completed', 'completed', 'completed']);
     await checkNumberOfCompletedTodosInLocalStorage(page, 3);
+
+    // ⭐ ADDED THIS LINE HERE ⭐
+    await expect(page).toHaveScreenshot('all-items-completed.png'); // Capture state after marking all as complete
   });
 
   test('should allow me to clear the complete state of all items', async ({ page }) => {
@@ -369,7 +374,7 @@ test.describe('Routing', () => {
       await page.getByRole('link', { name: 'Active' }).click();
     });
 
-    await test.step('Showing completed items', async () => {
+    await test.step('Showing completed items', async ({ page }) => { // This was the previous change
       await page.getByRole('link', { name: 'Completed' }).click();
     });
 
