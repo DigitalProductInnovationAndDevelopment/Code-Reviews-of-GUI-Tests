@@ -13,6 +13,9 @@ const TODO_ITEMS = [
 
 test.describe('New Todo', () => {
   test('should allow me to add todo items', async ({ page }) => {
+    // This was your first visual assertion
+    // await expect(page).toHaveScreenshot('initial-empty-state.png'); // Capture initial state
+
     // create a new todo locator
     const newTodo = page.getByPlaceholder('What needs to be done?');
 
@@ -57,7 +60,10 @@ test.describe('New Todo', () => {
 
     // create a todo count locator
     const todoCount = page.getByTestId('todo-count')
-  
+   
+    // This is a purely cosmetic change to trigger a workflow run.
+    // You can remove this comment after verifying the auto-refresh.
+
     // Check test using different methods.
     await expect(page.getByText('3 items left')).toBeVisible();
     await expect(todoCount).toHaveText('3 items left');
@@ -87,6 +93,9 @@ test.describe('Mark all as completed', () => {
     // Ensure all todos have 'completed' class.
     await expect(page.getByTestId('todo-item')).toHaveClass(['completed', 'completed', 'completed']);
     await checkNumberOfCompletedTodosInLocalStorage(page, 3);
+
+    // ⭐ ADDED THIS LINE HERE ⭐
+    await expect(page).toHaveScreenshot('all-items-completed.png'); // Capture state after marking all as complete
   });
 
   test('should allow me to clear the complete state of all items', async ({ page }) => {
@@ -351,7 +360,7 @@ test.describe('Routing', () => {
   });
 
   test('should respect the back button', async ({ page }) => {
-    const todoItem = page.getByTestId('todo-item'); 
+    const todoItem = page.getByTestId('todo-item');
     await page.getByTestId('todo-item').nth(1).getByRole('checkbox').check();
 
     await checkNumberOfCompletedTodosInLocalStorage(page, 1);
@@ -365,7 +374,7 @@ test.describe('Routing', () => {
       await page.getByRole('link', { name: 'Active' }).click();
     });
 
-    await test.step('Showing completed items', async () => {
+    await test.step('Showing completed items', async ({ page }) => { // This was the previous change
       await page.getByRole('link', { name: 'Completed' }).click();
     });
 
