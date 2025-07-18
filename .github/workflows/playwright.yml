@@ -78,10 +78,6 @@ jobs:
       - run: node scripts/checklist.js            || true
       - run: node scripts/generate-webpage.js     || true
 
-      - name: Create text summary
-        run: node scripts/make-text-summary.js || true    # (your existing bash block may stay)
-        continue-on-error: true
-
       - uses: actions/upload-artifact@v4
         with: { name: gui-artifacts, path: artifacts/ }
 # ────────────────────────────────────────────────────────────
