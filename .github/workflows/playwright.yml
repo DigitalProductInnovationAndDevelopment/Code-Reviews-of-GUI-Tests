@@ -1,4 +1,4 @@
-name: GUI Test Review
+name: GUI Test Review (Direct Scripts)
 
 on:
   pull_request:
@@ -7,121 +7,374 @@ on:
 
 jobs:
 # ────────────────────────────────────────────────────────────
-  build-test:
+  playwright-tests:
+    name: Run Playwright Tests
     runs-on: ubuntu-latest
-    permissions: { contents: read, pull-requests: write }
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+      
+      # Run Playwright tests using the modular script
+      - name: Run Playwright tests with script
+        env:
+          ARTIFACTS_DIR: artifacts
+        run: |
+          echo "🧪 Running Playwright tests with modular script..."
+          node scripts/playwright-test.js
+        continue-on-error: true
+      
+      - name: Verify Playwright artifacts
+        run: |
+          echo "📁 Checking generated artifacts:"
+          ls -la artifacts/ || echo "No artifacts directory"
+          echo ""
+          echo "📊 Playwright summary:"
+          cat artifacts/playwright-summary.json || echo "No summary file"
+      
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            artifacts/playwright-*
+            artifacts/test-details.json
+            playwright-report/
+            playwright-metrics.json
+          retention-days: 30
 
+# ────────────────────────────────────────────────────────────
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Setup reviewdog
+        uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: latest
+      
+      # Run linting with the modular script
+      - name: Run linting checks with script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          USE_PROJECT_CONFIG: 'true'
+          ARTIFACTS_DIR: artifacts
+        run: |
+          echo "🔍 Running linting with modular script..."
+          node scripts/lint.js
+        continue-on-error: true
+      
+      - name: Verify lint artifacts
+        run: |
+          echo "📁 Checking lint artifacts:"
+          ls -la artifacts/ || echo "No artifacts directory"
+          echo ""
+          echo "📋 Lint summary:"
+          cat artifacts/lint-summary.json || echo "No summary file"
+      
+      - name: Upload lint artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-artifacts
+          path: |
+            artifacts/lint-*
+            artifacts/eslint-*
+            artifacts/prettier-*
+          retention-days: 30
+
+# ────────────────────────────────────────────────────────────
+  visual-comparison:
+    name: Visual Comparison (PR vs Main)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    continue-on-error: true
+    
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-
-      - uses: actions/setup-node@v4
-        with: { node-version: 18 }
-
-      - run: npm install                   # deps for scripts & project
-
-      - uses: reviewdog/action-setup@v1
-        with: { reviewdog_version: latest }
-
-      - name: Run lint (reviewdog + summaries)
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install Playwright
+        run: npx playwright install --with-deps
+      
+      # Run tests on PR branch
+      - name: Run tests on PR branch
         env:
-          GITHUB_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/lint.js
-        continue-on-error: true
-
-      # ── Playwright on PR branch ───────────────────────────
-      - name: Playwright tests (PR)
-        run: node scripts/playwright-test.js || true
-
-      - name: Copy PR summary JSON
+          ARTIFACTS_DIR: artifacts
         run: |
-          mkdir -p artifacts
-          if [[ -f artifacts/playwright-summary.json ]]; then
-            cp artifacts/playwright-summary.json artifacts/playwright-summary-pr.json
-          else
-            echo "{}" > artifacts/playwright-summary-pr.json
-          fi
-
-      - name: Archive PR HTML report
-        run: |
-          mkdir -p artifacts/pr-report
-          mv playwright-report/* artifacts/pr-report/ || echo "no report"
-        continue-on-error: true
-
-      # ── Playwright on MAIN branch test files ──────────────
-      - name: Playwright tests (Main test files)
-        run: |
-          git checkout origin/main -- tests/ playwright.config.js || true
+          echo "🧪 Testing PR branch..."
           node scripts/playwright-test.js || true
+          
+          # Copy PR results
+          cp artifacts/playwright-summary.json artifacts/playwright-summary-pr.json || true
+          cp -r artifacts/playwright-report artifacts/pr-report || true
         continue-on-error: true
-
-      - name: Copy Main summary JSON
+      
+      # Run tests on main branch
+      - name: Run tests on main branch
         run: |
-          if [[ -f artifacts/playwright-summary.json ]]; then
-            cp artifacts/playwright-summary.json artifacts/playwright-summary-main.json
-          else
-            echo "{}" > artifacts/playwright-summary-main.json
-          fi
-
-      - name: Archive Main HTML report
-        run: |
-          mkdir -p artifacts/main-report
-          mv playwright-report/* artifacts/main-report/ || echo "no report"
+          echo "🔄 Switching to main branch tests..."
+          git checkout origin/main -- tests/ playwright.config.js || true
+          
+          # Clear previous results
+          rm -f playwright-metrics.json
+          
+          # Run tests
+          node scripts/playwright-test.js || true
+          
+          # Copy main results
+          cp artifacts/playwright-summary.json artifacts/playwright-summary-main.json || true
+          cp -r artifacts/playwright-report artifacts/main-report || true
         continue-on-error: true
+      
+      - name: Upload comparison artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-comparison-artifacts
+          path: |
+            artifacts/playwright-summary-*.json
+            artifacts/pr-report/
+            artifacts/main-report/
+          retention-days: 30
 
-      # ── Restore checkout & generate artifacts ─────────────
-      - run: git checkout HEAD -- tests/ playwright.config.js
-
-      - run: node scripts/generate-flowchart.js   || true
-      - run: node scripts/checklist.js            || true
-      - run: node scripts/generate-webpage.js     || true
-
-      - uses: actions/upload-artifact@v4
-        with: { name: gui-artifacts, path: artifacts/ }
 # ────────────────────────────────────────────────────────────
-  deploy-report:
-    needs: build-test
+  generate-dashboard:
+    name: Generate Review Dashboard
+    needs: [playwright-tests, code-quality]
+    if: always()
     runs-on: ubuntu-latest
-    permissions: { pages: write, id-token: write }
+    permissions:
+      contents: read
+      pull-requests: write
+      pages: write
+      id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-
-    outputs:                # <── expose the URL
-      page_url: ${{ steps.deploy.outputs.page_url }}
-
+      url: ${{ steps.deployment.outputs.page_url }}
+    
     steps:
-      - uses: actions/download-artifact@v4
-        with: { name: gui-artifacts, path: gui-artifacts }
-
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: gui-artifacts/web-report }
-
-      - id: deploy
-        uses: actions/deploy-pages@v4
-# ────────────────────────────────────────────────────────────
-  comment_link:
-    if: github.event_name == 'pull_request'
-    needs: deploy-report
-    runs-on: ubuntu-latest
-    permissions: { pull-requests: write }
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with: { node-version: 18 }
-
-      - run: npm install         # octokit, marked, etc.
-
-      - uses: actions/download-artifact@v4
-        with: { name: gui-artifacts, path: gui-artifacts }
-
-      - name: Post / update summary comment
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      # Download all artifacts from previous jobs
+      - name: Download Playwright artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: artifacts/
+        continue-on-error: true
+      
+      - name: Download lint artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: lint-artifacts
+          path: artifacts/
+        continue-on-error: true
+      
+      - name: Download visual comparison artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: visual-comparison-artifacts
+          path: artifacts/
+        continue-on-error: true
+      
+      - name: List all artifacts
+        run: |
+          echo "📁 All downloaded artifacts:"
+          ls -la artifacts/
+      
+      # Generate visual flowchart
+      - name: Generate flowchart
         env:
-          GITHUB_TOKEN:  ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACTS_DIR: gui-artifacts
-          WEB_REPORT_URL: ${{ needs.deploy-report.outputs.page_url }}
-        run: node scripts/summary-comment.js
+          ARTIFACTS_DIR: artifacts
+        run: |
+          echo "📊 Generating flowchart..."
+          node scripts/generate-flowchart.js
+        continue-on-error: true
+      
+      # Generate checklist
+      - name: Generate checklist
+        env:
+          ARTIFACTS_DIR: artifacts
+          MODE: 'full'
+        run: |
+          echo "📋 Generating checklist..."
+          node scripts/checklist.js
+        continue-on-error: true
+      
+      # Generate dashboard webpage
+      - name: Generate dashboard
+        env:
+          ARTIFACTS_DIR: artifacts
+          MODE: 'full'
+        run: |
+          echo "🎨 Generating dashboard..."
+          node scripts/generate-webpage.js
+        continue-on-error: true
+      
+      - name: Verify dashboard generation
+        run: |
+          echo "📁 Dashboard contents:"
+          ls -la artifacts/web-report/ || echo "No web-report directory"
+      
+      # Deploy to GitHub Pages
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        continue-on-error: true
+      
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: artifacts/web-report
+        continue-on-error: true
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+# ────────────────────────────────────────────────────────────
+  post-pr-comment:
+    name: Post PR Comment
+    needs: [generate-dashboard]
+    if: github.event_name == 'pull_request' && always()
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      # Download dashboard artifacts
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+        continue-on-error: true
+      
+      # Flatten artifacts structure
+      - name: Prepare artifacts for comment script
+        run: |
+          # Move all artifact files to single directory
+          mkdir -p artifacts-flat
+          find artifacts -type f -name "*.json" -exec cp {} artifacts-flat/ \;
+          find artifacts -type f -name "*.md" -exec cp {} artifacts-flat/ \;
+          
+          # List what we have
+          echo "📁 Available artifacts for comment:"
+          ls -la artifacts-flat/
+      
+      # Post PR comment
+      - name: Post summary comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACTS_DIR: artifacts-flat
+          WEB_REPORT_URL: ${{ needs.generate-dashboard.outputs.page_url || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
+        run: |
+          echo "💬 Posting PR comment..."
+          node scripts/summary-comment.js
+        continue-on-error: true
+
+# ────────────────────────────────────────────────────────────
+  summary:
+    name: Workflow Summary
+    needs: [playwright-tests, code-quality, generate-dashboard, post-pr-comment]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check job statuses
+        run: |
+          echo "## 🎯 GUI Test Review Summary"
+          echo ""
+          echo "### Job Results:"
+          echo "- 🧪 Playwright Tests: ${{ needs.playwright-tests.result }}"
+          echo "- 📋 Code Quality: ${{ needs.code-quality.result }}"
+          echo "- 📊 Dashboard Generation: ${{ needs.generate-dashboard.result }}"
+          echo "- 💬 PR Comment: ${{ needs.post-pr-comment.result }}"
+          echo ""
+          
+          # Create summary for GitHub UI
+          echo "## 🎯 GUI Test Review Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Playwright Tests | ${{ needs.playwright-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Quality | ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dashboard | ${{ needs.generate-dashboard.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| PR Comment | ${{ needs.post-pr-comment.result }} |" >> $GITHUB_STEP_SUMMARY
+          
+          # Check if all critical jobs passed
+          if [[ "${{ needs.playwright-tests.result }}" == "failure" ]] || \
+             [[ "${{ needs.code-quality.result }}" == "failure" ]]; then
+            echo ""
+            echo "❌ Some checks failed. Please review the logs above."
+            exit 1
+          else
+            echo ""
+            echo "✅ All checks completed!"
+          fi
