@@ -1,127 +1,36 @@
+# .github/workflows/playwright.yml
+
 name: GUI Test Review
 
 on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-
+  workflow_call:
 jobs:
-# ────────────────────────────────────────────────────────────
-  build-test:
+  review:
+    name: Run GUI Test Analysis
     runs-on: ubuntu-latest
-    permissions: { contents: read, pull-requests: write }
+    permissions:
+      contents: read # Allow checkout
+      pull-requests: write # Allow PR comments
+      pages: write # Allow deploying to GitHub Pages
+      id-token: write # Needed for GitHub Pages deployment
 
     steps:
-      - name: Checkout PR branch
+      - name: Checkout Repository
         uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          # Fetch depth 0 is required for the main branch comparison logic
+          fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with: { node-version: 18 }
-
-      - run: npm install                   # deps for scripts & project
-
-      - uses: reviewdog/action-setup@v1
-        with: { reviewdog_version: latest }
-
-      - name: Run lint (reviewdog + summaries)
-        env:
-          GITHUB_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/lint.js
-        continue-on-error: true
-
-      # ── Playwright on PR branch ───────────────────────────
-      - name: Playwright tests (PR)
-        run: node scripts/playwright-test.js || true
-
-      - name: Copy PR summary JSON
-        run: |
-          mkdir -p artifacts
-          if [[ -f artifacts/playwright-summary.json ]]; then
-            cp artifacts/playwright-summary.json artifacts/playwright-summary-pr.json
-          else
-            echo "{}" > artifacts/playwright-summary-pr.json
-          fi
-
-      - name: Archive PR HTML report
-        run: |
-          mkdir -p artifacts/pr-report
-          mv playwright-report/* artifacts/pr-report/ || echo "no report"
-        continue-on-error: true
-
-      # ── Playwright on MAIN branch test files ──────────────
-      - name: Playwright tests (Main test files)
-        run: |
-          git checkout origin/main -- tests/ playwright.config.js || true
-          node scripts/playwright-test.js || true
-        continue-on-error: true
-
-      - name: Copy Main summary JSON
-        run: |
-          if [[ -f artifacts/playwright-summary.json ]]; then
-            cp artifacts/playwright-summary.json artifacts/playwright-summary-main.json
-          else
-            echo "{}" > artifacts/playwright-summary-main.json
-          fi
-
-      - name: Archive Main HTML report
-        run: |
-          mkdir -p artifacts/main-report
-          mv playwright-report/* artifacts/main-report/ || echo "no report"
-        continue-on-error: true
-
-      # ── Restore checkout & generate artifacts ─────────────
-      - run: git checkout HEAD -- tests/ playwright.config.js
-
-      - run: node scripts/generate-flowchart.js   || true
-      - run: node scripts/checklist.js            || true
-      - run: node scripts/generate-webpage.js     || true
-
-      - uses: actions/upload-artifact@v4
-        with: { name: gui-artifacts, path: artifacts/ }
-# ────────────────────────────────────────────────────────────
-  deploy-report:
-    needs: build-test
-    runs-on: ubuntu-latest
-    permissions: { pages: write, id-token: write }
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-
-    outputs:                # <── expose the URL
-      page_url: ${{ steps.deploy.outputs.page_url }}
-
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { name: gui-artifacts, path: gui-artifacts }
-
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: gui-artifacts/web-report }
-
-      - id: deploy
-        uses: actions/deploy-pages@v4
-# ────────────────────────────────────────────────────────────
-  comment_link:
-    if: github.event_name == 'pull_request'
-    needs: deploy-report
-    runs-on: ubuntu-latest
-    permissions: { pull-requests: write }
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with: { node-version: 18 }
-
-      - run: npm install         # octokit, marked, etc.
-
-      - uses: actions/download-artifact@v4
-        with: { name: gui-artifacts, path: gui-artifacts }
-
-      - name: Post / update summary comment
-        env:
-          GITHUB_TOKEN:  ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACTS_DIR: gui-artifacts
-          WEB_REPORT_URL: ${{ needs.deploy-report.outputs.page_url }}
-        run: node scripts/summary-comment.js
+      - name: Run GUI-Based Testing Code Review Action
+        # This special 'uses' syntax runs the action.yml in the root of your own repository.
+        uses: ./
+        with:
+          # Pass the GitHub token to the action for API access
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Override other inputs from your action.yml here if needed
+          # For example:
+          # node-version: '20'
+          # fail-on-test-failure: 'true'
