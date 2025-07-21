@@ -184,6 +184,10 @@ async function main() {
     const body = generateCommentBody();
     console.log(`📝 Comment length: ${body.length} characters`);
     
+    // Show preview of comment
+    console.log('\n📋 Comment preview (first 500 chars):');
+    console.log(body.substring(0, 500) + '...\n');
+    
     // Initialize Octokit
     const octokit = new Octokit({ 
       auth: process.env.GITHUB_TOKEN 
@@ -198,33 +202,41 @@ async function main() {
     
     const botComment = comments.find(comment => 
       comment.user.type === 'Bot' && 
-      comment.body.includes('GUI Test Review Dashboard')
+      (comment.body.includes('GUI Test Review') || comment.body.includes('🔍 **GUI Test Review**'))
     );
     
     // Update or create comment
     if (botComment) {
-      console.log('🔄 Updating existing comment...');
+      console.log(`🔄 Updating existing comment (ID: ${botComment.id})...`);
       await octokit.request(
         'PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}',
         { owner, repo, comment_id: botComment.id, body }
       );
       console.log('✅ Comment updated successfully');
+      console.log(`📍 Comment URL: ${botComment.html_url}`);
     } else {
       console.log('📝 Creating new comment...');
-      await octokit.request(
+      const { data: newComment } = await octokit.request(
         'POST /repos/{owner}/{repo}/issues/{issue_number}/comments',
         { owner, repo, issue_number: prNumber, body }
       );
       console.log('✅ Comment created successfully');
+      console.log(`📍 Comment URL: ${newComment.html_url}`);
     }
     
   } catch (error) {
     console.error('❌ Error:', error.message);
+    console.error('Stack:', error.stack);
     
     // Don't fail the workflow for comment errors
     if (error.message.includes('Not a pull request')) {
       console.log('ℹ️  Not running on a pull request, skipping comment');
       process.exit(0);
+    }
+    
+    // Log more details for debugging
+    if (error.response) {
+      console.error('API Response:', error.response.status, error.response.data);
     }
     
     process.exit(1);

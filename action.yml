@@ -100,7 +100,7 @@ inputs:
 outputs:
   dashboard-url:
     description: 'URL to the deployed dashboard'
-    value: ${{ steps.deploy.outputs.page_url }}
+    value: ${{ steps.dashboard-url.outputs.url }}
   
   artifacts-uploaded:
     description: 'List of uploaded artifacts'
@@ -295,13 +295,24 @@ runs:
       continue-on-error: true
     
     - name: Handle non-main branch deployment
-      if: inputs.enable-github-pages == 'true' && (inputs.mode == 'full' || inputs.mode == 'dashboard-only') && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+      id: dashboard-url
+      if: inputs.enable-github-pages == 'true' && (inputs.mode == 'full' || inputs.mode == 'dashboard-only')
       shell: bash
       run: |
-        echo "⚠️  GitHub Pages deployment skipped (not on main branch)"
-        echo "📎 Dashboard available as artifact: gui-dashboard-artifacts"
-        echo "💡 To deploy from this branch, update Pages environment protection rules"
-        echo "dashboard-url=Check gui-dashboard-artifacts in workflow summary" >> $GITHUB_OUTPUT
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
+          # Use deployment URL if available
+          if [[ -n "${{ steps.deploy.outputs.page_url }}" ]]; then
+            echo "url=${{ steps.deploy.outputs.page_url }}" >> $GITHUB_OUTPUT
+          else
+            # Fallback to expected pattern
+            echo "url=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "⚠️  GitHub Pages deployment skipped (not on main branch)"
+          echo "📎 Dashboard available as artifact: gui-dashboard-artifacts"
+          echo "💡 To deploy from this branch, update Pages environment protection rules"
+          echo "url=Check gui-dashboard-artifacts in workflow summary" >> $GITHUB_OUTPUT
+        fi
     
     # ─── COMMENT MODE ───────────────────────────────────────
     - name: Post PR comment
@@ -310,9 +321,13 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         ARTIFACTS_DIR: ${{ inputs.custom-artifacts-path }}
-        WEB_REPORT_URL: ${{ inputs.web-report-url || steps.deploy.outputs.page_url }}
+        WEB_REPORT_URL: ${{ inputs.web-report-url || steps.deploy.outputs.page_url || steps.dashboard-url.outputs.url || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         echo "💬 Posting PR comment..."
+        echo "📊 Dashboard URL: ${WEB_REPORT_URL}"
+        
         COMMENT_SCRIPT="${{ github.action_path }}/scripts/summary-comment.js"
         if [ ! -f "$COMMENT_SCRIPT" ]; then
           COMMENT_SCRIPT="scripts/summary-comment.js"
@@ -320,6 +335,8 @@ runs:
         
         if [ -f "$COMMENT_SCRIPT" ]; then
           node "$COMMENT_SCRIPT"
+        else
+          echo "⚠️ Comment script not found"
         fi
       continue-on-error: true
     

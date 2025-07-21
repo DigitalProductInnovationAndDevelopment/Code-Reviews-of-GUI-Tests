@@ -180,43 +180,21 @@ function generateChecklist() {
 function formatMarkdown(items) {
   const lines = [];
   
-  // Group by category
-  const categories = {
-    setup: '### 🚀 Setup',
-    tests: '### 🧪 Tests',
-    quality: '### 📋 Code Quality',
-    dashboard: '### 📊 Dashboard',
-    comparison: '### 🔍 Comparison',
-    custom: '### 🔧 Custom Checks'
-  };
+  // Simple checklist format matching the image
+  const checklistItems = [
+    { checked: true, text: 'GitHub Action triggered' },
+    { checked: items.some(i => i.text.includes('Playwright tests') && i.checked), text: 'Playwright tests completed' },
+    { checked: items.some(i => i.text.includes('ESLint') && i.checked), text: 'ESLint executed' },
+    { checked: items.some(i => i.text.includes('Prettier') && i.checked), text: 'Prettier check completed' },
+    { checked: items.some(i => i.text.includes('Test') && i.checked), text: 'Test summary generated' },
+    { checked: items.some(i => i.text.includes('flowchart') && i.checked), text: 'Flowchart created' }
+  ];
   
-  const grouped = {};
-  items.forEach(item => {
-    const cat = item.category || 'other';
-    if (!grouped[cat]) grouped[cat] = [];
-    grouped[cat].push(item);
+  checklistItems.forEach(item => {
+    lines.push(`- [${item.checked ? 'x' : ' '}] ${item.text}`);
   });
   
-  // Add items by category
-  Object.keys(categories).forEach(cat => {
-    if (grouped[cat] && grouped[cat].length > 0) {
-      lines.push(categories[cat]);
-      grouped[cat].forEach(item => {
-        lines.push(`- [${item.checked ? 'x' : ' '}] ${item.text}`);
-      });
-      lines.push('');
-    }
-  });
-  
-  // Add any uncategorized items
-  if (grouped.other) {
-    lines.push('### Other');
-    grouped.other.forEach(item => {
-      lines.push(`- [${item.checked ? 'x' : ' '}] ${item.text}`);
-    });
-  }
-  
-  return lines.join('\n').trim() + '\n';
+  return lines.join('\n') + '\n';
 }
 
 /**
