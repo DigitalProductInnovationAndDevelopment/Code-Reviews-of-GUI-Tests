@@ -78,8 +78,11 @@ const generateCommentBody = () => {
   sections.push('# 🎯 GUI Test Review Dashboard\n');
   
   // Dashboard link (if available)
-  if (WEB_REPORT_URL) {
+  const runId = process.env.GITHUB_RUN_ID || 'latest';
+  if (WEB_REPORT_URL && !WEB_REPORT_URL.includes('artifact')) {
     sections.push(`📊 **[View Interactive Dashboard](${WEB_REPORT_URL})** ↗\n`);
+  } else {
+    sections.push(`📊 **Dashboard**: Available as artifact in [workflow summary](../../actions/runs/${runId})\n`);
   }
   
   // Test Results Section
@@ -157,8 +160,10 @@ const generateCommentBody = () => {
   // Footer
   sections.push('---');
   sections.push('_This comment is automatically generated and updated on each push._');
-  if (WEB_REPORT_URL) {
+  if (WEB_REPORT_URL && !WEB_REPORT_URL.includes('artifact')) {
     sections.push(`_Full details available in the [interactive dashboard](${WEB_REPORT_URL})._`);
+  } else {
+    sections.push(`_Dashboard available as artifact in the workflow summary._`);
   }
   
   return sections.join('\n');

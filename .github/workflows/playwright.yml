@@ -195,9 +195,8 @@ jobs:
       pull-requests: write
       pages: write
       id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      dashboard-url: ${{ steps.dashboard-url.outputs.url }}
     
     steps:
       - name: Checkout code
@@ -272,12 +271,14 @@ jobs:
           echo "📁 Dashboard contents:"
           ls -la artifacts/web-report/ || echo "No web-report directory"
       
-      # Deploy to GitHub Pages
+      # Deploy to GitHub Pages (only from main/master branch)
       - name: Setup Pages
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: actions/configure-pages@v5
         continue-on-error: true
       
       - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: actions/upload-pages-artifact@v3
         with:
           path: artifacts/web-report
@@ -285,8 +286,28 @@ jobs:
       
       - name: Deploy to GitHub Pages
         id: deployment
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: actions/deploy-pages@v4
         continue-on-error: true
+      
+      # For non-main branches, upload dashboard as artifact instead
+      - name: Upload dashboard artifact (non-main branches)
+        if: github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-preview
+          path: artifacts/web-report
+          retention-days: 7
+      
+      - name: Create deployment URL output
+        id: dashboard-url
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
+            echo "url=${{ steps.deployment.outputs.page_url }}" >> $GITHUB_OUTPUT
+          else
+            echo "url=See dashboard-preview artifact in workflow summary" >> $GITHUB_OUTPUT
+            echo "📎 Dashboard preview available as artifact (not deployed to Pages from branch: ${GITHUB_REF#refs/heads/})"
+          fi
 
 # ────────────────────────────────────────────────────────────
   post-pr-comment:
@@ -333,7 +354,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARTIFACTS_DIR: artifacts-flat
-          WEB_REPORT_URL: ${{ needs.generate-dashboard.outputs.page_url || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
+          WEB_REPORT_URL: ${{ needs.generate-dashboard.outputs.dashboard-url || 'See dashboard-preview artifact in workflow summary' }}
         run: |
           echo "💬 Posting PR comment..."
           node scripts/summary-comment.js

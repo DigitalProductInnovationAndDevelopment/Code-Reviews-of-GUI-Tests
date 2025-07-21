@@ -288,11 +288,20 @@ runs:
     
     - name: Deploy to GitHub Pages
       id: deploy
-      if: inputs.enable-github-pages == 'true' && (inputs.mode == 'full' || inputs.mode == 'dashboard-only')
+      if: inputs.enable-github-pages == 'true' && (inputs.mode == 'full' || inputs.mode == 'dashboard-only') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       uses: actions/deploy-pages@v4
       with:
         artifact_name: gui-dashboard-artifacts
       continue-on-error: true
+    
+    - name: Handle non-main branch deployment
+      if: inputs.enable-github-pages == 'true' && (inputs.mode == 'full' || inputs.mode == 'dashboard-only') && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+      shell: bash
+      run: |
+        echo "⚠️  GitHub Pages deployment skipped (not on main branch)"
+        echo "📎 Dashboard available as artifact: gui-dashboard-artifacts"
+        echo "💡 To deploy from this branch, update Pages environment protection rules"
+        echo "dashboard-url=Check gui-dashboard-artifacts in workflow summary" >> $GITHUB_OUTPUT
     
     # ─── COMMENT MODE ───────────────────────────────────────
     - name: Post PR comment
