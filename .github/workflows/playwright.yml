@@ -126,3 +126,4 @@ jobs:
           ARTIFACTS_DIR: gui-artifacts
           WEB_REPORT_URL: ${{ needs.deploy-report.outputs.page_url }}
         run: node scripts/summary-comment.js
+
