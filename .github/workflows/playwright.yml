@@ -149,22 +149,15 @@ jobs:
           retention-days: 30
   
   # ────────────────────────────────────────────────────────────
-  # This job generates dashboard and PR comments
-  dashboard:
+  # This job generates dashboard, uploads to Pages, and adds PR comments
+  # It's split into build and deploy steps following GitHub's recommended pattern
+  build:
     needs: [test, lint]
     if: ${{ always() && (github.event.inputs.mode == 'full' || github.event.inputs.mode == 'dashboard-only' || !github.event.inputs.mode) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    
-    outputs:
-      page_url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
       - name: Checkout PR branch
@@ -189,7 +182,7 @@ jobs:
           path: lint-artifacts/
         continue-on-error: true
 
-      # Generate dashboard using our modular action
+      # Generate dashboard
       - name: Generate dashboard and visual reports
         uses: ./  # Use local action
         with:
@@ -198,23 +191,89 @@ jobs:
           playwright-artifact: 'playwright-artifacts'
           eslint-artifact: 'lint-artifacts'
           enable-pr-comments: 'true'
-          enable-github-pages: 'true'
-          web-report-url: ${{ steps.deploy.outputs.page_url }}
+          enable-github-pages: 'false'  # Don't deploy directly, we'll use the proper GitHub Pages workflow
           custom-artifacts-path: 'dashboard-artifacts'
 
-      # Upload merged artifacts
+      # Upload for regular access
       - uses: actions/upload-artifact@v4
         with:
-          name: gui-artifacts
+          name: gui-dashboard
           path: dashboard-artifacts/
+          retention-days: 30
       
-      # Deploy to GitHub Pages
-      - uses: actions/upload-pages-artifact@v3
+      # Upload specifically for GitHub Pages deployment
+      # This follows GitHub's recommended pattern
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: dashboard-artifacts/web-report
-
-      - id: deploy
+          path: dashboard-artifacts/web-report/
+          name: github-pages
+  
+  # This is the dedicated deployment job for GitHub Pages
+  # This follows GitHub's recommended pattern exactly
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    # Grant GITHUB_TOKEN the permissions required for this job
+    permissions:
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
+    
+    # Deploy to the github-pages environment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    # Specify that we're deploying to GitHub Pages
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
+    
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
+  
+  # ────────────────────────────────────────────────────────────
+  # This job adds the comment with the Pages URL to the PR
+  comment:
+    needs: deploy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    
+    steps:
+      - name: Get deployment URL
+        id: deployment-url
+        run: echo "url=${{ needs.deploy.outputs.url }}" >> $GITHUB_OUTPUT
+      
+      - name: Comment on PR with dashboard link
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const url = process.env.DEPLOYMENT_URL;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🎨 GUI Test Dashboard Available
+              
+              The interactive dashboard has been deployed to GitHub Pages and is available at:
+              
+              [🔍 View Dashboard](${url})
+              
+              This dashboard contains:
+              - Visual test execution flowcharts
+              - Side-by-side comparison of PR vs main branch tests
+              - Code quality metrics and analysis
+              - Complete test reports with screenshots
+              `
+            });
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment-url.outputs.url }}
   
   # ────────────────────────────────────────────────────────────
   # This job runs the action in standalone mode (for workflow_dispatch)
@@ -224,8 +283,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      pages: write
-      id-token: write
     
     steps:
       - name: Checkout PR branch
@@ -244,4 +301,4 @@ jobs:
           use-project-prettier: 'true'
           enable-visual-comparison: 'true'
           enable-pr-comments: 'true'
-          enable-github-pages: 'true'
+          enable-github-pages: 'false'  # Don't use GitHub Pages in the action directly
