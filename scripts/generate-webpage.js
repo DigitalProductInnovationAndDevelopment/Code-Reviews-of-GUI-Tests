@@ -15,7 +15,7 @@ const path = require('path');
 const marked = require('marked');
 
 /* ─── paths ───────────────────────────────────────────── */
-const ART = 'artifacts';
+const ART = process.env.ARTIFACTS_DIR || 'artifacts';
 const OUT = path.join(ART, 'web-report');
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -28,47 +28,68 @@ const card=(title,inner)=>`<div class="card"><h2>${title}</h2>${inner}</div>`;
 const pre = txt=>`<pre>${txt}</pre>`;
 
 /* ─── load artefacts ─────────────────────────────────── */
-const lint   = readJSON('lint-summary.json');
-const p      = lint.prettier;
-const e      = lint.eslint;
+const lint   = readJSON('lint-summary.json', {prettier: {}, eslint: {}});
+const p      = lint.prettier || {};
+const e      = lint.eslint || {};
 
-const playPR   = readJSON('playwright-summary-pr.json');
-const playMain = readJSON('playwright-summary-main.json');
+const playPR   = readJSON('playwright-summary-pr.json', {});
+const playMain = readJSON('playwright-summary-main.json', {});
 const hasMainPlay = fs.existsSync(path.join(ART,'playwright-summary-main.json'));
 
-const checklistMD = fs.readFileSync(path.join(ART,'checklist.md'),'utf8');
+// Safely read checklist - provide a default if it doesn't exist
+let checklistMD = '';
+try {
+  checklistMD = fs.readFileSync(path.join(ART,'checklist.md'),'utf8');
+} catch (error) {
+  checklistMD = '- [x] GitHub Action triggered\n- [ ] Tests incomplete\n- [ ] Linting incomplete';
+  // Create the checklist file if it doesn't exist
+  fs.writeFileSync(path.join(ART,'checklist.md'), checklistMD, 'utf8');
+}
 
 /* ─── copy assets ────────────────────────────────────── */
 for(const dir of ['pr-report','main-report']){
   const src=path.join(ART,dir);
-  if(fs.existsSync(src)) fs.cpSync(src,path.join(OUT,dir),{recursive:true});
+  if(fs.existsSync(src)) {
+    fs.mkdirSync(path.join(OUT,dir), { recursive: true });
+    try {
+      fs.cpSync(src, path.join(OUT,dir), {recursive:true});
+    } catch (error) {
+      console.error(`Error copying ${dir}:`, error.message);
+    }
+  }
 }
-if(fs.existsSync(path.join(ART,'flowchart.png')))
-  fs.copyFileSync(path.join(ART,'flowchart.png'),path.join(OUT,'flowchart.png'));
 
-/* ─── Prettier & ESLint cards (unchanged) ───────────── */
+if(fs.existsSync(path.join(ART,'flowchart.png'))) {
+  try {
+    fs.copyFileSync(path.join(ART,'flowchart.png'), path.join(OUT,'flowchart.png'));
+  } catch (error) {
+    console.error('Error copying flowchart:', error.message);
+  }
+}
+
+/* ─── Prettier & ESLint cards (with null safety) ───────────── */
 const prettierCard = card(
   'Prettier',
-  p.filesWithIssues
+  (p && p.filesWithIssues)
     ? pill(`${p.filesWithIssues} file${p.filesWithIssues!==1?'s':''}`,'#d32f2f')+
-      pill(`${p.totalChanges} place${p.totalChanges!==1?'s':''}`,'#f57f17')+
-      `<ul>${p.files.map(f=>`<li>${f}</li>`).join('')}</ul>`+
-      (p.totalChanges>50?`<div class="warning-box">
+      pill(`${(p && p.totalChanges) || 0} place${(p && p.totalChanges)!==1?'s':''}`,'#f57f17')+
+      `<ul>${(p && p.files || []).map(f=>`<li>${f}</li>`).join('')}</ul>`+
+      ((p && p.totalChanges)>50?`<div class="warning-box">
          <strong>⚠️ Warning:</strong> Too many changes for inline comments.<br>
          <pre style="margin-top:.5em;font-size:12px">npx prettier "tests/**/*.{js,jsx,ts,tsx}" --write</pre>
        </div>`:'')+
-      `<details><summary>Diff sample (first 20 lines)</summary>${pre(p.sample)}</details>`
+      `<details><summary>Diff sample (first 20 lines)</summary>${pre((p && p.sample) || 'No sample available')}</details>`
     : pill('No issues','#388e3c')
 );
 
 const eslintCard = card(
   'ESLint',
-  e.errors||e.warnings
-    ? pill(`${e.errors} ✖`,'#d32f2f')+
-      pill(`${e.warnings} ⚠`,'#f57f17')+
-      pill(`${e.fixableErrors} fixable`,'#1976d2')+
-      pill(`${e.fixableWarnings} autofix`,'#1976d2')+
-      (e.first?`<details><summary>First error</summary>${pre(e.first)}</details>`:'')
+  (e && (e.errors || e.warnings))
+    ? pill(`${(e && e.errors) || 0} ✖`,'#d32f2f')+
+      pill(`${(e && e.warnings) || 0} ⚠`,'#f57f17')+
+      pill(`${(e && e.fixableErrors) || 0} fixable`,'#1976d2')+
+      pill(`${(e && e.fixableWarnings) || 0} autofix`,'#1976d2')+
+      ((e && e.first)?`<details><summary>First error</summary>${pre(e.first)}</details>`:'')
     : pill('Clean','#388e3c')
 );
 
@@ -76,8 +97,8 @@ const eslintCard = card(
 const mdPlaywright = `
 | Run | Total | Passed | Failed | Skipped | Pass-rate | Duration |
 |-----|------:|-------:|-------:|--------:|-----------|---------:|
-| **PR**   | ${playPR.total??0} | ${playPR.passed??0} | ${playPR.failed??0} | ${playPR.skipped??0} | ${playPR.pass_rate??0}% | ${playPR.duration??0} ms |
-${hasMainPlay?`| **Main** | ${playMain.total??0} | ${playMain.passed??0} | ${playMain.failed??0} | ${playMain.skipped??0} | ${playMain.pass_rate??0}% | ${playMain.duration??0} ms |`:''}`;
+| **PR**   | ${playPR.total || 0} | ${playPR.passed || 0} | ${playPR.failed || 0} | ${playPR.skipped || 0} | ${playPR.pass_rate || 0}% | ${playPR.duration || 0} ms |
+${hasMainPlay?`| **Main** | ${playMain.total || 0} | ${playMain.passed || 0} | ${playMain.failed || 0} | ${playMain.skipped || 0} | ${playMain.pass_rate || 0}% | ${playMain.duration || 0} ms |`:''}`;
 
 const linkParts=[];
 if(fs.existsSync(path.join(OUT,'pr-report/index.html')))
@@ -130,6 +151,9 @@ ${checklistCard}
 </footer>`;
 
 /* ─── write page ─────────────────────────────────────── */
-fs.writeFileSync(path.join(OUT,'index.html'),html,'utf8');
-console.log('✨ Dashboard written → web-report/index.html');
-
+try {
+  fs.writeFileSync(path.join(OUT,'index.html'), html, 'utf8');
+  console.log('✨ Dashboard written → web-report/index.html');
+} catch (error) {
+  console.error('Error writing dashboard:', error.message);
+}
