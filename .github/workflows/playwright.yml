@@ -1,14 +1,14 @@
-name: GUI Test Review Working
-
+name: Playwright Tests and Dashboard
 on:
-  pull_request:
-    branches: [main]
   push:
-    branches: [main]
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
-  gui-test-review:
+  test-and-dashboard:
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,83 +20,73 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: lts/*
       
       - name: Install dependencies
         run: npm ci
       
-      - name: Setup reviewdog
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+      
+      - uses: reviewdog/action-setup@v1
         if: github.event_name == 'pull_request'
-        uses: reviewdog/action-setup@v1
         with:
           reviewdog_version: latest
       
-      # Run linting with reviewdog
+      # Run lint with reviewdog
       - name: Run lint checks
         if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: node scripts/lint.js
         continue-on-error: true
       
       # Run Playwright tests on PR branch
       - name: Run Playwright tests (PR)
         run: |
-          # Ensure clean state
-          rm -f playwright-metrics.json
-          
-          # Run tests
           node scripts/playwright-test.js || true
           
-          # Copy PR results
           if [[ -f artifacts/playwright-summary.json ]]; then
             cp artifacts/playwright-summary.json artifacts/playwright-summary-pr.json
-            echo "PR test results:"
-            cat artifacts/playwright-summary-pr.json
           fi
           
-          # Archive PR report
           if [[ -d playwright-report ]]; then
             mkdir -p artifacts/pr-report
             cp -r playwright-report/* artifacts/pr-report/
           fi
       
-      # Run tests on main branch
+      # Run tests on main branch (PR only)
       - name: Run Playwright tests (Main)
         if: github.event_name == 'pull_request'
         run: |
-          # Checkout main branch test files
           git checkout origin/main -- tests/ playwright.config.js || true
           
-          # Run tests
+          # Clean previous results
+          rm -f playwright-metrics.json
+          
           node scripts/playwright-test.js || true
           
-          # Copy main results
           if [[ -f artifacts/playwright-summary.json ]]; then
             cp artifacts/playwright-summary.json artifacts/playwright-summary-main.json
           fi
           
-          # Archive main report
           if [[ -d playwright-report ]]; then
             mkdir -p artifacts/main-report
             cp -r playwright-report/* artifacts/main-report/
           fi
           
-          # Restore PR branch files
+          # Restore PR files
           git checkout HEAD -- tests/ playwright.config.js
       
-      # Generate visual assets
-      - name: Generate dashboard assets
+      # Generate dashboard assets
+      - name: Generate dashboard
         run: |
           node scripts/generate-flowchart.js || true
           node scripts/checklist.js || true
@@ -122,15 +112,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARTIFACTS_DIR: artifacts
           WEB_REPORT_URL: ${{ steps.deployment.outputs.page_url }}
-        run: |
-          echo "Dashboard URL: ${WEB_REPORT_URL}"
-          node scripts/summary-comment.js
+        run: node scripts/summary-comment.js
       
-      # Upload artifacts for debugging
-      - name: Upload artifacts
+      # Upload artifacts
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: gui-test-artifacts
+          name: test-artifacts
           path: artifacts/
-          retention-days: 7
+          retention-days: 30
