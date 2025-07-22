@@ -66,6 +66,40 @@ const mdESLint = `
 /* dashboard root (absolute if workflow provided it) */
 const dashboardURL = process.env.WEB_REPORT_URL || '#';
 
+/* prettier/eslint samples and commands */
+let prettierSection = '';
+if (lintPR.prettier?.filesWithIssues > 0) {
+  const files = lintPR.prettier.files || [];
+  prettierSection = '\n\n**Files:** ' + files.map(f => path.basename(f)).join(', ');
+  
+  if (lintPR.prettier.exceedsLimit) {
+    prettierSection += `\n\n⚠️ **Too many changes for inline comments** (${lintPR.prettier.totalChanges} changes exceed GitHub limit)`;
+  }
+  
+  prettierSection += '\n\n**Fix locally:** `npx prettier --write "tests/**/*.{js,ts,tsx,json}"`';
+  
+  if (lintPR.prettier.sample) {
+    prettierSection += '\n\n<details><summary>Sample changes (first 20 lines)</summary>\n\n```diff\n' + lintPR.prettier.sample + '\n```\n\n</details>';
+  }
+} else {
+  prettierSection = '\n\n_No Prettier issues_';
+}
+
+let eslintSection = '';
+if (lintPR.eslint?.errors > 0 || lintPR.eslint?.warnings > 0) {
+  if (lintPR.eslint.first) {
+    eslintSection = '\n\nFirst error: `' + lintPR.eslint.first + '`';
+  }
+  
+  if (lintPR.eslint.exceedsLimit) {
+    eslintSection += `\n\n⚠️ **Too many issues for inline comments** (${lintPR.eslint.errors + lintPR.eslint.warnings} issues exceed GitHub limit)`;
+  }
+  
+  eslintSection += '\n\n**Fix locally:** `npx eslint --fix "tests/**/*.{js,ts,tsx}"`';
+} else {
+  eslintSection = '\n\n_No ESLint errors_';
+}
+
 /* final comment body */
 const body = `# 🔍 **GUI Test Review**
 
@@ -84,21 +118,13 @@ ${mdPlay}
 
 ### 🎨 Prettier (PR)
 
-${mdPrettier}
-
-${lintPR.prettier?.files?.length
-  ? '**Files:** ' + lintPR.prettier.files.map(f => path.basename(f)).join(', ')
-  : '_No Prettier issues_'}
+${mdPrettier}${prettierSection}
 
 ---
 
 ### 📋 ESLint (PR)
 
-${mdESLint}
-
-${lintPR.eslint?.first
-  ? 'First error: `' + lintPR.eslint.first + '`'
-  : '_No ESLint errors_'}
+${mdESLint}${eslintSection}
 
 ---
 

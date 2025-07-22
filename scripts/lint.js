@@ -1,20 +1,30 @@
 #!/usr/bin/env node
 /**
  * CRITICAL: This script provides non-blocking lint feedback via reviewdog.
+ * Enhanced with debugging to troubleshoot missing comments.
  */
 const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
 
-const IS_PR = process.env.GITHUB_EVENT_NAME === 'pull_request';
+const IS_PR = process.env.GITHUB_EVENT_NAME === 'pull_request' || 
+              process.env.GITHUB_EVENT_NAME === 'pull_request_target';
 const HAS_REVIEWDOG_TOKEN = process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN;
 
 function runReviewdog(input, format, name) {
-  if (!IS_PR || !HAS_REVIEWDOG_TOKEN) {
-    console.log(`📝 Skipping reviewdog (IS_PR: ${IS_PR}, HAS_TOKEN: ${!!HAS_REVIEWDOG_TOKEN})`);
+  if (!IS_PR) {
+    console.log(`📝 Skipping reviewdog - not a PR (IS_PR: ${IS_PR})`);
+    return;
+  }
+  
+  if (!HAS_REVIEWDOG_TOKEN) {
+    console.log(`📝 Skipping reviewdog - no token (HAS_TOKEN: ${!!HAS_REVIEWDOG_TOKEN})`);
     return;
   }
 
   console.log(`🔍 Running reviewdog for ${name}...`);
+  
+  fs.mkdirSync('artifacts', { recursive: true });
+  fs.writeFileSync(`artifacts/${name}-reviewdog-input.txt`, input);
   
   try {
     const rd = spawnSync('reviewdog', [
@@ -34,109 +44,149 @@ function runReviewdog(input, format, name) {
       }
     });
     
-    console.log(`📊 Reviewdog exit code: ${rd.status}`);
+    console.log(`📊 Exit code: ${rd.status}`);
   } catch (error) {
     console.error(`❌ Failed to run reviewdog for ${name}:`, error.message);
   }
 }
 
 function runPrettier() {
-  console.log('\n▶ Prettier');
+  console.log('\n▶ Prettier (direct diff generation)');
   
   try {
-    // Get list of files that need formatting
-    let output = '';
+    // First check what prettier would change
+    let filesToCheck = '';
     try {
-      execSync('npx prettier --check "tests/**/*.{js,ts,tsx,json}"', { encoding: 'utf8' });
-      console.log('✅ All files are properly formatted');
+      filesToCheck = execSync('npx prettier --list-different "tests/**/*.{js,ts,tsx,json}"', { encoding: 'utf8' });
+    } catch (e) {
+      filesToCheck = e.stdout?.toString() || '';
+    }
+    
+    const filesToFormat = filesToCheck.split('\n').filter(Boolean);
+    
+    if (filesToFormat.length === 0) {
+      console.log('✅ No prettier formatting needed');
       return {
         filesWithIssues: 0,
         totalChanges: 0,
         files: [],
         sample: ''
       };
-    } catch (e) {
-      output = e.stdout || '';
     }
-
-    // Parse prettier output to get files
-    const lines = output.split('\n').filter(line => line.trim());
-    const files = [];
     
-    lines.forEach(line => {
-      // Prettier output format: "[warn] filename"
-      if (line.includes('[warn]')) {
-        const match = line.match(/\[warn\]\s+(.+)/);
-        if (match) files.push(match[1]);
-      }
-      // Or just the filename if checking failed
-      else if (line.includes('tests/') && !line.includes('Checking formatting...')) {
-        files.push(line.trim());
-      }
-    });
-
-    // Count total changes by checking each file
-    let totalChanges = 0;
+    console.log(`📝 Found ${filesToFormat.length} files needing formatting:`, filesToFormat);
+    
+    // Generate diff WITHOUT modifying files
     let combinedDiff = '';
+    let totalChanges = 0;
+    let sampleLines = [];
     
-    for (const file of files) {
-      if (!fs.existsSync(file)) continue;
-      
+    for (const file of filesToFormat) {
       try {
-        const original = fs.readFileSync(file, 'utf8');
+        console.log(`🔍 Processing ${file}...`);
         
-        // Format the file to string (not writing to disk)
-        const formatted = execSync(`npx prettier "${file}"`, { encoding: 'utf8' });
+        // Read original content
+        const originalContent = fs.readFileSync(file, 'utf8');
         
-        // Count character-level differences for more accurate count
-        if (original !== formatted) {
-          // Count line differences
-          const originalLines = original.split('\n');
-          const formattedLines = formatted.split('\n');
+        // Get formatted content without writing to file
+        const formattedContent = execSync(`npx prettier "${file}"`, { encoding: 'utf8' });
+        
+        if (originalContent !== formattedContent) {
+          // Create temp files for diff
+          const tempOriginal = `${file}.original.tmp`;
+          const tempFormatted = `${file}.formatted.tmp`;
           
-          // Generate a simple unified diff manually
-          let fileDiff = `--- a/${file}\n+++ b/${file}\n`;
-          let changeCount = 0;
+          fs.writeFileSync(tempOriginal, originalContent);
+          fs.writeFileSync(tempFormatted, formattedContent);
           
-          // Simple line-by-line comparison
-          const maxLen = Math.max(originalLines.length, formattedLines.length);
-          for (let i = 0; i < maxLen; i++) {
-            if (originalLines[i] !== formattedLines[i]) {
-              if (i < originalLines.length) {
-                fileDiff += `-${originalLines[i]}\n`;
-                changeCount++;
-              }
-              if (i < formattedLines.length) {
-                fileDiff += `+${formattedLines[i]}\n`;
-                changeCount++;
-              }
+          try {
+            // Generate unified diff
+            const fileDiff = execSync(`diff -u "${tempOriginal}" "${tempFormatted}" || true`, { encoding: 'utf8' });
+            
+            if (fileDiff) {
+              // Convert to git diff format
+              const gitStyleDiff = fileDiff
+                .replace(new RegExp(`--- ${tempOriginal}`, 'g'), `--- a/${file}`)
+                .replace(new RegExp(`\\+\\+\\+ ${tempFormatted}`, 'g'), `+++ b/${file}`);
+              
+              // Add git diff header
+              combinedDiff += `diff --git a/${file} b/${file}\n`;
+              combinedDiff += `index 0000000..1111111 100644\n`;
+              combinedDiff += gitStyleDiff;
+              if (!gitStyleDiff.endsWith('\n')) combinedDiff += '\n';
+              
+              // Count changes
+              const addedLines = (gitStyleDiff.match(/^\+(?!\+)/gm) || []).length;
+              const removedLines = (gitStyleDiff.match(/^-(?!-)/gm) || []).length;
+              totalChanges += addedLines + removedLines;
+              
+              // Collect sample lines for display
+              const diffLines = gitStyleDiff.split('\n');
+              diffLines.forEach(line => {
+                if ((line.startsWith('+') || line.startsWith('-')) && !line.startsWith('+++') && !line.startsWith('---')) {
+                  if (sampleLines.length < 20) {
+                    sampleLines.push(line);
+                  }
+                }
+              });
+              
+              console.log(`  ├─ +${addedLines} -${removedLines} changes`);
             }
+          } finally {
+            // Cleanup temp files
+            try { fs.unlinkSync(tempOriginal); } catch {}
+            try { fs.unlinkSync(tempFormatted); } catch {}
           }
-          
-          totalChanges += changeCount;
-          
-          // Add to combined diff
-          combinedDiff += `diff --git a/${file} b/${file}\n`;
-          combinedDiff += `index 0000000..1111111 100644\n`;
-          combinedDiff += fileDiff;
         }
       } catch (error) {
-        console.log(`Error processing ${file}:`, error.message);
+        console.log(`  ├─ ⚠️  Failed to process ${file}: ${error.message}`);
       }
     }
-
-    console.log(`📝 Found ${files.length} files needing formatting with ${totalChanges} changes`);
-
-    // Send to reviewdog
-    if (combinedDiff && IS_PR) {
-      runReviewdog(combinedDiff, 'diff', 'prettier');
+    
+    console.log(`📈 Total changes found: ${totalChanges}`);
+    
+    if (!combinedDiff || totalChanges === 0) {
+      console.log('📝 No substantial changes detected');
+      return {
+        filesWithIssues: filesToFormat.length,
+        totalChanges: 0,
+        files: filesToFormat,
+        sample: ''
+      };
     }
-
+    
+    // Save full diff
+    fs.writeFileSync('artifacts/prettier-diff-full.txt', combinedDiff);
+    console.log(`💾 Full diff saved to artifacts/prettier-diff-full.txt (${combinedDiff.length} bytes)`);
+    
+    // Send to reviewdog with truncation if needed
+    let reviewdogDiff = combinedDiff;
+    if (totalChanges > 50) {
+      console.log(`⚠️  Too many changes (${totalChanges}) for inline comments. Truncating to first 50...`);
+      // Truncate diff to first 50 changes
+      const lines = combinedDiff.split('\n');
+      let changeCount = 0;
+      let truncatedDiff = '';
+      
+      for (const line of lines) {
+        truncatedDiff += line + '\n';
+        if ((line.startsWith('+') || line.startsWith('-')) && !line.startsWith('+++') && !line.startsWith('---')) {
+          changeCount++;
+          if (changeCount >= 50) break;
+        }
+      }
+      reviewdogDiff = truncatedDiff;
+    }
+    
+    console.log('\n🔍 Sending diff to reviewdog...');
+    runReviewdog(reviewdogDiff, 'diff', 'prettier');
+    
     return {
-      filesWithIssues: files.length,
+      filesWithIssues: filesToFormat.length,
       totalChanges: totalChanges,
-      files: files,
-      sample: combinedDiff.split('\n').slice(0, 20).join('\n')
+      files: filesToFormat,
+      sample: sampleLines.join('\n'),
+      exceedsLimit: totalChanges > 50
     };
     
   } catch (error) {
@@ -145,6 +195,7 @@ function runPrettier() {
       filesWithIssues: 0,
       totalChanges: 0,
       files: [],
+      sample: '',
       error: error.message
     };
   }
@@ -154,57 +205,68 @@ function runESLint() {
   console.log('\n▶ ESLint');
   
   try {
-    let jsonOutput = '';
+    let raw = '';
     try {
-      jsonOutput = execSync('npx eslint "tests/**/*.{js,ts,tsx}" --format json', { encoding: 'utf8' });
+      raw = execSync('npx eslint "tests/**/*.{js,ts,tsx}" --format json', { encoding: 'utf8' });
     } catch (e) {
-      // ESLint exits with 1 if there are issues
-      jsonOutput = e.stdout || '';
+      raw = e.stdout?.toString() || '';
     }
 
-    if (!jsonOutput || jsonOutput.trim() === '') {
-      console.log('✅ No ESLint issues found');
+    if (!raw) {
+      console.log('✅ No ESLint output');
       return { files: 0, errors: 0, warnings: 0 };
     }
 
-    const results = JSON.parse(jsonOutput);
-    let errors = 0, warnings = 0, fixableErrors = 0, fixableWarnings = 0;
-    let firstError = '';
-    const filesWithIssues = new Set();
+    let results = [];
+    try {
+      results = JSON.parse(raw);
+    } catch (parseError) {
+      console.error('❌ Failed to parse ESLint JSON:', parseError.message);
+      console.log('First 200 chars of output:', raw.substring(0, 200));
+      return { files: 0, errors: 0, warnings: 0, error: 'Parse error' };
+    }
 
-    results.forEach(file => {
-      if (file.messages && file.messages.length > 0) {
-        filesWithIssues.add(file.filePath);
-        
-        file.messages.forEach(msg => {
-          if (msg.severity === 2) {
+    let errors = 0,
+      warnings = 0,
+      fixErr = 0,
+      fixWarn = 0,
+      first = '',
+      files = new Set();
+
+    results.forEach(f => {
+      if (f.messages && f.messages.length) {
+        files.add(f.filePath);
+      }
+      if (f.messages) {
+        f.messages.forEach(m => {
+          if (m.severity === 2) {
             errors++;
-            if (msg.fix) fixableErrors++;
-            if (!firstError) {
-              firstError = `${msg.ruleId} in ${file.filePath}:${msg.line}`;
-            }
-          } else if (msg.severity === 1) {
+            if (m.fix) fixErr++;
+            if (!first) first = `${m.ruleId || 'unknown-rule'} in ${f.filePath}:${m.line}`;
+          } else if (m.severity === 1) {
             warnings++;
-            if (msg.fix) fixableWarnings++;
+            if (m.fix) fixWarn++;
           }
         });
       }
     });
 
-    console.log(`📊 ESLint: ${errors} errors, ${warnings} warnings in ${filesWithIssues.size} files`);
+    console.log(`📊 ESLint: ${errors} errors, ${warnings} warnings in ${files.size} files`);
 
-    // Send to reviewdog
-    if (jsonOutput && (errors > 0 || warnings > 0) && IS_PR) {
-      runReviewdog(jsonOutput, 'eslint', 'eslint');
+    if (raw && (errors > 0 || warnings > 0)) {
+      fs.writeFileSync('artifacts/eslint-results.json', raw);
+      console.log('🔍 Sending to reviewdog...');
+      runReviewdog(raw, 'eslint', 'eslint');
     }
 
     return {
-      files: filesWithIssues.size,
+      files: files.size,
       errors,
       warnings,
-      fixableErrors,
-      fixableWarnings,
-      first: firstError
+      fixableErrors: fixErr,
+      fixableWarnings: fixWarn,
+      first,
+      exceedsLimit: errors + warnings > 50
     };
     
   } catch (error) {
@@ -216,6 +278,12 @@ function runESLint() {
 // Main execution
 console.log('🚀 Starting lint checks...');
 
+// Environment info
+console.log('🔍 Environment:');
+console.log(`  ├─ Event: ${process.env.GITHUB_EVENT_NAME}`);
+console.log(`  ├─ Is PR: ${IS_PR}`);
+console.log(`  ├─ Has Token: ${!!HAS_REVIEWDOG_TOKEN}`);
+
 const prettier = runPrettier();
 const eslint = runESLint();
 
@@ -225,5 +293,9 @@ fs.mkdirSync('artifacts', { recursive: true });
 fs.writeFileSync('artifacts/lint-summary.json', JSON.stringify(summary, null, 2));
 console.log('📁 Summary saved to artifacts/lint-summary.json');
 
-// Always exit successfully
+console.log('\n📋 Summary:');
+console.log(`├─ Prettier: ${prettier.filesWithIssues} files, ${prettier.totalChanges} changes`);
+console.log(`└─ ESLint: ${eslint.files} files, ${eslint.errors} errors, ${eslint.warnings} warnings`);
+
+// Always exit with success
 process.exit(0);
