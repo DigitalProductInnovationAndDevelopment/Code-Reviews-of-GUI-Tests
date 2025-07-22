@@ -3,6 +3,8 @@ name: GUI Test Review
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main, modulartest]  # Add branches that should trigger the workflow
   workflow_dispatch:
     inputs:
       mode:
@@ -158,13 +160,13 @@ jobs:
           retention-days: 30
   
   # ────────────────────────────────────────────────────────────
-  # This job generates dashboard and prepares the GitHub Pages content
-  build:
+  # This job generates dashboard and deploys to gh-pages branch
+  dashboard:
     needs: [test, lint]
     if: ${{ always() && (github.event.inputs.mode == 'full' || github.event.inputs.mode == 'dashboard-only' || !github.event.inputs.mode) }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write  # Need write permission to push to gh-pages branch
       pull-requests: write
 
     steps:
@@ -241,51 +243,8 @@ jobs:
             echo "{\"md\":\"$(cat combined-artifacts/checklist.md | tr '\n' '\\n')\"}" > combined-artifacts/checklist.json
           fi
 
-      # Create simple dashboard HTML page if generate-webpage.js fails
-      - name: Create simple dashboard
-        run: |
-          # Create simple HTML dashboard as fallback
-          cat > combined-artifacts/web-report/index.html << EOF
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <title>GUI Test Dashboard</title>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1">
-              <style>
-                  body {font:15px/1.6 system-ui,sans-serif;background:#fafafa;margin:0;padding:2rem}
-                  h1 {font-size:2rem;margin-bottom:1.2rem}
-                  .card {background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:1.3rem;margin-bottom:1.3rem}
-                  pre {background:#2d2d2d;color:#f8f8f2;padding:1rem;border-radius:8px;overflow:auto;font-size:13px;margin-top:.6em}
-              </style>
-          </head>
-          <body>
-              <h1>🔍 GUI Test Dashboard</h1>
-              <div class="card">
-                  <h2>Checklist</h2>
-                  <pre>$(cat combined-artifacts/checklist.md)</pre>
-              </div>
-              <div class="card">
-                  <h2>Test Summary</h2>
-                  <p>PR Tests: $(jq -r '.total // 0' combined-artifacts/playwright-summary-pr.json || echo "0") total, 
-                  $(jq -r '.passed // 0' combined-artifacts/playwright-summary-pr.json || echo "0") passed, 
-                  $(jq -r '.failed // 0' combined-artifacts/playwright-summary-pr.json || echo "0") failed</p>
-              </div>
-              <div class="card">
-                  <h2>Lint Results</h2>
-                  <p>ESLint: $(jq -r '.eslint.errors // 0' combined-artifacts/lint-summary.json || echo "0") errors, 
-                  $(jq -r '.eslint.warnings // 0' combined-artifacts/lint-summary.json || echo "0") warnings</p>
-                  <p>Prettier: $(jq -r '.prettier.filesWithIssues // 0' combined-artifacts/lint-summary.json || echo "0") files with issues</p>
-              </div>
-              <footer style="font-size:.8rem;color:#666;margin-top:2rem">
-                  Generated $(date)
-              </footer>
-          </body>
-          </html>
-          EOF
-
-      # Try to generate the full dashboard
-      - name: Try to generate full dashboard
+      # Try to generate dashboard 
+      - name: Generate dashboard
         run: |
           # Copy playwright-metrics.json to the working directory
           cp combined-artifacts/playwright-metrics.json playwright-metrics.json || true
@@ -324,83 +283,96 @@ jobs:
           fi
         continue-on-error: true
 
-      # Upload dashboard artifacts
+      # Create simple dashboard HTML page if generate-webpage.js fails
+      - name: Create fallback dashboard if needed
+        run: |
+          # Check if index.html was created
+          if [[ ! -f combined-artifacts/web-report/index.html ]]; then
+            # Create simple HTML dashboard as fallback
+            cat > combined-artifacts/web-report/index.html << EOF
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>GUI Test Dashboard</title>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <style>
+                    body {font:15px/1.6 system-ui,sans-serif;background:#fafafa;margin:0;padding:2rem}
+                    h1 {font-size:2rem;margin-bottom:1.2rem}
+                    .card {background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:1.3rem;margin-bottom:1.3rem}
+                    pre {background:#2d2d2d;color:#f8f8f2;padding:1rem;border-radius:8px;overflow:auto;font-size:13px;margin-top:.6em}
+                </style>
+            </head>
+            <body>
+                <h1>🔍 GUI Test Dashboard</h1>
+                <div class="card">
+                    <h2>Checklist</h2>
+                    <pre>$(cat combined-artifacts/checklist.md)</pre>
+                </div>
+                <div class="card">
+                    <h2>Test Summary</h2>
+                    <p>PR Tests: $(jq -r '.total // 0' combined-artifacts/playwright-summary-pr.json || echo "0") total, 
+                    $(jq -r '.passed // 0' combined-artifacts/playwright-summary-pr.json || echo "0") passed, 
+                    $(jq -r '.failed // 0' combined-artifacts/playwright-summary-pr.json || echo "0") failed</p>
+                </div>
+                <div class="card">
+                    <h2>Lint Results</h2>
+                    <p>ESLint: $(jq -r '.eslint.errors // 0' combined-artifacts/lint-summary.json || echo "0") errors, 
+                    $(jq -r '.eslint.warnings // 0' combined-artifacts/lint-summary.json || echo "0") warnings</p>
+                    <p>Prettier: $(jq -r '.prettier.filesWithIssues // 0' combined-artifacts/lint-summary.json || echo "0") files with issues</p>
+                </div>
+                <footer style="font-size:.8rem;color:#666;margin-top:2rem">
+                    Generated $(date)
+                </footer>
+            </body>
+            </html>
+            EOF
+            echo "Created fallback dashboard"
+          fi
+
+      # Upload regular artifact for viewing
       - uses: actions/upload-artifact@v4
         with:
           name: gui-dashboard
-          path: combined-artifacts/
-          retention-days: 30
-      
-      # Upload specifically for GitHub Pages deployment using the official method
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
           path: combined-artifacts/web-report/
+          retention-days: 30
 
-      # Add PR comment with link to artifacts
-      - name: Add PR comment with artifacts link
+      # Deploy to GitHub Pages using branch-based approach
+      - name: Deploy to GitHub Pages branch
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./combined-artifacts/web-report
+          destination_dir: .
+          full_commit_message: 'Deploy GUI Test Dashboard from ${{ github.repository }}@${{ github.sha }}'
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          force_orphan: false  # Set to true if you want a clean history
+      
+      # Get the URL of the GitHub Pages site
+      - name: Get GitHub Pages URL
+        id: get-pages-url
+        run: |
+          # Get repository owner and name
+          REPO_OWNER="${GITHUB_REPOSITORY_OWNER}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          
+          # Generate GitHub Pages URL
+          PAGES_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/"
+          
+          echo "GitHub Pages URL: ${PAGES_URL}"
+          echo "pages_url=${PAGES_URL}" >> $GITHUB_OUTPUT
+
+      # Add PR comment with dashboard link
+      - name: Add PR comment with dashboard link
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const pagesUrl = process.env.PAGES_URL;
             const artifactUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/artifacts`;
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## 📊 GUI Test Artifacts Available
-              
-              The dashboard has been generated and is available as an artifact.
-              
-              [⬇️ Download Dashboard Artifacts](${artifactUrl})
-              
-              GitHub Pages deployment will be attempted next.
-              `
-            });
-  
-  # This is the dedicated deployment job for GitHub Pages
-  # This follows GitHub's recommended pattern exactly
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    
-    # Grant GITHUB_TOKEN the permissions required for this job
-    permissions:
-      pages: write      # to deploy to Pages
-      id-token: write   # to verify the deployment originates from an appropriate source
-    
-    # Deploy to the github-pages environment
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    
-    # Specify that we're deploying to GitHub Pages
-    concurrency:
-      group: "pages"
-      cancel-in-progress: false
-    
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-  
-  # Add the URL comment to the PR after deployment
-  comment:
-    needs: deploy
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    
-    steps:
-      - name: Comment on PR with deployment URL
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const deploymentUrl = process.env.DEPLOYMENT_URL;
             
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -408,10 +380,45 @@ jobs:
               repo: context.repo.repo,
               body: `## 🚀 GUI Test Dashboard Deployed
               
-              The dashboard has been successfully deployed to GitHub Pages:
+              The dashboard has been deployed to GitHub Pages:
               
-              [🔍 View Dashboard](${deploymentUrl})
+              [🔍 View Dashboard](${pagesUrl})
+              
+              You can also [download the artifacts](${artifactUrl}) for offline viewing.
+              
+              This dashboard contains:
+              - Test results comparison between PR and main branch
+              - Code quality metrics
+              - Visual flowcharts (if available)
               `
             });
         env:
-          DEPLOYMENT_URL: ${{ needs.deploy.outputs.url }}
+          PAGES_URL: ${{ steps.get-pages-url.outputs.pages_url }}
+  
+  # ────────────────────────────────────────────────────────────
+  # This job runs the action in standalone mode (for workflow_dispatch)
+  standalone:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'full' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Need write permission to push to gh-pages branch
+      pull-requests: write
+    
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Run GUI Test Review (Standalone mode)
+        uses: ./  # Use local action
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: 'full'
+          skip-playwright: ${{ github.event.inputs.skip-tests || 'false' }}
+          skip-eslint: ${{ github.event.inputs.skip-eslint || 'false' }}
+          skip-prettier: ${{ github.event.inputs.skip-prettier || 'false' }}
+          use-project-eslint: 'true'
+          use-project-prettier: 'true'
+          enable-visual-comparison: 'true'
+          enable-pr-comments: 'true'
+          enable-github-pages: 'false'  # Don't use GitHub Actions deployment

@@ -33,9 +33,14 @@ inputs:
     default: 'true'
   
   enable-github-pages:
-    description: 'Whether to deploy visual dashboard to GitHub Pages'
+    description: 'Whether to deploy visual dashboard to gh-pages branch'
     required: false
     default: 'true'
+  
+  github-pages-branch:
+    description: 'Branch to deploy GitHub Pages to'
+    required: false
+    default: 'gh-pages'
   
   reviewdog-reporter:
     description: 'Reviewdog reporter for inline code quality feedback'
@@ -143,8 +148,8 @@ outputs:
     value: ${{ steps.setup.outputs.artifacts-path }}
   
   dashboard-url:
-    description: 'URL to the deployed visual testing dashboard'
-    value: ${{ steps.deploy-report.outputs.page_url }}
+    description: 'URL to the deployed visual dashboard'
+    value: ${{ steps.set-pages-url.outputs.pages_url }}
   
   test-pass-rate:
     description: 'GUI test pass rate percentage'
@@ -185,6 +190,10 @@ outputs:
   lint-results:
     description: 'Lint results summary JSON (modular mode)'
     value: ${{ steps.lint-summary.outputs.results }}
+  
+  dashboard-artifact-name:
+    description: 'Name of the artifact containing the dashboard'
+    value: ${{ steps.dashboard-artifact.outputs.name }}
 
 runs:
   using: 'composite'
@@ -582,7 +591,18 @@ runs:
         echo "✅ Artifacts captured: $ARTIFACTS_LIST"
       continue-on-error: true
     
-    - name: Upload visual artifacts for code reviewers
+    # Upload the dashboard as a regular artifact
+    - name: Upload dashboard as artifact
+      id: dashboard-artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: gui-test-dashboard
+        path: ${{ inputs.custom-artifacts-path }}/web-report/
+        retention-days: ${{ inputs.artifacts-retention-days }}
+      continue-on-error: true
+    
+    # Upload all artifacts
+    - name: Upload all visual artifacts for code reviewers
       uses: actions/upload-artifact@v4
       with:
         name: gui-test-visual-artifacts
@@ -590,14 +610,39 @@ runs:
         retention-days: ${{ inputs.artifacts-retention-days }}
       continue-on-error: true
     
-    - name: Deploy visual dashboard to GitHub Pages
-      id: deploy-report
+    # Deploy to GitHub Pages using branch-based approach
+    - name: Deploy to GitHub Pages branch
+      id: deploy-pages
       if: inputs.enable-github-pages == 'true' && (inputs.mode == 'full' || inputs.mode == 'dashboard-only')
-      uses: actions/deploy-pages@v4
+      uses: peaceiris/actions-gh-pages@v3
       with:
-        artifact_name: gui-test-visual-artifacts
-        path: ${{ inputs.custom-artifacts-path }}/web-report
+        github_token: ${{ inputs.github-token }}
+        publish_branch: ${{ inputs.github-pages-branch }}
+        publish_dir: ./${{ inputs.custom-artifacts-path }}/web-report
+        destination_dir: .
+        full_commit_message: 'Deploy GUI Test Dashboard from ${{ github.repository }}@${{ github.sha }}'
+        user_name: 'github-actions[bot]'
+        user_email: 'github-actions[bot]@users.noreply.github.com'
       continue-on-error: true
+    
+    # Set the GitHub Pages URL
+    - name: Set GitHub Pages URL
+      id: set-pages-url
+      shell: bash
+      run: |
+        # Get repository info from GITHUB_REPOSITORY
+        REPO_OWNER=$(echo $GITHUB_REPOSITORY | cut -d '/' -f 1)
+        REPO_NAME=$(echo $GITHUB_REPOSITORY | cut -d '/' -f 2)
+        
+        # Generate GitHub Pages URL
+        if [ -n "${{ inputs.web-report-url }}" ]; then
+          PAGES_URL="${{ inputs.web-report-url }}"
+        else
+          PAGES_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/"
+        fi
+        
+        echo "📄 GitHub Pages URL: ${PAGES_URL}"
+        echo "pages_url=${PAGES_URL}" >> $GITHUB_OUTPUT
     
     - name: Post comprehensive visual feedback to PR
       if: inputs.enable-pr-comments == 'true' && github.event_name == 'pull_request' && (inputs.mode == 'full' || inputs.mode == 'dashboard-only' || inputs.mode == 'comment-only')
@@ -605,7 +650,7 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         ARTIFACTS_DIR: ${{ inputs.custom-artifacts-path }}
-        WEB_REPORT_URL: ${{ inputs.web-report-url || steps.deploy-report.outputs.page_url || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
+        WEB_REPORT_URL: ${{ inputs.web-report-url || steps.set-pages-url.outputs.pages_url }}
       run: |
         echo "💬 Posting comprehensive visual feedback to PR..."
         if [ -f "${{ github.action_path }}/scripts/summary-comment.js" ]; then
@@ -615,6 +660,19 @@ runs:
         else
           echo "⚠️ Summary comment script not found, skipping PR comment"
         fi
+        
+        # Add a comment with artifact link as fallback
+        if [ "${{ steps.deploy-pages.outcome }}" != "success" ] && [ "${{ github.event_name }}" == "pull_request" ]; then
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          
+          # Create a comment with artifact link
+          curl -X POST \
+            -H "Authorization: token ${{ inputs.github-token }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            -d "{\"body\":\"## 📊 GUI Test Dashboard\\n\\nThe dashboard has been generated and is available as an artifact.\\n\\n[⬇️ Download Dashboard Artifacts](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts)\\n\\nYou can view the dashboard by downloading and extracting the artifact.\"}"
+        fi
+        
         echo "✅ Visual feedback posted to PR"
       continue-on-error: true
     
@@ -643,7 +701,14 @@ runs:
         echo "🎉 GUI-Based Testing Code Review Analysis Complete!"
         echo "════════════════════════════════════════════════════════"
         echo "📊 Visual artifacts and comprehensive feedback generated"
-        echo "🎨 Interactive dashboard deployed for code reviewers"
+        
+        if [ "${{ steps.deploy-pages.outcome }}" == "success" ]; then
+          echo "🎨 Interactive dashboard deployed to GitHub Pages"
+          echo "   URL: ${{ steps.set-pages-url.outputs.pages_url }}"
+        else
+          echo "📦 Interactive dashboard available as an artifact"
+        fi
+        
         echo "💬 PR comments updated with visual context"
         echo "📋 Review checklist created for quality assurance"
         echo ""
