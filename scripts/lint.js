@@ -1,140 +1,53 @@
 #!/usr/bin/env node
 /**
- * Modular lint script that respects user's existing configurations
+ * CRITICAL: This script provides non-blocking lint feedback via reviewdog.
  */
 const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
-const path = require('path');
 
-// Configuration
-const USE_PROJECT_CONFIG = process.env.USE_PROJECT_CONFIG !== 'false';
-const ARTIFACTS_DIR = process.env.ARTIFACTS_DIR || 'artifacts';
 const IS_PR = process.env.GITHUB_EVENT_NAME === 'pull_request';
+const HAS_REVIEWDOG_TOKEN = process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN;
 
-// Ensure artifacts directory exists
-fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
-
-/**
- * Check if a config file exists in the project
- */
-function hasProjectConfig(configFiles) {
-  return configFiles.some(file => fs.existsSync(path.join(process.cwd(), file)));
-}
-
-/**
- * Get ESLint config to use
- */
-function getESLintConfig() {
-  const projectConfigs = [
-    '.eslintrc.js',
-    '.eslintrc.cjs',
-    '.eslintrc.mjs',
-    '.eslintrc.json',
-    '.eslintrc.yaml',
-    '.eslintrc.yml',
-    'eslint.config.js',
-    'eslint.config.mjs',
-    'eslint.config.cjs'
-  ];
-  
-  if (USE_PROJECT_CONFIG && hasProjectConfig(projectConfigs)) {
-    console.log('✅ Using project ESLint configuration');
-    return null; // Use project's config
-  }
-  
-  console.log('📦 Using action\'s default ESLint configuration');
-  return path.join(__dirname, '..', '.eslintrc.json');
-}
-
-/**
- * Get Prettier config to use
- */
-function getPrettierConfig() {
-  const projectConfigs = [
-    '.prettierrc',
-    '.prettierrc.json',
-    '.prettierrc.yml',
-    '.prettierrc.yaml',
-    '.prettierrc.json5',
-    '.prettierrc.js',
-    '.prettierrc.cjs',
-    '.prettierrc.mjs',
-    'prettier.config.js',
-    'prettier.config.cjs',
-    'prettier.config.mjs'
-  ];
-  
-  if (USE_PROJECT_CONFIG && hasProjectConfig(projectConfigs)) {
-    console.log('✅ Using project Prettier configuration');
-    return null; // Use project's config
-  }
-  
-  console.log('📦 Using action\'s default Prettier configuration');
-  return path.join(__dirname, '..', '.prettierrc.json');
-}
-
-/**
- * Run reviewdog for PR comments
- */
 function runReviewdog(input, format, name) {
-  if (!IS_PR || !process.env.GITHUB_TOKEN) {
-    console.log(`📝 Skipping reviewdog (not a PR or no token)`);
+  if (!IS_PR || !HAS_REVIEWDOG_TOKEN) {
+    console.log(`📝 Skipping reviewdog (IS_PR: ${IS_PR}, HAS_TOKEN: ${!!HAS_REVIEWDOG_TOKEN})`);
     return;
   }
+
+  console.log(`🔍 Running reviewdog for ${name}...`);
   
   try {
-    const result = spawnSync('reviewdog', [
+    const rd = spawnSync('reviewdog', [
       `-f=${format}`,
       `-name=${name}`,
       '-reporter=github-pr-review',
-      '-filter-mode=diff_context',
+      '-filter-mode=nofilter',
       '-level=info',
       '-fail-on-error=false'
-    ], {
-      input: input,
-      stdio: ['pipe', 'pipe', 'pipe'],
+    ], { 
+      input: input, 
+      stdio: ['pipe', 'inherit', 'inherit'],
       encoding: 'utf8',
       env: {
         ...process.env,
-        REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN
+        REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
       }
     });
     
-    if (result.status === 0) {
-      console.log(`✅ Reviewdog comments posted for ${name}`);
-    } else {
-      console.log(`⚠️  Reviewdog failed with exit code ${result.status}`);
-    }
+    console.log(`📊 Reviewdog exit code: ${rd.status}`);
   } catch (error) {
-    console.error(`❌ Reviewdog error: ${error.message}`);
+    console.error(`❌ Failed to run reviewdog for ${name}:`, error.message);
   }
 }
 
-/**
- * Run Prettier checks
- */
 function runPrettier() {
-  console.log('\n▶ Running Prettier checks...');
-  
-  const config = getPrettierConfig();
-  const configArg = config ? `--config "${config}"` : '';
+  console.log('\n▶ Prettier');
   
   try {
     // Get list of files that need formatting
-    let filesToFormat = '';
+    let output = '';
     try {
-      filesToFormat = execSync(
-        `npx prettier ${configArg} --list-different "tests/**/*.{js,ts,tsx,json}" 2>/dev/null`,
-        { encoding: 'utf8' }
-      );
-    } catch (e) {
-      // Prettier exits with 1 if files need formatting
-      filesToFormat = e.stdout || '';
-    }
-    
-    const files = filesToFormat.split('\n').filter(Boolean);
-    
-    if (files.length === 0) {
+      execSync('npx prettier --check "tests/**/*.{js,ts,tsx,json}"', { encoding: 'utf8' });
       console.log('✅ All files are properly formatted');
       return {
         filesWithIssues: 0,
@@ -142,59 +55,89 @@ function runPrettier() {
         files: [],
         sample: ''
       };
+    } catch (e) {
+      output = e.stdout || '';
     }
+
+    // Parse prettier output to get files
+    const lines = output.split('\n').filter(line => line.trim());
+    const files = [];
     
-    console.log(`📝 Found ${files.length} files needing formatting`);
-    
-    // Generate diff for reviewdog
-    let combinedDiff = '';
+    lines.forEach(line => {
+      // Prettier output format: "[warn] filename"
+      if (line.includes('[warn]')) {
+        const match = line.match(/\[warn\]\s+(.+)/);
+        if (match) files.push(match[1]);
+      }
+      // Or just the filename if checking failed
+      else if (line.includes('tests/') && !line.includes('Checking formatting...')) {
+        files.push(line.trim());
+      }
+    });
+
+    // Count total changes by checking each file
     let totalChanges = 0;
+    let combinedDiff = '';
     
     for (const file of files) {
+      if (!fs.existsSync(file)) continue;
+      
       try {
         const original = fs.readFileSync(file, 'utf8');
-        const formatted = execSync(`npx prettier ${configArg} "${file}"`, { encoding: 'utf8' });
         
+        // Format the file to string (not writing to disk)
+        const formatted = execSync(`npx prettier "${file}"`, { encoding: 'utf8' });
+        
+        // Count character-level differences for more accurate count
         if (original !== formatted) {
-          // Create simple diff
-          const lines = original.split('\n');
+          // Count line differences
+          const originalLines = original.split('\n');
           const formattedLines = formatted.split('\n');
-          let diff = `diff --git a/${file} b/${file}\n`;
-          diff += `index 0000000..1111111 100644\n`;
-          diff += `--- a/${file}\n`;
-          diff += `+++ b/${file}\n`;
           
-          // Simple line-by-line diff
-          const maxLines = Math.max(lines.length, formattedLines.length);
-          for (let i = 0; i < maxLines; i++) {
-            if (lines[i] !== formattedLines[i]) {
-              if (lines[i] !== undefined) diff += `-${lines[i]}\n`;
-              if (formattedLines[i] !== undefined) diff += `+${formattedLines[i]}\n`;
-              totalChanges++;
+          // Generate a simple unified diff manually
+          let fileDiff = `--- a/${file}\n+++ b/${file}\n`;
+          let changeCount = 0;
+          
+          // Simple line-by-line comparison
+          const maxLen = Math.max(originalLines.length, formattedLines.length);
+          for (let i = 0; i < maxLen; i++) {
+            if (originalLines[i] !== formattedLines[i]) {
+              if (i < originalLines.length) {
+                fileDiff += `-${originalLines[i]}\n`;
+                changeCount++;
+              }
+              if (i < formattedLines.length) {
+                fileDiff += `+${formattedLines[i]}\n`;
+                changeCount++;
+              }
             }
           }
           
-          combinedDiff += diff;
+          totalChanges += changeCount;
+          
+          // Add to combined diff
+          combinedDiff += `diff --git a/${file} b/${file}\n`;
+          combinedDiff += `index 0000000..1111111 100644\n`;
+          combinedDiff += fileDiff;
         }
       } catch (error) {
-        console.log(`⚠️  Error processing ${file}: ${error.message}`);
+        console.log(`Error processing ${file}:`, error.message);
       }
     }
-    
-    // Save results
-    const result = {
+
+    console.log(`📝 Found ${files.length} files needing formatting with ${totalChanges} changes`);
+
+    // Send to reviewdog
+    if (combinedDiff && IS_PR) {
+      runReviewdog(combinedDiff, 'diff', 'prettier');
+    }
+
+    return {
       filesWithIssues: files.length,
       totalChanges: totalChanges,
       files: files,
       sample: combinedDiff.split('\n').slice(0, 20).join('\n')
     };
-    
-    // Send to reviewdog if we have a diff
-    if (combinedDiff && IS_PR) {
-      runReviewdog(combinedDiff, 'diff', 'prettier');
-    }
-    
-    return result;
     
   } catch (error) {
     console.error('❌ Prettier failed:', error.message);
@@ -207,37 +150,28 @@ function runPrettier() {
   }
 }
 
-/**
- * Run ESLint checks
- */
 function runESLint() {
-  console.log('\n▶ Running ESLint checks...');
-  
-  const config = getESLintConfig();
-  const configArg = config ? `--config "${config}"` : '';
+  console.log('\n▶ ESLint');
   
   try {
     let jsonOutput = '';
     try {
-      jsonOutput = execSync(
-        `npx eslint ${configArg} "tests/**/*.{js,ts,tsx}" --format json`,
-        { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
-      );
+      jsonOutput = execSync('npx eslint "tests/**/*.{js,ts,tsx}" --format json', { encoding: 'utf8' });
     } catch (e) {
-      // ESLint exits with 1 if there are lint errors
+      // ESLint exits with 1 if there are issues
       jsonOutput = e.stdout || '';
     }
-    
-    if (!jsonOutput) {
+
+    if (!jsonOutput || jsonOutput.trim() === '') {
       console.log('✅ No ESLint issues found');
       return { files: 0, errors: 0, warnings: 0 };
     }
-    
+
     const results = JSON.parse(jsonOutput);
     let errors = 0, warnings = 0, fixableErrors = 0, fixableWarnings = 0;
     let firstError = '';
     const filesWithIssues = new Set();
-    
+
     results.forEach(file => {
       if (file.messages && file.messages.length > 0) {
         filesWithIssues.add(file.filePath);
@@ -247,7 +181,7 @@ function runESLint() {
             errors++;
             if (msg.fix) fixableErrors++;
             if (!firstError) {
-              firstError = `${msg.ruleId} in ${path.basename(file.filePath)}:${msg.line}`;
+              firstError = `${msg.ruleId} in ${file.filePath}:${msg.line}`;
             }
           } else if (msg.severity === 1) {
             warnings++;
@@ -256,14 +190,14 @@ function runESLint() {
         });
       }
     });
-    
-    console.log(`📊 ESLint found: ${errors} errors, ${warnings} warnings in ${filesWithIssues.size} files`);
-    
+
+    console.log(`📊 ESLint: ${errors} errors, ${warnings} warnings in ${filesWithIssues.size} files`);
+
     // Send to reviewdog
     if (jsonOutput && (errors > 0 || warnings > 0) && IS_PR) {
       runReviewdog(jsonOutput, 'eslint', 'eslint');
     }
-    
+
     return {
       files: filesWithIssues.size,
       errors,
@@ -280,42 +214,16 @@ function runESLint() {
 }
 
 // Main execution
-async function main() {
-  console.log('🚀 Starting code quality checks...');
-  console.log(`📁 Artifacts directory: ${ARTIFACTS_DIR}`);
-  console.log(`🔧 Use project configs: ${USE_PROJECT_CONFIG}`);
-  
-  const results = {
-    prettier: runPrettier(),
-    eslint: runESLint()
-  };
-  
-  // Save summary
-  fs.writeFileSync(
-    path.join(ARTIFACTS_DIR, 'lint-summary.json'),
-    JSON.stringify(results, null, 2)
-  );
-  
-  // Also save individual results for modular workflows
-  fs.writeFileSync(
-    path.join(ARTIFACTS_DIR, 'prettier-summary.json'),
-    JSON.stringify(results.prettier, null, 2)
-  );
-  
-  fs.writeFileSync(
-    path.join(ARTIFACTS_DIR, 'eslint-summary.json'),
-    JSON.stringify(results.eslint, null, 2)
-  );
-  
-  console.log('\n✅ Code quality checks completed');
-  console.log(`📊 Results saved to ${ARTIFACTS_DIR}/`);
-  
-  // Always exit successfully - linting should not fail the workflow
-  process.exit(0);
-}
+console.log('🚀 Starting lint checks...');
 
-// Run the script
-main().catch(error => {
-  console.error('❌ Fatal error:', error);
-  process.exit(0); // Still exit successfully
-});
+const prettier = runPrettier();
+const eslint = runESLint();
+
+// Save summary
+const summary = { prettier, eslint };
+fs.mkdirSync('artifacts', { recursive: true });
+fs.writeFileSync('artifacts/lint-summary.json', JSON.stringify(summary, null, 2));
+console.log('📁 Summary saved to artifacts/lint-summary.json');
+
+// Always exit successfully
+process.exit(0);

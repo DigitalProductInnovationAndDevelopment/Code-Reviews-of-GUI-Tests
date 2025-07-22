@@ -1,247 +1,128 @@
 #!/usr/bin/env node
 /**
- * Modular PR comment generator for GUI Test Review Dashboard
+ * summary-comment.js
+ * - Upserts a sticky PR comment that shows:
+ *     • Checklist
+ *     • Playwright (PR row always, Main row if available)
+ *     • Prettier & ESLint (PR only)
+ * - No Playwright-report links in the comment body.
  */
+
 const fs = require('fs');
 const path = require('path');
 const { Octokit } = require('@octokit/core');
 
-// Configuration
-const ARTIFACTS_DIR = process.env.ARTIFACTS_DIR || 'artifacts';
-const WEB_REPORT_URL = process.env.WEB_REPORT_URL || '';
+const ART = process.env.ARTIFACTS_DIR || 'artifacts';
 
-// Helper to safely read JSON
-const readJSON = (filename, defaultValue = {}) => {
-  try {
-    const filepath = path.join(ARTIFACTS_DIR, filename);
-    if (fs.existsSync(filepath)) {
-      return JSON.parse(fs.readFileSync(filepath, 'utf8'));
-    }
-  } catch (error) {
-    console.log(`⚠️  Could not read ${filename}: ${error.message}`);
-  }
-  return defaultValue;
+/* helper to read JSON safely */
+const readJSON = (f, d = {}) => {
+  try { return JSON.parse(fs.readFileSync(path.join(ART, f), 'utf8')); }
+  catch { return d; }
 };
 
-// Helper to check if file exists
-const fileExists = (filename) => {
-  return fs.existsSync(path.join(ARTIFACTS_DIR, filename));
-};
+/* summaries */
+const playPR   = readJSON('playwright-summary-pr.json');
+const playMain = readJSON('playwright-summary-main.json');
+const hasMain  = fs.existsSync(path.join(ART, 'playwright-summary-main.json'));
 
-// Get GitHub context
-const getGitHubContext = () => {
-  const eventPath = process.env.GITHUB_EVENT_PATH;
-  if (!eventPath) {
-    throw new Error('GITHUB_EVENT_PATH not set');
-  }
-  
-  const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
-  const prNumber = event.pull_request?.number || event.issue?.number;
-  
-  if (!prNumber) {
-    throw new Error('Not a pull request event');
-  }
-  
-  const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
-  return { owner, repo, prNumber, event };
-};
+const lintPR   = readJSON('lint-summary.json');
+const checklist = (() => {
+  try { return fs.readFileSync(path.join(ART, 'checklist.md'), 'utf8'); }
+  catch { return ''; }
+})();
 
-// Generate comment body
-const generateCommentBody = () => {
-  // Read all available summaries
-  const playwrightSummary = readJSON('playwright-summary.json');
-  const eslintSummary = readJSON('eslint-summary.json');
-  const prettierSummary = readJSON('prettier-summary.json');
-  const lintSummary = readJSON('lint-summary.json');
-  
-  // Check for visual comparison data
-  const hasComparison = fileExists('playwright-summary-pr.json') && 
-                       fileExists('playwright-summary-main.json');
-  const prSummary = readJSON('playwright-summary-pr.json', playwrightSummary);
-  const mainSummary = readJSON('playwright-summary-main.json');
-  
-  // Read checklist if available
-  let checklist = '';
-  try {
-    const checklistPath = path.join(ARTIFACTS_DIR, 'checklist.md');
-    if (fs.existsSync(checklistPath)) {
-      checklist = fs.readFileSync(checklistPath, 'utf8');
-    }
-  } catch (error) {
-    console.log('⚠️  No checklist found');
-  }
-  
-  // Build sections
-  const sections = [];
-  
-  // Header
-  sections.push('# 🎯 GUI Test Review Dashboard\n');
-  
-  // Dashboard link (if available)
-  const runId = process.env.GITHUB_RUN_ID || 'latest';
-  if (WEB_REPORT_URL && !WEB_REPORT_URL.includes('artifact')) {
-    sections.push(`📊 **[View Interactive Dashboard](${WEB_REPORT_URL})** ↗\n`);
-  } else {
-    sections.push(`📊 **Dashboard**: Available as artifact in [workflow summary](../../actions/runs/${runId})\n`);
-  }
-  
-  // Test Results Section
-  if (playwrightSummary.total > 0 || prSummary.total > 0) {
-    sections.push('## 🧪 Test Results\n');
-    
-    if (hasComparison) {
-      // Show comparison table
-      sections.push('| Branch | Total | Passed | Failed | Skipped | Pass Rate | Duration |');
-      sections.push('|--------|------:|-------:|-------:|--------:|----------:|---------:|');
-      sections.push(`| **PR** | ${prSummary.total || 0} | ${prSummary.passed || 0} | ${prSummary.failed || 0} | ${prSummary.skipped || 0} | ${prSummary.pass_rate || 0}% | ${(prSummary.duration || 0) / 1000}s |`);
-      sections.push(`| **Main** | ${mainSummary.total || 0} | ${mainSummary.passed || 0} | ${mainSummary.failed || 0} | ${mainSummary.skipped || 0} | ${mainSummary.pass_rate || 0}% | ${(mainSummary.duration || 0) / 1000}s |`);
-      
-      // Add regression warning if needed
-      if (prSummary.failed > mainSummary.failed || prSummary.pass_rate < mainSummary.pass_rate) {
-        sections.push('\n> ⚠️ **Regression detected**: PR has more failures than main branch\n');
-      }
-    } else {
-      // Single result table
-      const summary = prSummary.total > 0 ? prSummary : playwrightSummary;
-      sections.push(`- **Total Tests**: ${summary.total || 0}`);
-      sections.push(`- **Passed**: ${summary.passed || 0} (${summary.pass_rate || 0}%)`);
-      sections.push(`- **Failed**: ${summary.failed || 0}`);
-      if (summary.skipped > 0) {
-        sections.push(`- **Skipped**: ${summary.skipped}`);
-      }
-      sections.push(`- **Duration**: ${((summary.duration || 0) / 1000).toFixed(2)}s`);
-    }
-    sections.push('');
-  }
-  
-  // Code Quality Section
-  const hasLintResults = (eslintSummary.files > 0 || prettierSummary.filesWithIssues > 0 ||
-                         lintSummary.eslint?.files > 0 || lintSummary.prettier?.filesWithIssues > 0);
-  
-  if (hasLintResults) {
-    sections.push('## 📋 Code Quality\n');
-    
-    // ESLint results
-    const eslint = lintSummary.eslint || eslintSummary;
-    if (eslint.files > 0 || eslint.errors > 0 || eslint.warnings > 0) {
-      sections.push('### ESLint');
-      sections.push(`- **Errors**: ${eslint.errors || 0}`);
-      sections.push(`- **Warnings**: ${eslint.warnings || 0}`);
-      if (eslint.fixableErrors > 0 || eslint.fixableWarnings > 0) {
-        sections.push(`- **Auto-fixable**: ${(eslint.fixableErrors || 0) + (eslint.fixableWarnings || 0)} issues`);
-      }
-      if (eslint.first) {
-        sections.push(`- **First issue**: \`${eslint.first}\``);
-      }
-      sections.push('');
-    }
-    
-    // Prettier results
-    const prettier = lintSummary.prettier || prettierSummary;
-    if (prettier.filesWithIssues > 0) {
-      sections.push('### Prettier');
-      sections.push(`- **Files needing formatting**: ${prettier.filesWithIssues}`);
-      sections.push(`- **Total changes needed**: ${prettier.totalChanges || 0}`);
-      if (prettier.files && prettier.files.length > 0) {
-        sections.push('- **Files**: ' + prettier.files.slice(0, 3).map(f => `\`${path.basename(f)}\``).join(', ') + 
-                     (prettier.files.length > 3 ? ` and ${prettier.files.length - 3} more` : ''));
-      }
-      sections.push('');
-    }
-  }
-  
-  // Checklist Section
-  if (checklist) {
-    sections.push('## ✅ Review Checklist\n');
-    sections.push(checklist);
-    sections.push('');
-  }
-  
-  // Footer
-  sections.push('---');
-  sections.push('_This comment is automatically generated and updated on each push._');
-  if (WEB_REPORT_URL && !WEB_REPORT_URL.includes('artifact')) {
-    sections.push(`_Full details available in the [interactive dashboard](${WEB_REPORT_URL})._`);
-  } else {
-    sections.push(`_Dashboard available as artifact in the workflow summary._`);
-  }
-  
-  return sections.join('\n');
-};
+/* GitHub context */
+const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+const prNumber =
+  event.pull_request?.number ??
+  (event.issue?.pull_request && event.issue.number);
+if (!prNumber) { console.error('Not a PR event'); process.exit(0); }
 
-// Main execution
-async function main() {
-  try {
-    console.log('💬 Generating PR comment...');
-    console.log(`📁 Reading artifacts from: ${ARTIFACTS_DIR}`);
-    
-    // Get GitHub context
-    const { owner, repo, prNumber } = getGitHubContext();
-    console.log(`📍 Repository: ${owner}/${repo}`);
-    console.log(`🔢 PR Number: ${prNumber}`);
-    
-    // Generate comment body
-    const body = generateCommentBody();
-    console.log(`📝 Comment length: ${body.length} characters`);
-    
-    // Show preview of comment
-    console.log('\n📋 Comment preview (first 500 chars):');
-    console.log(body.substring(0, 500) + '...\n');
-    
-    // Initialize Octokit
-    const octokit = new Octokit({ 
-      auth: process.env.GITHUB_TOKEN 
-    });
-    
-    // Find existing comment
-    console.log('🔍 Looking for existing comment...');
-    const { data: comments } = await octokit.request(
-      'GET /repos/{owner}/{repo}/issues/{issue_number}/comments',
-      { owner, repo, issue_number: prNumber }
-    );
-    
-    const botComment = comments.find(comment => 
-      comment.user.type === 'Bot' && 
-      (comment.body.includes('GUI Test Review') || comment.body.includes('🔍 **GUI Test Review**'))
-    );
-    
-    // Update or create comment
-    if (botComment) {
-      console.log(`🔄 Updating existing comment (ID: ${botComment.id})...`);
-      await octokit.request(
-        'PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}',
-        { owner, repo, comment_id: botComment.id, body }
-      );
-      console.log('✅ Comment updated successfully');
-      console.log(`📍 Comment URL: ${botComment.html_url}`);
-    } else {
-      console.log('📝 Creating new comment...');
-      const { data: newComment } = await octokit.request(
-        'POST /repos/{owner}/{repo}/issues/{issue_number}/comments',
-        { owner, repo, issue_number: prNumber, body }
-      );
-      console.log('✅ Comment created successfully');
-      console.log(`📍 Comment URL: ${newComment.html_url}`);
-    }
-    
-  } catch (error) {
-    console.error('❌ Error:', error.message);
-    console.error('Stack:', error.stack);
-    
-    // Don't fail the workflow for comment errors
-    if (error.message.includes('Not a pull request')) {
-      console.log('ℹ️  Not running on a pull request, skipping comment');
-      process.exit(0);
-    }
-    
-    // Log more details for debugging
-    if (error.response) {
-      console.error('API Response:', error.response.status, error.response.data);
-    }
-    
-    process.exit(1);
-  }
-}
+const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-// Run the script
-main();
+/* markdown blocks */
+const mdChecklist = checklist || '_No checklist found_';
+const mdPlay = `
+| Run | Total | Passed | Failed | Skipped | Pass-rate | Duration |
+|-----|------:|-------:|-------:|--------:|-----------|---------:|
+| **PR**   | ${playPR.total??0} | ${playPR.passed??0} | ${playPR.failed??0} | ${playPR.skipped??0} | ${playPR.pass_rate??0}% | ${playPR.duration??0} ms |
+${hasMain ? `| **Main** | ${playMain.total??0} | ${playMain.passed??0} | ${playMain.failed??0} | ${playMain.skipped??0} | ${playMain.pass_rate??0}% | ${playMain.duration??0} ms |` : ''}`;
+
+const mdPrettier = `
+| Metric | PR |
+|--------|---:|
+| **Files needing format** | ${lintPR.prettier?.filesWithIssues ?? 0} |
+| **Places to fix**        | ${lintPR.prettier?.totalChanges   ?? 0} |`;
+
+const mdESLint = `
+| Metric | PR |
+|--------|---:|
+| **Errors**         | ${lintPR.eslint?.errors         ?? 0} |
+| **Warnings**       | ${lintPR.eslint?.warnings       ?? 0} |
+| **Fixable Errors** | ${lintPR.eslint?.fixableErrors  ?? 0} |
+| **Fixable Warns**  | ${lintPR.eslint?.fixableWarnings?? 0} |`;
+
+/* dashboard root (absolute if workflow provided it) */
+const dashboardURL = process.env.WEB_REPORT_URL || '#';
+
+/* final comment body */
+const body = `# 🔍 **GUI Test Review**
+
+<details open><summary><b>▼ Checklist</b></summary>
+
+${mdChecklist}
+</details>
+
+---
+
+### ▶️ Playwright
+
+${mdPlay}
+
+---
+
+### 🎨 Prettier (PR)
+
+${mdPrettier}
+
+${lintPR.prettier?.files?.length
+  ? '**Files:** ' + lintPR.prettier.files.map(f => path.basename(f)).join(', ')
+  : '_No Prettier issues_'}
+
+---
+
+### 📋 ESLint (PR)
+
+${mdESLint}
+
+${lintPR.eslint?.first
+  ? 'First error: `' + lintPR.eslint.first + '`'
+  : '_No ESLint errors_'}
+
+---
+
+👉 **[Open full dashboard ↗](${dashboardURL})**
+
+_Automated comment — updates on every push._`;
+
+/* upsert sticky comment */
+(async () => {
+  const { data: comments } = await octokit.request(
+    'GET /repos/{owner}/{repo}/issues/{issue_number}/comments',
+    { owner, repo, issue_number: prNumber }
+  );
+  const existing = comments.find(
+    c => c.user.type === 'Bot' && c.body.includes('# 🔍 **GUI Test Review**')
+  );
+
+  const endpoint = existing
+    ? 'PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}'
+    : 'POST /repos/{owner}/{repo}/issues/{issue_number}/comments';
+  const params = existing
+    ? { owner, repo, comment_id: existing.id, body }
+    : { owner, repo, issue_number: prNumber, body };
+
+  await octokit.request(endpoint, params);
+  console.log(existing ? '🔄 Updated comment.' : '💬 Created comment.');
+})().catch(err => { console.error(err); process.exit(1); });
