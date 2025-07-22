@@ -12,6 +12,11 @@ inputs:
     required: true
     default: ${{ github.token }}
   
+  mode:
+    description: 'Operation mode: full, lint-only, test-only, dashboard-only, comment-only'
+    required: false
+    default: 'full'
+  
   test-files:
     description: 'Glob pattern for GUI test files to analyze'
     required: false
@@ -71,6 +76,62 @@ inputs:
     description: 'Key test file to verify successful main branch checkout'
     required: false
     default: 'tests/demo-todo-app.spec.ts'
+  
+  # Modular Inputs
+  playwright-artifact:
+    description: 'Name of existing Playwright artifact to use (dashboard-only mode)'
+    required: false
+    default: ''
+  
+  eslint-artifact:
+    description: 'Name of existing ESLint artifact to use (dashboard-only mode)'
+    required: false
+    default: ''
+  
+  prettier-artifact:
+    description: 'Name of existing Prettier artifact to use (dashboard-only mode)'
+    required: false
+    default: ''
+  
+  custom-artifacts-path:
+    description: 'Path to custom artifacts directory'
+    required: false
+    default: 'artifacts'
+  
+  dependencies:
+    description: 'Additional npm dependencies to install (space-separated)'
+    required: false
+    default: ''
+  
+  use-project-eslint:
+    description: 'Use project ESLint config if exists'
+    required: false
+    default: 'true'
+  
+  use-project-prettier:
+    description: 'Use project Prettier config if exists'
+    required: false
+    default: 'true'
+  
+  skip-playwright:
+    description: 'Skip Playwright tests'
+    required: false
+    default: 'false'
+  
+  skip-eslint:
+    description: 'Skip ESLint checks'
+    required: false
+    default: 'false'
+  
+  skip-prettier:
+    description: 'Skip Prettier checks'
+    required: false
+    default: 'false'
+  
+  fail-on-error:
+    description: 'Fail action on any error'
+    required: false
+    default: 'false'
 
 outputs:
   test-results:
@@ -116,6 +177,14 @@ outputs:
   review-checklist-status:
     description: 'Status of the code review checklist completion'
     value: ${{ steps.checklist.outputs.status }}
+  
+  artifacts-uploaded:
+    description: 'List of uploaded artifacts (modular mode)'
+    value: ${{ steps.artifacts-status.outputs.artifacts }}
+  
+  lint-results:
+    description: 'Lint results summary JSON (modular mode)'
+    value: ${{ steps.lint-summary.outputs.results }}
 
 runs:
   using: 'composite'
@@ -125,8 +194,8 @@ runs:
       shell: bash
       run: |
         echo "🚀 Setting up GUI-Based Testing Code Review environment..."
-        mkdir -p artifacts
-        echo "artifacts-path=artifacts" >> $GITHUB_OUTPUT
+        mkdir -p ${{ inputs.custom-artifacts-path }}
+        echo "artifacts-path=${{ inputs.custom-artifacts-path }}" >> $GITHUB_OUTPUT
         echo "✅ Environment ready for visual GUI test analysis"
     
     - name: Setup Node.js for GUI test tools
@@ -140,12 +209,68 @@ runs:
         echo "📦 Installing dependencies for GUI test analysis..."
         if [ -f "package.json" ]; then
           npm install
+          if [ -n "${{ inputs.dependencies }}" ]; then
+            echo "📦 Installing additional dependencies: ${{ inputs.dependencies }}"
+            npm install ${{ inputs.dependencies }}
+          fi
           echo "✅ Dependencies installed successfully"
         else
-          echo "⚠️ No package.json found, skipping npm install"
+          echo "⚠️ No package.json found, installing minimal dependencies..."
+          npm init -y
+          npm install @playwright/test@^1.52.0 @mermaid-js/mermaid-cli@10.6.1 @octokit/core@^5.0.0 marked@15.0.12 prettier@^3.3.2 eslint@^8.0.0
+          
+          if [ -n "${{ inputs.dependencies }}" ]; then
+            echo "📦 Installing additional dependencies: ${{ inputs.dependencies }}"
+            npm install ${{ inputs.dependencies }}
+          fi
+          echo "✅ Dependencies installed"
+        fi
+    
+    # Download existing artifacts if in dashboard-only mode
+    - name: Download existing artifacts
+      if: inputs.mode == 'dashboard-only' || inputs.mode == 'comment-only'
+      shell: bash
+      run: |
+        echo "📥 Checking for existing artifacts..."
+        
+        # Create artifacts directory
+        mkdir -p ${{ inputs.custom-artifacts-path }}
+        
+        # Function to copy playwright artifact if it exists
+        if [ -n "${{ inputs.playwright-artifact }}" ]; then
+          echo "📥 Using Playwright artifact: ${{ inputs.playwright-artifact }}"
+          if [ -d "${{ inputs.playwright-artifact }}" ]; then
+            cp -r ${{ inputs.playwright-artifact }}/* ${{ inputs.custom-artifacts-path }}/
+            echo "✅ Copied Playwright artifacts"
+          else
+            echo "⚠️ Playwright artifact directory not found: ${{ inputs.playwright-artifact }}"
+          fi
+        fi
+        
+        # Function to copy ESLint artifact if it exists
+        if [ -n "${{ inputs.eslint-artifact }}" ]; then
+          echo "📥 Using ESLint artifact: ${{ inputs.eslint-artifact }}"
+          if [ -d "${{ inputs.eslint-artifact }}" ]; then
+            cp -r ${{ inputs.eslint-artifact }}/* ${{ inputs.custom-artifacts-path }}/
+            echo "✅ Copied ESLint artifacts"
+          else
+            echo "⚠️ ESLint artifact directory not found: ${{ inputs.eslint-artifact }}"
+          fi
+        fi
+        
+        # Function to copy Prettier artifact if it exists
+        if [ -n "${{ inputs.prettier-artifact }}" ]; then
+          echo "📥 Using Prettier artifact: ${{ inputs.prettier-artifact }}"
+          if [ -d "${{ inputs.prettier-artifact }}" ]; then
+            cp -r ${{ inputs.prettier-artifact }}/* ${{ inputs.custom-artifacts-path }}/
+            echo "✅ Copied Prettier artifacts"
+          else
+            echo "⚠️ Prettier artifact directory not found: ${{ inputs.prettier-artifact }}"
+          fi
         fi
     
     - name: Install Playwright browsers for GUI testing
+      if: inputs.mode == 'full' || inputs.mode == 'test-only'
       shell: bash
       run: |
         echo "🎭 Installing Playwright browsers for GUI testing..."
@@ -153,19 +278,24 @@ runs:
         echo "✅ Playwright browsers ready for GUI test execution"
     
     - name: Setup reviewdog for code quality feedback
+      if: (inputs.mode == 'full' || inputs.mode == 'lint-only') && github.event_name == 'pull_request'
       uses: reviewdog/action-setup@v1
-      if: github.event_name == 'pull_request'
       with:
         reviewdog_version: latest
     
     - name: Run code quality analysis with visual feedback
       id: lint
+      if: inputs.mode == 'full' || inputs.mode == 'lint-only'
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
         REVIEWDOG_REPORTER: ${{ inputs.reviewdog-reporter }}
+        USE_PROJECT_ESLINT: ${{ inputs.use-project-eslint }}
+        USE_PROJECT_PRETTIER: ${{ inputs.use-project-prettier }}
+        SKIP_ESLINT: ${{ inputs.skip-eslint }}
+        SKIP_PRETTIER: ${{ inputs.skip-prettier }}
       run: |
         echo "🔍 Running code quality analysis for GUI tests..."
         if [ -f "${{ github.action_path }}/scripts/lint.js" ]; then
@@ -176,15 +306,22 @@ runs:
           echo "⚠️ Lint script not found, skipping code quality analysis"
         fi
         echo "✅ Code quality analysis completed"
-      continue-on-error: true
+      continue-on-error: ${{ inputs.fail-on-error != 'true' }}
     
     - name: Execute GUI tests on PR branch
       id: gui-tests-pr
+      if: inputs.mode == 'full' || inputs.mode == 'test-only'
       shell: bash
       env:
         PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
         TEST_FILES: ${{ inputs.test-files }}
+        SKIP_PLAYWRIGHT: ${{ inputs.skip-playwright }}
       run: |
+        if [ "$SKIP_PLAYWRIGHT" == "true" ]; then
+          echo "⏩ Skipping Playwright tests as requested"
+          exit 0
+        fi
+        
         echo "🧪 Executing GUI tests on PR branch..."
         if [ -f "${{ github.action_path }}/scripts/playwright-test.js" ]; then
           node "${{ github.action_path }}/scripts/playwright-test.js"
@@ -195,25 +332,27 @@ runs:
           npx playwright test ${{ inputs.test-files }}
         fi
         echo "✅ PR branch GUI tests completed"
-      continue-on-error: true
+      continue-on-error: ${{ inputs.fail-on-error != 'true' }}
     
     - name: Archive PR GUI test results and screenshots
+      if: inputs.mode == 'full' || inputs.mode == 'test-only'
       shell: bash
       run: |
         echo "📁 Archiving PR branch GUI test artifacts..."
-        mkdir -p artifacts
-        if [[ -f artifacts/playwright-summary.json ]]; then
-          cp artifacts/playwright-summary.json artifacts/playwright-summary-pr.json
+        mkdir -p ${{ inputs.custom-artifacts-path }}
+        if [[ -f playwright-metrics.json ]]; then
+          cp playwright-metrics.json ${{ inputs.custom-artifacts-path }}/playwright-summary.json
+          cp playwright-metrics.json ${{ inputs.custom-artifacts-path }}/playwright-summary-pr.json
           echo "✅ PR test summary archived"
         else
-          echo "{}" > artifacts/playwright-summary-pr.json
+          echo "{}" > ${{ inputs.custom-artifacts-path }}/playwright-summary-pr.json
           echo "⚠️ No PR summary found, created empty file"
         fi
         
         # Archive HTML report with screenshots
-        mkdir -p artifacts/pr-report
+        mkdir -p ${{ inputs.custom-artifacts-path }}/pr-report
         if [ -d "playwright-report" ] && [ "$(ls -A playwright-report)" ]; then
-          mv playwright-report/* artifacts/pr-report/ || echo "No PR report contents to move"
+          cp -r playwright-report/* ${{ inputs.custom-artifacts-path }}/pr-report/ || echo "No PR report contents to move"
           echo "✅ PR GUI test report with screenshots archived"
         else
           echo "⚠️ No PR report found to archive"
@@ -222,12 +361,18 @@ runs:
     
     - name: Execute GUI tests on main branch for visual comparison
       id: gui-tests-main
-      if: inputs.enable-visual-comparison == 'true' && github.event_name == 'pull_request'
+      if: inputs.enable-visual-comparison == 'true' && github.event_name == 'pull_request' && (inputs.mode == 'full' || inputs.mode == 'test-only')
       shell: bash
       env:
         MAIN_BRANCH: ${{ inputs.main-branch }}
         KEY_TEST_FILE: ${{ inputs.key-test-file }}
+        SKIP_PLAYWRIGHT: ${{ inputs.skip-playwright }}
       run: |
+        if [ "$SKIP_PLAYWRIGHT" == "true" ]; then
+          echo "⏩ Skipping main branch tests as requested"
+          exit 0
+        fi
+        
         echo "🔄 Checking out main branch GUI tests for comparison..."
         
         # Checkout main branch test files for comparison
@@ -237,7 +382,7 @@ runs:
         if [ ! -f "$KEY_TEST_FILE" ]; then
           echo "⚠️ Key test file '$KEY_TEST_FILE' not found. Skipping main branch comparison."
           mkdir -p playwright-report
-          echo "{}" > artifacts/playwright-summary-main.json
+          echo "{}" > ${{ inputs.custom-artifacts-path }}/playwright-summary-main.json
         else
           echo "✅ Main branch test files checked out successfully"
           echo "🧪 Running GUI tests on main branch version..."
@@ -254,22 +399,22 @@ runs:
       continue-on-error: true
     
     - name: Archive main branch GUI test results for comparison
-      if: inputs.enable-visual-comparison == 'true' && github.event_name == 'pull_request'
+      if: inputs.enable-visual-comparison == 'true' && github.event_name == 'pull_request' && (inputs.mode == 'full' || inputs.mode == 'test-only')
       shell: bash
       run: |
         echo "📁 Archiving main branch GUI test artifacts..."
-        if [[ -f artifacts/playwright-summary.json ]]; then
-          cp artifacts/playwright-summary.json artifacts/playwright-summary-main.json
+        if [[ -f playwright-metrics.json ]]; then
+          cp playwright-metrics.json ${{ inputs.custom-artifacts-path }}/playwright-summary-main.json
           echo "✅ Main branch test summary archived"
         else
-          echo "{}" > artifacts/playwright-summary-main.json
+          echo "{}" > ${{ inputs.custom-artifacts-path }}/playwright-summary-main.json
           echo "⚠️ No main branch summary found, created empty file"
         fi
         
         # Archive main branch HTML report
-        mkdir -p artifacts/main-report
+        mkdir -p ${{ inputs.custom-artifacts-path }}/main-report
         if [ -d "playwright-report" ] && [ "$(ls -A playwright-report)" ]; then
-          mv playwright-report/* artifacts/main-report/ || echo "No main branch report contents to move"
+          cp -r playwright-report/* ${{ inputs.custom-artifacts-path }}/main-report/ || echo "No main branch report contents to move"
           echo "✅ Main branch GUI test report archived"
         else
           echo "⚠️ No main branch report found to archive"
@@ -277,7 +422,7 @@ runs:
       continue-on-error: true
     
     - name: Restore PR test files
-      if: inputs.enable-visual-comparison == 'true' && github.event_name == 'pull_request'
+      if: inputs.enable-visual-comparison == 'true' && github.event_name == 'pull_request' && (inputs.mode == 'full' || inputs.mode == 'test-only')
       shell: bash
       run: |
         echo "🔄 Restoring PR branch test files..."
@@ -287,6 +432,7 @@ runs:
     
     - name: Generate visual flow chart of GUI tests
       id: flowchart
+      if: inputs.mode == 'full' || inputs.mode == 'dashboard-only'
       shell: bash
       run: |
         echo "📊 Generating visual flowchart of GUI test execution..."
@@ -302,6 +448,7 @@ runs:
     
     - name: Build review checklist for code reviewers
       id: checklist
+      if: inputs.mode == 'full' || inputs.mode == 'dashboard-only'
       shell: bash
       run: |
         echo "📋 Building comprehensive review checklist..."
@@ -314,7 +461,7 @@ runs:
         fi
         
         # Set checklist status output
-        if [ -f "artifacts/checklist.json" ]; then
+        if [ -f "${{ inputs.custom-artifacts-path }}/checklist.json" ]; then
           echo "status=completed" >> $GITHUB_OUTPUT
         else
           echo "status=incomplete" >> $GITHUB_OUTPUT
@@ -324,7 +471,10 @@ runs:
     
     - name: Build visual dashboard for code reviewers
       id: dashboard
+      if: inputs.mode == 'full' || inputs.mode == 'dashboard-only'
       shell: bash
+      env:
+        ARTIFACTS_DIR: ${{ inputs.custom-artifacts-path }}
       run: |
         echo "🎨 Building interactive visual dashboard..."
         if [ -f "${{ github.action_path }}/scripts/generate-webpage.js" ]; then
@@ -339,6 +489,7 @@ runs:
     
     - name: Create comprehensive test summary with visual comparison
       id: test-summary
+      if: inputs.mode == 'full' || inputs.mode == 'dashboard-only'
       shell: bash
       run: |
         echo "📊 Creating comprehensive test summary with visual analysis..."
@@ -349,26 +500,26 @@ runs:
         REGRESSION="false"
         
         # Analyze PR branch results
-        if [ -f "artifacts/playwright-summary-pr.json" ]; then
+        if [ -f "${{ inputs.custom-artifacts-path }}/playwright-summary-pr.json" ]; then
           if command -v jq &> /dev/null; then
-            PR_TOTAL=$(jq -r '.total // 0' artifacts/playwright-summary-pr.json)
-            PR_PASSED=$(jq -r '.passed // 0' artifacts/playwright-summary-pr.json)
-            PR_FAILED=$(jq -r '.failed // 0' artifacts/playwright-summary-pr.json)
-            PR_SKIPPED=$(jq -r '.skipped // 0' artifacts/playwright-summary-pr.json)
-            PR_RATE=$(jq -r '.pass_rate // 0' artifacts/playwright-summary-pr.json)
+            PR_TOTAL=$(jq -r '.total // 0' ${{ inputs.custom-artifacts-path }}/playwright-summary-pr.json)
+            PR_PASSED=$(jq -r '.passed // 0' ${{ inputs.custom-artifacts-path }}/playwright-summary-pr.json)
+            PR_FAILED=$(jq -r '.failed // 0' ${{ inputs.custom-artifacts-path }}/playwright-summary-pr.json)
+            PR_SKIPPED=$(jq -r '.skipped // 0' ${{ inputs.custom-artifacts-path }}/playwright-summary-pr.json)
+            PR_RATE=$(jq -r '.pass_rate // 0' ${{ inputs.custom-artifacts-path }}/playwright-summary-pr.json)
             
             echo "PR GUI Tests: $PR_TOTAL total, $PR_PASSED passed, $PR_FAILED failed ($PR_RATE% pass rate)"
           fi
         fi
         
         # Analyze main branch results for comparison
-        if [ -f "artifacts/playwright-summary-main.json" ] && [ "${{ inputs.enable-visual-comparison }}" = "true" ]; then
+        if [ -f "${{ inputs.custom-artifacts-path }}/playwright-summary-main.json" ] && [ "${{ inputs.enable-visual-comparison }}" = "true" ]; then
           if command -v jq &> /dev/null; then
-            MAIN_TOTAL=$(jq -r '.total // 0' artifacts/playwright-summary-main.json)
-            MAIN_PASSED=$(jq -r '.passed // 0' artifacts/playwright-summary-main.json)
-            MAIN_FAILED=$(jq -r '.failed // 0' artifacts/playwright-summary-main.json)
-            MAIN_SKIPPED=$(jq -r '.skipped // 0' artifacts/playwright-summary-main.json)
-            MAIN_RATE=$(jq -r '.pass_rate // 0' artifacts/playwright-summary-main.json)
+            MAIN_TOTAL=$(jq -r '.total // 0' ${{ inputs.custom-artifacts-path }}/playwright-summary-main.json)
+            MAIN_PASSED=$(jq -r '.passed // 0' ${{ inputs.custom-artifacts-path }}/playwright-summary-main.json)
+            MAIN_FAILED=$(jq -r '.failed // 0' ${{ inputs.custom-artifacts-path }}/playwright-summary-main.json)
+            MAIN_SKIPPED=$(jq -r '.skipped // 0' ${{ inputs.custom-artifacts-path }}/playwright-summary-main.json)
+            MAIN_RATE=$(jq -r '.pass_rate // 0' ${{ inputs.custom-artifacts-path }}/playwright-summary-main.json)
             
             echo "Main GUI Tests: $MAIN_TOTAL total, $MAIN_PASSED passed, $MAIN_FAILED failed ($MAIN_RATE% pass rate)"
             
@@ -397,15 +548,16 @@ runs:
     
     - name: Extract code quality metrics
       id: lint-summary
+      if: inputs.mode == 'full' || inputs.mode == 'dashboard-only'
       shell: bash
       run: |
         echo "📈 Extracting code quality metrics..."
         QUALITY_SCORE=100
         
-        if [ -f "artifacts/lint-summary.json" ]; then
+        if [ -f "${{ inputs.custom-artifacts-path }}/lint-summary.json" ]; then
           if command -v jq &> /dev/null; then
-            ESLINT_ERRORS=$(jq -r '.eslint.errors // 0' artifacts/lint-summary.json)
-            PRETTIER_ISSUES=$(jq -r '.prettier.filesWithIssues // 0' artifacts/lint-summary.json)
+            ESLINT_ERRORS=$(jq -r '.eslint.errors // 0' ${{ inputs.custom-artifacts-path }}/lint-summary.json)
+            PRETTIER_ISSUES=$(jq -r '.prettier.filesWithIssues // 0' ${{ inputs.custom-artifacts-path }}/lint-summary.json)
             
             # Calculate quality score (simple algorithm)
             QUALITY_SCORE=$((100 - ESLINT_ERRORS * 5 - PRETTIER_ISSUES * 2))
@@ -416,32 +568,43 @@ runs:
         fi
         
         echo "quality-score=$QUALITY_SCORE" >> $GITHUB_OUTPUT
+        echo "results={\"quality_score\":$QUALITY_SCORE,\"eslint_errors\":$ESLINT_ERRORS,\"prettier_issues\":$PRETTIER_ISSUES}" >> $GITHUB_OUTPUT
         echo "✅ Code quality metrics extracted"
+      continue-on-error: true
+    
+    - name: Capture artifacts status
+      id: artifacts-status
+      shell: bash
+      run: |
+        echo "📊 Listing generated artifacts..."
+        ARTIFACTS_LIST=$(find ${{ inputs.custom-artifacts-path }} -type f -name "*.json" | sort | tr '\n' ',' | sed 's/,$//')
+        echo "artifacts=$ARTIFACTS_LIST" >> $GITHUB_OUTPUT
+        echo "✅ Artifacts captured: $ARTIFACTS_LIST"
       continue-on-error: true
     
     - name: Upload visual artifacts for code reviewers
       uses: actions/upload-artifact@v4
       with:
         name: gui-test-visual-artifacts
-        path: artifacts/
+        path: ${{ inputs.custom-artifacts-path }}/
         retention-days: ${{ inputs.artifacts-retention-days }}
       continue-on-error: true
     
     - name: Deploy visual dashboard to GitHub Pages
       id: deploy-report
-      if: inputs.enable-github-pages == 'true' && always()
+      if: inputs.enable-github-pages == 'true' && (inputs.mode == 'full' || inputs.mode == 'dashboard-only')
       uses: actions/deploy-pages@v4
       with:
         artifact_name: gui-test-visual-artifacts
-        path: artifacts/web-report
+        path: ${{ inputs.custom-artifacts-path }}/web-report
       continue-on-error: true
     
     - name: Post comprehensive visual feedback to PR
-      if: inputs.enable-pr-comments == 'true' && github.event_name == 'pull_request' && always()
+      if: inputs.enable-pr-comments == 'true' && github.event_name == 'pull_request' && (inputs.mode == 'full' || inputs.mode == 'dashboard-only' || inputs.mode == 'comment-only')
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
-        ARTIFACTS_DIR: artifacts
+        ARTIFACTS_DIR: ${{ inputs.custom-artifacts-path }}
         WEB_REPORT_URL: ${{ inputs.web-report-url || steps.deploy-report.outputs.page_url || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
       run: |
         echo "💬 Posting comprehensive visual feedback to PR..."
@@ -456,13 +619,13 @@ runs:
       continue-on-error: true
     
     - name: Validate GUI test results
-      if: inputs.fail-on-test-failure == 'true'
+      if: inputs.fail-on-test-failure == 'true' && (inputs.mode == 'full' || inputs.mode == 'test-only')
       shell: bash
       run: |
         echo "🔍 Validating GUI test results..."
-        if [ -f "artifacts/playwright-summary-pr.json" ]; then
+        if [ -f "${{ inputs.custom-artifacts-path }}/playwright-summary-pr.json" ]; then
           if command -v jq &> /dev/null; then
-            FAILED=$(jq -r '.failed // 0' artifacts/playwright-summary-pr.json)
+            FAILED=$(jq -r '.failed // 0' ${{ inputs.custom-artifacts-path }}/playwright-summary-pr.json)
             if [ "$FAILED" -gt 0 ]; then
               echo "❌ GUI tests failed: $FAILED test failures detected"
               echo "🔍 Check the visual dashboard for detailed analysis"
@@ -490,8 +653,8 @@ runs:
         echo "  • Access comprehensive code quality feedback"
         echo "  • Review generated screenshots and artifacts"
         echo ""
-        if [ -f "artifacts/test-summary.txt" ]; then
+        if [ -f "${{ inputs.custom-artifacts-path }}/test-summary.txt" ]; then
           echo "📈 Summary:"
-          cat artifacts/test-summary.txt
+          cat ${{ inputs.custom-artifacts-path }}/test-summary.txt
         fi
         echo "════════════════════════════════════════════════════════"

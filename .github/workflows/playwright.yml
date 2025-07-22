@@ -4,13 +4,41 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-  workflow_call:
+    inputs:
+      mode:
+        description: 'Operation mode (full, test-only, lint-only, dashboard-only)'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - test-only
+          - lint-only
+          - dashboard-only
+          - comment-only
+      skip-tests:
+        description: 'Skip Playwright tests'
+        required: false
+        default: false
+        type: boolean
+      skip-eslint:
+        description: 'Skip ESLint checks'
+        required: false
+        default: false
+        type: boolean
+      skip-prettier:
+        description: 'Skip Prettier checks'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
-# ────────────────────────────────────────────────────────────
-  build-test:
+  # ────────────────────────────────────────────────────────────
+  # This job runs tests and generates artifacts
+  test:
     runs-on: ubuntu-latest
-    permissions: { contents: read, pull-requests: write }
+    permissions: { contents: read }
+    if: ${{ github.event.inputs.skip-tests != 'true' && (github.event.inputs.mode == 'full' || github.event.inputs.mode == 'test-only' || !github.event.inputs.mode) }}
 
     steps:
       - name: Checkout PR branch
@@ -20,21 +48,16 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
 
-      - run: npm install                   # deps for scripts & project
+      - name: Install dependencies
+        run: npm install
 
-      - uses: reviewdog/action-setup@v1
-        with: { reviewdog_version: latest }
+      - name: Install Playwright
+        run: npx playwright install --with-deps
 
-      - name: Run lint (reviewdog + summaries)
-        env:
-          GITHUB_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/lint.js
-        continue-on-error: true
-
-      # ── Playwright on PR branch ───────────────────────────
-      - name: Playwright tests (PR)
+      # Run Playwright tests on PR branch
+      - name: Playwright tests (PR branch)
         run: node scripts/playwright-test.js || true
+        continue-on-error: true
 
       - name: Copy PR summary JSON
         run: |
@@ -48,11 +71,13 @@ jobs:
       - name: Archive PR HTML report
         run: |
           mkdir -p artifacts/pr-report
-          mv playwright-report/* artifacts/pr-report/ || echo "no report"
+          if [[ -d playwright-report ]]; then
+            cp -r playwright-report/* artifacts/pr-report/ || echo "no report"
+          fi
         continue-on-error: true
 
-      # ── Playwright on MAIN branch test files ──────────────
-      - name: Playwright tests (Main test files)
+      # Run tests on main branch for comparison if needed
+      - name: Playwright tests (Main branch comparison)
         run: |
           git checkout origin/main -- tests/ playwright.config.js || true
           node scripts/playwright-test.js || true
@@ -60,6 +85,7 @@ jobs:
 
       - name: Copy Main summary JSON
         run: |
+          mkdir -p artifacts
           if [[ -f artifacts/playwright-summary.json ]]; then
             cp artifacts/playwright-summary.json artifacts/playwright-summary-main.json
           else
@@ -69,60 +95,153 @@ jobs:
       - name: Archive Main HTML report
         run: |
           mkdir -p artifacts/main-report
-          mv playwright-report/* artifacts/main-report/ || echo "no report"
+          if [[ -d playwright-report ]]; then
+            cp -r playwright-report/* artifacts/main-report/ || echo "no report"
+          fi
         continue-on-error: true
 
-      # ── Restore checkout & generate artifacts ─────────────
+      # Restore checkout
       - run: git checkout HEAD -- tests/ playwright.config.js
 
-      - run: node scripts/generate-flowchart.js   || true
-      - run: node scripts/checklist.js            || true
-      - run: node scripts/generate-webpage.js     || true
-
+      # Upload test artifacts
       - uses: actions/upload-artifact@v4
-        with: { name: gui-artifacts, path: artifacts/ }
-# ────────────────────────────────────────────────────────────
-  deploy-report:
-    needs: build-test
+        with:
+          name: playwright-artifacts
+          path: artifacts/
+          retention-days: 30
+  
+  # ────────────────────────────────────────────────────────────
+  # This job runs linting and generates artifacts
+  lint:
     runs-on: ubuntu-latest
-    permissions: { pages: write, id-token: write }
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-
-    outputs:                # <── expose the URL
-      page_url: ${{ steps.deploy.outputs.page_url }}
+    permissions: { contents: read, pull-requests: write }
+    if: ${{ github.event.inputs.skip-eslint != 'true' && github.event.inputs.skip-prettier != 'true' && (github.event.inputs.mode == 'full' || github.event.inputs.mode == 'lint-only' || !github.event.inputs.mode) }}
 
     steps:
-      - uses: actions/download-artifact@v4
-        with: { name: gui-artifacts, path: gui-artifacts }
-
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: gui-artifacts/web-report }
-
-      - id: deploy
-        uses: actions/deploy-pages@v4
-# ────────────────────────────────────────────────────────────
-  comment_link:
-    if: github.event_name == 'pull_request'
-    needs: deploy-report
-    runs-on: ubuntu-latest
-    permissions: { pull-requests: write }
-
-    steps:
-      - uses: actions/checkout@v4
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
 
-      - run: npm install         # octokit, marked, etc.
+      - name: Install dependencies
+        run: npm install
+
+      - uses: reviewdog/action-setup@v1
+        with: { reviewdog_version: latest }
+
+      - name: Run lint (ESLint + Prettier)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SKIP_ESLINT: ${{ github.event.inputs.skip-eslint || 'false' }}
+          SKIP_PRETTIER: ${{ github.event.inputs.skip-prettier || 'false' }}
+          USE_PROJECT_ESLINT: 'true'
+          USE_PROJECT_PRETTIER: 'true'
+        run: node scripts/lint.js
+        continue-on-error: true
+
+      # Upload lint artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lint-artifacts
+          path: artifacts/
+          retention-days: 30
+  
+  # ────────────────────────────────────────────────────────────
+  # This job generates dashboard and PR comments
+  dashboard:
+    needs: [test, lint]
+    if: ${{ always() && (github.event.inputs.mode == 'full' || github.event.inputs.mode == 'dashboard-only' || !github.event.inputs.mode) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    
+    outputs:
+      page_url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with: { node-version: 18 }
+
+      - name: Install dependencies
+        run: npm install
+
+      # Download artifacts from previous jobs
+      - uses: actions/download-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: playwright-artifacts/
+        continue-on-error: true
 
       - uses: actions/download-artifact@v4
-        with: { name: gui-artifacts, path: gui-artifacts }
+        with:
+          name: lint-artifacts
+          path: lint-artifacts/
+        continue-on-error: true
 
-      - name: Post / update summary comment
-        env:
-          GITHUB_TOKEN:  ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACTS_DIR: gui-artifacts
-          WEB_REPORT_URL: ${{ needs.deploy-report.outputs.page_url }}
-        run: node scripts/summary-comment.js
+      # Generate dashboard using our modular action
+      - name: Generate dashboard and visual reports
+        uses: ./  # Use local action
+        with:
+          mode: 'dashboard-only'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          playwright-artifact: 'playwright-artifacts'
+          eslint-artifact: 'lint-artifacts'
+          enable-pr-comments: 'true'
+          enable-github-pages: 'true'
+          web-report-url: ${{ steps.deploy.outputs.page_url }}
+          custom-artifacts-path: 'dashboard-artifacts'
+
+      # Upload merged artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-artifacts
+          path: dashboard-artifacts/
+      
+      # Deploy to GitHub Pages
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dashboard-artifacts/web-report
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
+  
+  # ────────────────────────────────────────────────────────────
+  # This job runs the action in standalone mode (for workflow_dispatch)
+  standalone:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'full' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      pages: write
+      id-token: write
+    
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Run GUI Test Review (Standalone mode)
+        uses: ./  # Use local action
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: 'full'
+          skip-playwright: ${{ github.event.inputs.skip-tests || 'false' }}
+          skip-eslint: ${{ github.event.inputs.skip-eslint || 'false' }}
+          skip-prettier: ${{ github.event.inputs.skip-prettier || 'false' }}
+          use-project-eslint: 'true'
+          use-project-prettier: 'true'
+          enable-visual-comparison: 'true'
+          enable-pr-comments: 'true'
+          enable-github-pages: 'true'
