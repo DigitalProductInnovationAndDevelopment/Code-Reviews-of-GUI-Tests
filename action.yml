@@ -140,6 +140,11 @@ runs:
         echo "📦 Installing dependencies for GUI test analysis..."
         if [ -f "package.json" ]; then
           npm install
+          echo ""
+          echo "--- Installed Top-Level Dependencies ---"
+          # List the installed packages. --depth=0 keeps the list clean.
+          npm list --depth=0
+          echo "----------------------------------------"
           echo "✅ Dependencies installed successfully"
         else
           echo "⚠️ No package.json found, skipping npm install"
@@ -420,7 +425,7 @@ runs:
       continue-on-error: true
     
     - name: Upload visual artifacts for code reviewers
-      uses: actions/upload-pages-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: gui-test-visual-artifacts
         path: artifacts/
@@ -433,6 +438,7 @@ runs:
       uses: actions/deploy-pages@v4
       with:
         artifact_name: gui-test-visual-artifacts
+        path: artifacts/web-report
       continue-on-error: true
     
     - name: Post comprehensive visual feedback to PR
