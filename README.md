@@ -144,8 +144,8 @@ jobs:
 | Input                      | Description                                                              | Required | Default                       |
 | -------------------------- | ------------------------------------------------------------------------ | -------- | ----------------------------- |
 | `github-token`             | GitHub token for API access and reviewdog integration                    | Yes      | `${{ github.token }}`         |
-| `mode`                     | Operation mode: full, lint-only, test-only, dashboard-only, comment-only | No       | `full`                        |
-| `test-files`               | Glob pattern for GUI test files to analyze                               | No       | `tests/**/*.spec.{js,ts,tsx}` |
+| `mode`                     | Operation mode: full, lint-only, test-only, dashboard-only               | No       | `full`                        |
+| `test-files`               | Folder or glob pattern for GUI test files to analyze                     | No       | `tests`                       |
 | `node-version`             | Node.js version to use                                                   | No       | `18`                          |
 | `enable-pr-comments`       | Post comprehensive PR comments with visual feedback                      | No       | `true`                        |
 | `enable-github-pages`      | Deploy visual dashboard to GitHub Pages                                  | No       | `true`                        |
@@ -154,21 +154,15 @@ jobs:
 | `web-report-url`           | Base URL for visual dashboard                                            | No       | `''` (auto-generated)         |
 | `fail-on-test-failure`     | Fail action if GUI tests fail                                            | No       | `false`                       |
 | `playwright-config`        | Path to Playwright configuration file                                    | No       | `playwright.config.js`        |
-| `enable-visual-comparison` | Enable visual comparison between PR and main branch                      | No       | `true`                        |
+| `enable-visual-comparison` | Enable visual comparison between PR and main branch                      | No       | `false`                       |
 | `main-branch`              | Main branch name for visual comparison testing                           | No       | `main`                        |
 | `key-test-file`            | Key test file to verify successful main branch checkout                  | No       | `tests/demo-todo-app.spec.ts` |
 | **Modular Inputs**         |                                                                          |          |                               |
-| `playwright-artifact`      | Name of existing Playwright artifact to use (dashboard-only mode)        | No       | `''`                          |
-| `eslint-artifact`          | Name of existing ESLint artifact to use (dashboard-only mode)            | No       | `''`                          |
-| `prettier-artifact`        | Name of existing Prettier artifact to use (dashboard-only mode)          | No       | `''`                          |
-| `custom-artifacts-path`    | Path to custom artifacts directory                                       | No       | `artifacts`                   |
-| `dependencies`             | Additional npm dependencies to install (space-separated)                 | No       | `''`                          |
-| `use-project-eslint`       | Use project ESLint config if exists                                      | No       | `true`                        |
-| `use-project-prettier`     | Use project Prettier config if exists                                    | No       | `true`                        |
-| `skip-playwright`          | Skip Playwright tests                                                    | No       | `false`                       |
-| `skip-eslint`              | Skip ESLint checks                                                       | No       | `false`                       |
-| `skip-prettier`            | Skip Prettier checks                                                     | No       | `false`                       |
-| `fail-on-error`            | Fail action on any error                                                 | No       | `false`                       |
+| `enable-playwright`        | Run Playwright tests (overrides mode)                                    | No       | `true`                        |
+| `enable-lint`              | Run ESLint/Prettier checks (overrides mode)                              | No       | `true`                        |
+| `enable-dashboard`         | Generate dashboard/checklist (overrides mode)                            | No       | `true`                        |
+| `extra-npm-dependencies`   | Additional npm dependencies to install (space-separated)                 | No       | `''`                          |
+| `custom-artifacts-path`    | Path to custom artifacts directory (dashboard-only mode)                 | No       | `''`                          |
 
 ## 📤 Outputs
 
@@ -185,8 +179,6 @@ jobs:
 | `visual-comparison`       | Visual comparison analysis between PR and main branch |
 | `gui-regression-detected` | Whether GUI test regression was detected in PR        |
 | `review-checklist-status` | Status of the code review checklist completion        |
-| `artifacts-uploaded`      | List of uploaded artifacts (modular mode)             |
-| `lint-results`            | Lint results summary JSON (modular mode)              |
 
 ## 🏗️ Required Project Structure
 
@@ -286,7 +278,6 @@ The action supports multiple operation modes for maximum flexibility:
 | `test-only`      | Run only Playwright tests                  | When you want to handle linting separately |
 | `lint-only`      | Run only ESLint/Prettier checks            | When you want to handle tests separately   |
 | `dashboard-only` | Generate dashboard from existing artifacts | Integration with existing CI/CD            |
-| `comment-only`   | Post PR comments from existing artifacts   | Update comments without regenerating       |
 
 ## 🏗️ Integration Patterns
 
@@ -342,7 +333,6 @@ jobs:
       - uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1
         with:
           mode: 'lint-only'
-          use-project-eslint: 'true'
   
   dashboard:
     needs: [playwright, eslint]
@@ -381,13 +371,11 @@ The action automatically detects and uses your project's existing configuration 
 
 * `.eslintrc.js`, `.eslintrc.json`, `.eslintrc.yml`
 * `eslint.config.js`, `eslint.config.mjs`
-* Set `use-project-eslint: 'false'` to use action's defaults
 
 ### Prettier
 
 * `.prettierrc`, `.prettierrc.json`, `.prettierrc.js`
 * `prettier.config.js`, `prettier.config.mjs`
-* Set `use-project-prettier: 'false'` to use action's defaults
 
 ## 🤝 Contributing
 
