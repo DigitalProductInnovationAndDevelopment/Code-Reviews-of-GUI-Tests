@@ -1,0 +1,46 @@
+# .github/workflows/gui-test-full.yml
+# ────────────────────────────────────────────────────────────────
+name: GUI Test – Full Pipeline
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  gui-test:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      pages: write
+      id-token: write
+
+    environment:          # gives the green "github-pages / deployment" check
+      name: github-pages
+      url: ${{ steps.review.outputs.dashboard-url }}
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          cache: npm
+
+      - run: npm install
+
+      # ── run the composite action in FULL mode  ─────────────────
+      - id: review
+        name: GUI-Based Testing Code Review
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          enable-visual-comparison: 'true'
+
+      # Optional: surface the dashboard link in the job summary
+      - name: Echo dashboard URL
+        if: steps.review.outputs.dashboard-url != ''
+        run: echo "📊 Dashboard → ${{ steps.review.outputs.dashboard-url }}"
