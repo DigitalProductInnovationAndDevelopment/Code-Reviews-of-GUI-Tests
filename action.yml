@@ -222,13 +222,14 @@ runs:
     shell: bash
     run: npx playwright install --with-deps
 
-  - name: Run Playwright
+  - name: Run Playwright (PR)
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
-    env: { PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }} }
-    run: >
-      npx playwright test "${{ inputs.test-files }}"
-      --reporter=list,json=playwright-metrics.json
+    env:
+      PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
+    run: |
+      npx playwright test "${{ inputs.test-files }}" \
+          --reporter=list,json=playwright-metrics.json
     continue-on-error: true
 
   - name: Move Playwright artifacts (PR)
@@ -241,10 +242,11 @@ runs:
         mkdir -p artifacts/pr-report
         mv playwright-report/* artifacts/pr-report/
       fi
-      # fallback summary
+
       if [ ! -f artifacts/playwright-summary-pr.json ] && [ -f artifacts/playwright-metrics.json ]; then
-        jq '{ total:.stats.tests,passed:.stats.passed,failed:(.stats.failed//0),
-              skipped:(.stats.skipped//0),duration:.stats.duration,
+        jq '{ total:.stats.tests,passed:.stats.passed,
+              failed:(.stats.failed//0),skipped:(.stats.skipped//0),
+              duration:.stats.duration,
               pass_rate:(.stats.tests|tonumber|if .==0 then 0 else
                          ((.stats.passed/.stats.tests)*100) end) }' \
            artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
@@ -258,37 +260,35 @@ runs:
       [ -f artifacts/playwright-summary-pr.json ] && \
         cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json || true
 
-  # 3b ── Playwright on MAIN branch (comparison)
+  # 3b ── Playwright on main branch
   - name: Run Playwright on main branch
     if: steps.modes.outputs.compare == 'true' && github.event_name == 'pull_request'
     shell: bash
-    env: { PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }} }
+    env:
+      PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
     run: |
-      echo '🔄  Checking out main branch test files'
+      echo '🔄  Fetch + checkout main branch test files'
       git fetch --quiet origin "${{ inputs.main-branch }}" || true
       git checkout origin/${{ inputs.main-branch }} -- tests/ playwright.config.js || true
 
-      echo '🧪  Running Playwright on main branch'
       npx playwright test "${{ inputs.test-files }}" \
           --reporter=list,json=playwright-metrics.json
 
-      echo '📦  Archiving main-branch artifacts'
       mkdir -p artifacts/main-report
       [ -d playwright-report ] && mv playwright-report/* artifacts/main-report/ || true
       [ -f playwright-summary.json ] && mv playwright-summary.json artifacts/playwright-summary-main.json || true
 
       if [ ! -f artifacts/playwright-summary-main.json ] && [ -f artifacts/playwright-metrics.json ]; then
-        jq '{ total:.stats.tests,passed:.stats.passed,failed:(.stats.failed//0),
-              skipped:(.stats.skipped//0),duration:.stats.duration,
+        jq '{ total:.stats.tests,passed:.stats.passed,
+              failed:(.stats.failed//0),skipped:(.stats.skipped//0),
+              duration:.stats.duration,
               pass_rate:(.stats.tests|tonumber|if .==0 then 0 else
                          ((.stats.passed/.stats.tests)*100) end) }' \
            artifacts/playwright-metrics.json > artifacts/playwright-summary-main.json
       fi
 
-      echo '🔙  Restoring PR branch files'
       git checkout HEAD -- tests/ playwright.config.js
     continue-on-error: true
-
   # 4 external artifacts (dashboard-only)
   - name: Import external artifacts
     if: inputs.mode == 'dashboard-only'
