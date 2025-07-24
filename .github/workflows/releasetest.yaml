@@ -4,10 +4,10 @@ on:
   pull_request:
     branches: [ main ]
 
+# ───────────────────────────────────────────────────────────────
+# 1. Playwright tests   → artifacts (no Pages here)
+# ───────────────────────────────────────────────────────────────
 jobs:
-# ───────────────────────────────────────────
-# 1. Playwright tests  → artifacts only
-# ───────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
     steps:
@@ -18,17 +18,20 @@ jobs:
           cache: npm
       - run: npm install
 
-      # Playwright only (dashboard off here)
+      # ── run Playwright with MAIN-branch comparison ────────────
       - name: GUI Test – Playwright only
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.12
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.13
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          mode: test-only
-          test-files: tests
-          enable-dashboard: 'false'
-          enable-github-pages: 'false'
+          github-token:          ${{ secrets.GITHUB_TOKEN }}
+          mode:                  test-only
+          test-files:            tests
+          enable-dashboard:      'false'
+          enable-github-pages:   'false'
+          enable-visual-comparison: 'true'   # ← comparison switch ON
+          main-branch:           'main'
+          key-test-file:         'tests/demo-todo-app.spec.ts'
 
-      # Build correct summary JSON — reads *after* action moved metrics
+      # ── build summary JSON (PR)  ------------------------------
       - name: Build playwright-summary-pr.json
         run: |
           node - <<'EOF'
@@ -40,16 +43,24 @@ jobs:
             failed:   rpt.stats.failed,
             skipped:  rpt.stats.skipped,
             duration: rpt.stats.duration,
-            pass_rate: +(rpt.stats.tests ? (rpt.stats.passed / rpt.stats.tests) * 100 : 0).toFixed(2)
+            pass_rate: +((rpt.stats.passed / rpt.stats.tests) * 100).toFixed(2)
           };
           fs.writeFileSync('artifacts/playwright-summary-pr.json', JSON.stringify(out, null, 2));
           EOF
 
-      # Upload three artifacts for dashboard job
+      # ── alias file so checklist ticks “Playwright tests completed” ─────────
+      - run: cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json
+
+      # ── upload artifacts needed by dashboard job ──────────────
       - uses: actions/upload-artifact@v4
         with:
           name: playwright-summary
           path: artifacts/playwright-summary-pr.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playwright-summary-main
+          path: artifacts/playwright-summary-main.json
 
       - uses: actions/upload-artifact@v4
         with:
@@ -61,9 +72,14 @@ jobs:
           name: playwright-report
           path: artifacts/pr-report/
 
-# ───────────────────────────────────────────
-# 2. ESLint / Prettier  → lint-summary.json
-# ───────────────────────────────────────────
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-main
+          path: artifacts/main-report/
+
+# ───────────────────────────────────────────────────────────────
+# 2. ESLint / Prettier
+# ───────────────────────────────────────────────────────────────
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -74,21 +90,20 @@ jobs:
       - run: npm install
 
       - name: GUI Test – Lint only
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.12
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.13
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          mode: lint-only
+          mode:        lint-only
 
-      # Upload lint summary for dashboard
       - name: Upload lint-summary.json
         uses: actions/upload-artifact@v4
         with:
           name: lint-summary
           path: artifacts/lint-summary.json
 
-# ───────────────────────────────────────────
-# 3. Dashboard / PR comment / Pages deploy
-# ───────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────
+# 3. Dashboard / checklist / PR comment / Pages
+# ───────────────────────────────────────────────────────────────
   dashboard:
     needs: [ test, lint ]
     runs-on: ubuntu-latest
@@ -112,20 +127,24 @@ jobs:
             npm ci 2>/dev/null || npm install
           fi
 
-      # Download all artifacts
+      # ── download all required artifacts ───────────────────────
       - uses: actions/download-artifact@v4
-        with: { name: playwright-summary, path: dl }
+        with: { name: playwright-summary,      path: dl }
       - uses: actions/download-artifact@v4
-        with: { name: playwright-metrics, path: dl }
+        with: { name: playwright-summary-main, path: dl }
       - uses: actions/download-artifact@v4
-        with: { name: playwright-report,  path: dl/pr-report }
+        with: { name: playwright-metrics,      path: dl }
       - uses: actions/download-artifact@v4
-        with: { name: lint-summary,       path: dl }
+        with: { name: playwright-report,       path: dl/pr-report }
+      - uses: actions/download-artifact@v4
+        with: { name: playwright-report-main,  path: dl/main-report }
+      - uses: actions/download-artifact@v4
+        with: { name: lint-summary,            path: dl }
 
-      # Build dashboard (flow-chart + checklist inside)
+      # ── build dashboard, flowchart, PR comment, deploy Pages ──
       - id: review
-        name: Dashboard / PR comment / Pages deploy
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.12
+        name: Dashboard / PR comment / Pages
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.13
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: dashboard-only
