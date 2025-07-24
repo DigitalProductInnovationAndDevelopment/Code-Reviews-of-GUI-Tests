@@ -5,84 +5,69 @@ on:
     branches: [main]
 
 ###############################################################################
-# 1. Playwright tests only  (produce artifacts, no Pages deploy)
+# 1. Playwright tests only (produce artifacts, no Pages deploy)
 ###############################################################################
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { cache: npm }
+      - run: npm install
 
-    - uses: actions/setup-node@v4
-      with: { cache: npm }
-    - run: npm install
+      - name: Playwright tests
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.10
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: test-only
+          test-files: tests            # ← run everything under tests
+          enable-github-pages: 'false' # no deploy here
+          enable-dashboard:  'false'   # dashboard built in job 3
 
-    # ── run Playwright tests only ─────────────────────────────────────────────
-    - name: GUI Test – Playwright only
-      uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        mode: test-only
-        test-files: tests              # ← directory, not regex
-        enable-github-pages: 'false'
-        enable-dashboard:  'false'
+      - name: Build summary JSON
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          const rpt = JSON.parse(fs.readFileSync('playwright-metrics.json'));
+          const out = {
+            total: rpt.stats.total,
+            passed: rpt.stats.passed ?? rpt.stats.expected,
+            failed: rpt.stats.failed ?? rpt.stats.unexpected,
+            skipped: rpt.stats.skipped ?? 0,
+            duration: rpt.stats.duration,
+            pass_rate: (((rpt.stats.passed ?? rpt.stats.expected) / rpt.stats.total) * 100).toFixed(2)
+          };
+          fs.mkdirSync('artifacts', { recursive: true });
+          fs.writeFileSync('artifacts/playwright-summary-pr.json', JSON.stringify(out, null, 2));
+          fs.copyFileSync('playwright-metrics.json', 'artifacts/playwright-metrics.json');
+          EOF
 
-    # ── Build playwright-summary.json & copy metrics ─────────────────────────
-    - name: Build Playwright summary
-      run: |
-        node - <<'EOF'
-        const fs = require('fs');
-        const rep = JSON.parse(fs.readFileSync('playwright-metrics.json'));
-        const sum = {
-          total:     rep.stats.total,
-          passed:    rep.stats.passed  ?? rep.stats.expected,
-          failed:    rep.stats.failed  ?? rep.stats.unexpected,
-          skipped:   rep.stats.skipped ?? 0,
-          duration:  rep.stats.duration,
-          pass_rate: (((rep.stats.passed ?? rep.stats.expected) / rep.stats.total) * 100).toFixed(2)
-        };
-        fs.mkdirSync('artifacts', { recursive: true });
-        fs.writeFileSync('artifacts/playwright-summary-pr.json', JSON.stringify(sum, null, 2));
-        fs.copyFileSync('playwright-metrics.json', 'artifacts/playwright-metrics.json');
-        EOF
-
-    # ── Upload artifacts used by dashboard job ───────────────────────────────
-    - uses: actions/upload-artifact@v4
-      with:
-        name: playwright-summary
-        path: artifacts/playwright-summary-pr.json
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: playwright-metrics
-        path: artifacts/playwright-metrics.json
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: playwright-report
-        path: artifacts/pr-report/
+      - uses: actions/upload-artifact@v4
+        with: { name: playwright-summary, path: artifacts/playwright-summary-pr.json }
+      - uses: actions/upload-artifact@v4
+        with: { name: playwright-metrics, path: artifacts/playwright-metrics.json }
+      - uses: actions/upload-artifact@v4
+        with: { name: playwright-report,  path: artifacts/pr-report/ }
 
 ###############################################################################
 # 2. ESLint / Prettier only
 ###############################################################################
   lint:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with: { cache: npm }
-    - run: npm install
-
-    - name: GUI Test – Lint only
-      uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        mode: lint-only
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { cache: npm }
+      - run: npm install
+      - name: Lint only
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.10
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: lint-only
 
 ###############################################################################
-# 3. Build dashboard from artifacts   –   no duplicate upload!
+# 3. Build dashboard from artifacts (deploys to Pages)
 ###############################################################################
   dashboard:
     needs: [test, lint]
@@ -99,33 +84,29 @@ jobs:
       url: ${{ steps.review.outputs.dashboard-url }}
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    # ── Install npm dependencies only when package.json exists ───────────────
-    - name: Install npm if needed
-      run: |
-        if [ -f package.json ]; then
-          npm ci 2>/dev/null || npm install
-        else
-          echo "🛈 No package.json – skipping npm install"
-        fi
+      # install only if there's a package.json (prevents npm-ci errors)
+      - name: Install npm if needed
+        run: |
+          if [ -f package.json ]; then
+            npm ci 2>/dev/null || npm install
+          else
+            echo "🛈 No package.json – skipping npm install"
+          fi
 
-    # ── download the three artifacts created in job 1 ────────────────────────
-    - uses: actions/download-artifact@v4
-      with: { name: playwright-summary, path: dl }
+      - uses: actions/download-artifact@v4
+        with: { name: playwright-summary, path: dl }
+      - uses: actions/download-artifact@v4
+        with: { name: playwright-metrics, path: dl }
+      - uses: actions/download-artifact@v4
+        with: { name: playwright-report,  path: dl/pr-report }
 
-    - uses: actions/download-artifact@v4
-      with: { name: playwright-metrics, path: dl }
-
-    - uses: actions/download-artifact@v4
-      with: { name: playwright-report,  path: dl/pr-report }
-
-    # ── Generate & deploy dashboard (no re-upload) ───────────────────────────
-    - name: Dashboard / PR comment / Pages
-      id: review
-      uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        mode: dashboard-only
-        custom-artifacts-path: dl
-        enable-github-pages: 'true'
+      - name: Dashboard / deploy
+        id: review
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.10
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: dashboard-only
+          custom-artifacts-path: dl
+          enable-github-pages: 'true'
