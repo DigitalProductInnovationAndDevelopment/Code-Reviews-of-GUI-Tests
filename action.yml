@@ -240,21 +240,28 @@ runs:
         mv playwright-report/* artifacts/pr-report/
       fi
       if [ ! -f artifacts/playwright-summary-pr.json ] && [ -f artifacts/playwright-metrics.json ]; then
-        jq '{
-              passed:   ((.stats.passed  // .stats.passes     // .stats.expected   //
-                          ([ .. | objects | select(.outcome=="expected" or .status=="passed") ] | length)) | tonumber),
-              failed:   ((.stats.failed  // .stats.failures   // .stats.unexpected //
-                          ([ .. | objects | select(.outcome=="unexpected" or .status=="failed") ] | length)) | tonumber),
-              skipped:  ((.stats.skipped //
-                          ([ .. | objects | select(.outcome=="skipped" or .status=="skipped") ] | length)) | tonumber),
-              total:    (.passed + .failed + .skipped),
-              duration: ((.stats.duration // 0) | tonumber),
-              pass_rate: ( ((.stats.tests // .stats.total //
-                             ([ .. | objects | select(has("outcome") or has("status")) ] | length)) | tonumber) as $t
-                         | ((.stats.passed // .stats.passes // .stats.expected //
-                             ([ .. | objects | select(.outcome=="expected" or .status=="passed") ] | length)) | tonumber) as $p
-                         | if $t==0 then 0 else (( $p * 100 ) / $t | floor) end )
-            }' artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
+        jq '
+          # ── helper: walk tree and count objects matching a filter -------------
+          def count($f): [ .. | objects | select($f) ] | length ;
+        
+          # ── derive numbers with fall-backs ------------------------------------
+          ($passed  := ( .stats.passed  // .stats.passes     // .stats.expected
+                         // count(.outcome=="expected"  or .status=="passed")    )) ,
+          ($failed  := ( .stats.failed  // .stats.failures   // .stats.unexpected
+                         // count(.outcome=="unexpected" or .status=="failed")   )) ,
+          ($skipped := ( .stats.skipped // count(.outcome=="skipped"  or .status=="skipped") )) ,
+          ($total   := ( $passed + $failed + $skipped )) ,
+        
+          # ── emit summary object -----------------------------------------------
+          {
+            total:    ($total | tonumber),
+            passed:   ($passed | tonumber),
+            failed:   ($failed | tonumber),
+            skipped:  ($skipped | tonumber),
+            duration: ((.stats.duration // 0) | tonumber),
+            pass_rate: ( if $total==0 then 0 else (( $passed * 100 ) / $total | floor) end )
+          }
+        '  artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
       fi
 
   - name: Alias summary for checklist
@@ -281,21 +288,29 @@ runs:
       [ -f playwright-metrics.json ] && mv playwright-metrics.json artifacts/
 
       if [ ! -f artifacts/playwright-summary-main.json ] && [ -f artifacts/playwright-metrics.json ]; then
-        jq '{
-              passed:   ((.stats.passed  // .stats.passes     // .stats.expected   //
-                          ([ .. | objects | select(.outcome=="expected" or .status=="passed") ] | length)) | tonumber),
-              failed:   ((.stats.failed  // .stats.failures   // .stats.unexpected //
-                          ([ .. | objects | select(.outcome=="unexpected" or .status=="failed") ] | length)) | tonumber),
-              skipped:  ((.stats.skipped //
-                          ([ .. | objects | select(.outcome=="skipped" or .status=="skipped") ] | length)) | tonumber),
-              total:    (.passed + .failed + .skipped),
-              duration: ((.stats.duration // 0) | tonumber),
-              pass_rate: ( ((.stats.tests // .stats.total //
-                             ([ .. | objects | select(has("outcome") or has("status")) ] | length)) | tonumber) as $t
-                         | ((.stats.passed // .stats.passes // .stats.expected //
-                             ([ .. | objects | select(.outcome=="expected" or .status=="passed") ] | length)) | tonumber) as $p
-                         | if $t==0 then 0 else (( $p * 100 ) / $t | floor) end )
-            }' artifacts/playwright-metrics.json > artifacts/playwright-summary-main.json
+        jq '
+          # ── helper: walk tree and count objects matching a filter -------------
+          def count($f): [ .. | objects | select($f) ] | length ;
+        
+          # ── derive numbers with fall-backs ------------------------------------
+          ($passed  := ( .stats.passed  // .stats.passes     // .stats.expected
+                         // count(.outcome=="expected"  or .status=="passed")    )) ,
+          ($failed  := ( .stats.failed  // .stats.failures   // .stats.unexpected
+                         // count(.outcome=="unexpected" or .status=="failed")   )) ,
+          ($skipped := ( .stats.skipped // count(.outcome=="skipped"  or .status=="skipped") )) ,
+          ($total   := ( $passed + $failed + $skipped )) ,
+        
+          # ── emit summary object -----------------------------------------------
+          {
+            total:    ($total | tonumber),
+            passed:   ($passed | tonumber),
+            failed:   ($failed | tonumber),
+            skipped:  ($skipped | tonumber),
+            duration: ((.stats.duration // 0) | tonumber),
+            pass_rate: ( if $total==0 then 0 else (( $passed * 100 ) / $total | floor) end )
+          }
+        '  artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
+
       fi
 
       git checkout HEAD -- tests/ playwright.config.js
