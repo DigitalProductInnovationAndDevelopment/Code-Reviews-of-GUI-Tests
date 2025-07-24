@@ -12,7 +12,27 @@
 
 const fs   = require('fs');
 const path = require('path');
-const marked = require('marked');
+
+// Dynamic require for marked module
+let marked;
+try {
+  // Try local node_modules first
+  marked = require('marked');
+} catch (e1) {
+  try {
+    // Try action's node_modules
+    marked = require(path.join(process.cwd(), '.gui-test-review-action/node_modules/marked'));
+  } catch (e2) {
+    try {
+      // Try parent directory
+      marked = require(path.join(__dirname, '../node_modules/marked'));
+    } catch (e3) {
+      console.error('Could not load marked module. Please ensure marked is installed.');
+      console.error('You can install it with: npm install marked@15.0.12');
+      process.exit(1);
+    }
+  }
+}
 
 /* ─── paths ───────────────────────────────────────────── */
 const ART = 'artifacts';
@@ -29,22 +49,38 @@ const pre = txt=>`<pre>${txt}</pre>`;
 
 /* ─── load artefacts ─────────────────────────────────── */
 const lint   = readJSON('lint-summary.json');
-const p      = lint.prettier;
-const e      = lint.eslint;
+const p      = lint.prettier || {};
+const e      = lint.eslint || {};
 
 const playPR   = readJSON('playwright-summary-pr.json');
 const playMain = readJSON('playwright-summary-main.json');
 const hasMainPlay = fs.existsSync(path.join(ART,'playwright-summary-main.json'));
 
-const checklistMD = fs.readFileSync(path.join(ART,'checklist.md'),'utf8');
+let checklistMD = '';
+try {
+  checklistMD = fs.readFileSync(path.join(ART,'checklist.md'),'utf8');
+} catch (e) {
+  console.warn('Checklist not found, continuing without it');
+}
 
 /* ─── copy assets ────────────────────────────────────── */
 for(const dir of ['pr-report','main-report']){
   const src=path.join(ART,dir);
-  if(fs.existsSync(src)) fs.cpSync(src,path.join(OUT,dir),{recursive:true});
+  if(fs.existsSync(src)) {
+    try {
+      fs.cpSync(src,path.join(OUT,dir),{recursive:true});
+    } catch (e) {
+      console.warn(`Could not copy ${dir}:`, e.message);
+    }
+  }
 }
-if(fs.existsSync(path.join(ART,'flowchart.png')))
-  fs.copyFileSync(path.join(ART,'flowchart.png'),path.join(OUT,'flowchart.png'));
+if(fs.existsSync(path.join(ART,'flowchart.png'))) {
+  try {
+    fs.copyFileSync(path.join(ART,'flowchart.png'),path.join(OUT,'flowchart.png'));
+  } catch (e) {
+    console.warn('Could not copy flowchart:', e.message);
+  }
+}
 
 /* ─── Prettier & ESLint cards (unchanged) ───────────── */
 const prettierCard = card(
@@ -52,12 +88,12 @@ const prettierCard = card(
   p.filesWithIssues
     ? pill(`${p.filesWithIssues} file${p.filesWithIssues!==1?'s':''}`,'#d32f2f')+
       pill(`${p.totalChanges} place${p.totalChanges!==1?'s':''}`,'#f57f17')+
-      `<ul>${p.files.map(f=>`<li>${f}</li>`).join('')}</ul>`+
+      `<ul>${(p.files||[]).map(f=>`<li>${f}</li>`).join('')}</ul>`+
       (p.totalChanges>50?`<div class="warning-box">
          <strong>⚠️ Warning:</strong> Too many changes for inline comments.<br>
          <pre style="margin-top:.5em;font-size:12px">npx prettier "tests/**/*.{js,jsx,ts,tsx}" --write</pre>
        </div>`:'')+
-      `<details><summary>Diff sample (first 20 lines)</summary>${pre(p.sample)}</details>`
+      `<details><summary>Diff sample (first 20 lines)</summary>${pre(p.sample||'')}</details>`
     : pill('No issues','#388e3c')
 );
 
@@ -76,8 +112,8 @@ const eslintCard = card(
 const mdPlaywright = `
 | Run | Total | Passed | Failed | Skipped | Pass-rate | Duration |
 |-----|------:|-------:|-------:|--------:|-----------|---------:|
-| **PR**   | ${playPR.total??0} | ${playPR.passed??0} | ${playPR.failed??0} | ${playPR.skipped??0} | ${playPR.pass_rate??0}% | ${playPR.duration??0} ms |
-${hasMainPlay?`| **Main** | ${playMain.total??0} | ${playMain.passed??0} | ${playMain.failed??0} | ${playMain.skipped??0} | ${playMain.pass_rate??0}% | ${playMain.duration??0} ms |`:''}`;
+| **PR**   | ${playPR.total??0} | ${playPR.passed??0} | ${playPR.failed??0} | ${playPR.skipped??0} | ${playPR.pass_rate??0}% | ${playPR.duration??0} ms |
+${hasMainPlay?`| **Main** | ${playMain.total??0} | ${playMain.passed??0} | ${playMain.failed??0} | ${playMain.skipped??0} | ${playMain.pass_rate??0}% | ${playMain.duration??0} ms |`:''}`;
 
 const linkParts=[];
 if(fs.existsSync(path.join(OUT,'pr-report/index.html')))
@@ -97,7 +133,7 @@ const playCard = card(
 const flowCard = fs.existsSync(path.join(OUT,'flowchart.png'))
   ? card('Flow-chart',`<a href="flowchart.png"><img src="flowchart.png" style="max-width:100%"></a>`)
   : '';
-const checklistCard = card('Checklist', marked.parse(checklistMD));
+const checklistCard = checklistMD ? card('Checklist', marked.parse(checklistMD)) : '';
 
 /* ─── HTML shell ─────────────────────────────────────── */
 const html = /*html*/`
@@ -132,4 +168,3 @@ ${checklistCard}
 /* ─── write page ─────────────────────────────────────── */
 fs.writeFileSync(path.join(OUT,'index.html'),html,'utf8');
 console.log('✨ Dashboard written → web-report/index.html');
-
