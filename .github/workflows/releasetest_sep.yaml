@@ -1,4 +1,4 @@
-name: Split-Module GUI Test Pipeline
+name: Split-Module GUI Test Pipeline separate for Playwright, ESLint, and Dashboard
 
 on:
   pull_request:
@@ -22,7 +22,7 @@ jobs:
 
       # Run Playwright with PR-vs-Main comparison
       - name: GUI Test – Playwright only
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.24
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.25
         with:
           github-token:            ${{ secrets.GITHUB_TOKEN }}
           mode:                    test-only
@@ -79,7 +79,7 @@ jobs:
       - run: npm install
 
       - name: GUI Test – Lint only
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.24
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.25
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode:        lint-only
@@ -158,7 +158,7 @@ jobs:
       # Build dashboard, post comment, deploy Pages
       - id: review
         name: Dashboard / PR comment / Pages
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.24
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.25
         with:
           github-token:       ${{ secrets.GITHUB_TOKEN }}
           mode:               dashboard-only
