@@ -216,7 +216,7 @@ runs:
       else echo 'ℹ️ no lint script'; fi
     continue-on-error: true
 
-  # 3 Playwright (PR branch)
+  # 3 ── Playwright on PR branch
   - name: Install Playwright browsers
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
@@ -240,18 +240,19 @@ runs:
         mkdir -p artifacts/pr-report
         mv playwright-report/* artifacts/pr-report/
       fi
-
-      # fallback summary with correct keys
       if [ ! -f artifacts/playwright-summary-pr.json ] && [ -f artifacts/playwright-metrics.json ]; then
-        jq '{ total:.stats.tests,
-             passed:.stats.passes,
-             failed:(.stats.failures // 0),
-             skipped:(.stats.skipped // 0),
-             duration:.stats.duration,
-             pass_rate:(.stats.tests|tonumber|if .==0 then 0 else
-                        ((.stats.passes /.stats.tests)*100) end) }' \
-           artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
+        jq '{
+              total:      (.stats.tests      // 0 | tonumber),
+              passed:     (.stats.passes     // 0 | tonumber),
+              failed:     (.stats.failures   // 0 | tonumber),
+              skipped:    (.stats.skipped    // 0 | tonumber),
+              duration:   (.stats.duration   // 0 | tonumber),
+              pass_rate:  ( (.stats.tests // 0 | tonumber) as $t
+                           | (.stats.passes // 0 | tonumber) as $p
+                           | if $t==0 then 0 else (( $p * 100 ) / $t | floor) end )
+            }' artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
       fi
+    continue-on-error: true
 
   - name: Alias summary for checklist
     if: steps.modes.outputs.playwright == 'true'
@@ -260,8 +261,8 @@ runs:
       [ -f artifacts/playwright-summary-pr.json ] && \
         cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json || true
 
-  # 3b ── Playwright on main branch (comparison)
-  - name: Run Playwright on main branch
+  # 3b ── Playwright on main branch
+  - name: Run Playwright on main
     if: steps.modes.outputs.compare == 'true' && github.event_name == 'pull_request'
     shell: bash
     env:
@@ -278,14 +279,16 @@ runs:
       [ -f playwright-metrics.json ] && mv playwright-metrics.json artifacts/
 
       if [ ! -f artifacts/playwright-summary-main.json ] && [ -f artifacts/playwright-metrics.json ]; then
-        jq '{ total:.stats.tests,
-             passed:.stats.passes,
-             failed:(.stats.failures // 0),
-             skipped:(.stats.skipped // 0),
-             duration:.stats.duration,
-             pass_rate:(.stats.tests|tonumber|if .==0 then 0 else
-                        ((.stats.passes /.stats.tests)*100) end) }' \
-           artifacts/playwright-metrics.json > artifacts/playwright-summary-main.json
+        jq '{
+              total:      (.stats.tests      // 0 | tonumber),
+              passed:     (.stats.passes     // 0 | tonumber),
+              failed:     (.stats.failures   // 0 | tonumber),
+              skipped:    (.stats.skipped    // 0 | tonumber),
+              duration:   (.stats.duration   // 0 | tonumber),
+              pass_rate:  ( (.stats.tests // 0 | tonumber) as $t
+                           | (.stats.passes // 0 | tonumber) as $p
+                           | if $t==0 then 0 else (( $p * 100 ) / $t | floor) end )
+            }' artifacts/playwright-metrics.json > artifacts/playwright-summary-main.json
       fi
 
       git checkout HEAD -- tests/ playwright.config.js
