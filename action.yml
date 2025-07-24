@@ -310,7 +310,7 @@ runs:
             pass_rate: ( if $total==0 then 0
                          else ( ($passed * 100) / $total | floor ) end )
           }
-        '  artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
+        '  artifacts/playwright-metrics.json > artifacts/playwright-summary-main.json
 
       fi
 
