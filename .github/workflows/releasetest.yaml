@@ -18,18 +18,17 @@ jobs:
       with: { cache: npm }
     - run: npm install
 
-    # ── run Playwright (tests only) ───────────────────────────────────────────
+    # ── run Playwright tests only ─────────────────────────────────────────────
     - name: GUI Test – Playwright only
       uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         mode: test-only
-        test-files: 'tests/.*\\.spec\\.(js|ts)$'  # ← safe regex
-        enable-github-pages: 'false'             # don’t deploy here
-        enable-dashboard:  'false'               # don’t package dashboard
-                                                  # (we’ll do that in job 3)
+        test-files: tests              # ← directory, not regex
+        enable-github-pages: 'false'
+        enable-dashboard:  'false'
 
-    # ── build playwright-summary.json (needed for dashboard) ─────────────────
+    # ── Build playwright-summary.json & copy metrics ─────────────────────────
     - name: Build Playwright summary
       run: |
         node - <<'EOF'
@@ -48,7 +47,7 @@ jobs:
         fs.copyFileSync('playwright-metrics.json', 'artifacts/playwright-metrics.json');
         EOF
 
-    # ── upload three small artifacts ─────────────────────────────────────────
+    # ── Upload artifacts used by dashboard job ───────────────────────────────
     - uses: actions/upload-artifact@v4
       with:
         name: playwright-summary
@@ -102,16 +101,16 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # ── lightweight npm install (only when package.json exists) ──────────────
+    # ── Install npm dependencies only when package.json exists ───────────────
     - name: Install npm if needed
       run: |
-        if [ -f package-lock.json ] || [ -f package.json ]; then
+        if [ -f package.json ]; then
           npm ci 2>/dev/null || npm install
         else
           echo "🛈 No package.json – skipping npm install"
         fi
 
-    # ── download the three artifacts produced in job 1 ───────────────────────
+    # ── download the three artifacts created in job 1 ────────────────────────
     - uses: actions/download-artifact@v4
       with: { name: playwright-summary, path: dl }
 
@@ -121,12 +120,12 @@ jobs:
     - uses: actions/download-artifact@v4
       with: { name: playwright-report,  path: dl/pr-report }
 
-    # ── run the action in dashboard-only mode (generates & deploys) ──────────
-    - name: Dashboard / PR comment
+    # ── Generate & deploy dashboard (no re-upload) ───────────────────────────
+    - name: Dashboard / PR comment / Pages
       id: review
       uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         mode: dashboard-only
         custom-artifacts-path: dl
-        enable-github-pages: 'true'   # set to 'false' to skip deployment
+        enable-github-pages: 'true'
