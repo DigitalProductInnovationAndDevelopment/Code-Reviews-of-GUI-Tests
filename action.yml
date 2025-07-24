@@ -47,6 +47,11 @@ inputs:
     required: false
     default: 'true'
 
+  enable-visual-comparison:          # ── NEW ──────────────────
+    description: 'Also run Playwright on the main branch and compare'
+    required: false
+    default: 'false'
+
   test-files:
     description: 'Folder or glob passed to "npx playwright test"'
     required: false
@@ -164,14 +169,16 @@ runs:
       play='${{ inputs.enable-playwright }}'
       lint='${{ inputs.enable-lint }}'
       dash='${{ inputs.enable-dashboard }}'
+      compare='${{ inputs.enable-visual-comparison }}'
       case '${{ inputs.mode }}' in
-        lint-only)      play=false ; dash=false ;;
+        lint-only)      play=false ; dash=false ; compare=false ;;
         test-only)      lint=false ; dash=false ;;
-        dashboard-only) play=false ; lint=false ;;
+        dashboard-only) play=false ; lint=false ; compare=false ;;
       esac
       echo "playwright=$play" >> $GITHUB_OUTPUT
       echo "lint=$lint"       >> $GITHUB_OUTPUT
       echo "dashboard=$dash"  >> $GITHUB_OUTPUT
+      echo "compare=$compare" >> $GITHUB_OUTPUT
 
   # 1  workspace
   - id: setup
@@ -234,7 +241,7 @@ runs:
       fi
     continue-on-error: true
 
-  # ── NEW: alias summary so checklist finds it ──────────────────────────────
+  # alias summary so checklist finds it
   - name: Alias summary for checklist
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
@@ -242,6 +249,28 @@ runs:
       if [ -f artifacts/playwright-summary-pr.json ]; then
         cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json
       fi
+
+  # ── Playwright run on main branch (comparison) ────────────────
+  - name: Run Playwright on main branch
+    if: steps.modes.outputs.compare == 'true' && github.event_name == 'pull_request'
+    shell: bash
+    env:
+      PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
+    run: |
+      echo '🔄 Checking out main branch test files'
+      git checkout origin/${{ inputs.main-branch }} -- tests/ playwright.config.js || true
+
+      echo '🧪 Running Playwright on main branch'
+      npx playwright test "${{ inputs.test-files }}"
+
+      echo '📦 Archiving main-branch artifacts'
+      mkdir -p artifacts/main-report
+      [ -d playwright-report ] && mv playwright-report/* artifacts/main-report/ || true
+      [ -f playwright-summary.json ] && mv playwright-summary.json artifacts/playwright-summary-main.json || true
+
+      echo '🔙 Restoring PR branch files'
+      git checkout HEAD -- tests/ playwright.config.js
+    continue-on-error: true
 
   # 4  copy external artifacts (dashboard-only)
   - name: Import external artifacts
@@ -269,7 +298,7 @@ runs:
       [ -f scripts/generate-flowchart.js ] && node scripts/generate-flowchart.js
     continue-on-error: true
 
-  # 7  checklist  (runs AFTER flow-chart now)  ──────────────────────────────
+  # 7  checklist  (runs after flow-chart)
   - id: checklist
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
@@ -318,7 +347,7 @@ runs:
       [ -f scripts/summary-comment.js ] && node scripts/summary-comment.js
     continue-on-error: true
 
-  # 11 Done marker
+  # 11 Done
   - name: Finish
     shell: bash
     run: echo '✅ GUI-Based Testing Code Review finished.'
