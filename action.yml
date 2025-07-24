@@ -97,7 +97,7 @@ inputs:
     default: ''
 
 # ───────────────────────────────────────────────────────────────
-# ▸▸ Outputs   (now expanded → no inline mapping)
+# ▸▸ Outputs  (expanded, no inline maps)
 # ───────────────────────────────────────────────────────────────
 outputs:
   test-results:
@@ -141,9 +141,7 @@ runs:
   using: 'composite'
   steps:
 
-  # -----------------------------------------------------------
   # 0. Derive switches from `mode`
-  # -----------------------------------------------------------
   - name: Derive mode switches
     id: modes
     shell: bash
@@ -161,9 +159,7 @@ runs:
       echo "lint=$l"       >>"$GITHUB_OUTPUT"
       echo "dashboard=$d"  >>"$GITHUB_OUTPUT"
 
-  # -----------------------------------------------------------
   # 1. Setup
-  # -----------------------------------------------------------
   - name: Prepare workspace
     id: setup
     shell: bash
@@ -172,7 +168,8 @@ runs:
       echo "artifacts-path=artifacts" >>"$GITHUB_OUTPUT"
 
   - uses: actions/setup-node@v4
-    with: { node-version: ${{ inputs.node-version }} }
+    with:
+      node-version: ${{ inputs.node-version }}
 
   - name: Install npm dependencies
     shell: bash
@@ -182,12 +179,11 @@ runs:
         npm install --no-save ${{ inputs.extra-npm-dependencies }}
       fi
 
-  # -----------------------------------------------------------
-  # 2. Lint (conditional)
-  # -----------------------------------------------------------
+  # 2. Lint
   - uses: reviewdog/action-setup@v1
     if: steps.modes.outputs.lint == 'true' && github.event_name == 'pull_request'
-    with: { reviewdog_version: latest }
+    with:
+      reviewdog_version: latest
 
   - name: Run ESLint / Prettier
     id: lint
@@ -199,15 +195,13 @@ runs:
       REVIEWDOG_REPORTER: ${{ inputs.reviewdog-reporter }}
     run: |
       echo "🔍 Linting..."
-      if [ -f scripts/lint.js ];        then node scripts/lint.js
+      if [ -f scripts/lint.js ];                        then node scripts/lint.js
       elif [ -f .gui-test-review-action/scripts/lint.js ]; then node .gui-test-review-action/scripts/lint.js
       elif npx --no-install eslint --version &>/dev/null;  then npx eslint .
-      else echo "⚠️ No lint script found; skipping."; fi
+      else echo "⚠️  No lint script found; skipping."; fi
     continue-on-error: true
 
-  # -----------------------------------------------------------
-  # 3. Playwright tests (conditional)
-  # -----------------------------------------------------------
+  # 3. Playwright tests
   - name: Install Playwright browsers
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
@@ -235,9 +229,7 @@ runs:
       fi
     continue-on-error: true
 
-  # -----------------------------------------------------------
   # 4. Dashboard-only path
-  # -----------------------------------------------------------
   - name: Copy provided artifacts
     if: inputs.mode == 'dashboard-only'
     shell: bash
@@ -245,14 +237,12 @@ runs:
       echo "📦 Copying artifacts from ${{ inputs.custom-artifacts-path }}"
       cp -R "${{ inputs.custom-artifacts-path }}/." artifacts/
 
-  # -----------------------------------------------------------
-  # 5. Dashboard generation (conditional)
-  # -----------------------------------------------------------
+  # 5. Dashboard generation
   - name: Generate flowchart
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
     run: |
-      if [ -f scripts/generate-flowchart.js ];          then node scripts/generate-flowchart.js; fi
+      if [ -f scripts/generate-flowchart.js ]; then node scripts/generate-flowchart.js; fi
     continue-on-error: true
 
   - name: Build dashboard
@@ -260,12 +250,10 @@ runs:
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
     run: |
-      if [ -f scripts/generate-webpage.js ];            then node scripts/generate-webpage.js; fi
+      if [ -f scripts/generate-webpage.js ]; then node scripts/generate-webpage.js; fi
     continue-on-error: true
 
-  # -----------------------------------------------------------
-  # 6. Upload artifacts & deploy (conditional)
-  # -----------------------------------------------------------
+  # 6. Upload artifacts & deploy
   - uses: actions/upload-artifact@v4
     if: steps.modes.outputs.dashboard == 'true'
     with:
@@ -289,9 +277,7 @@ runs:
       artifact_name: gui-test-visual-artifacts
     continue-on-error: true
 
-  # -----------------------------------------------------------
-  # 7. PR comment (conditional)
-  # -----------------------------------------------------------
+  # 7. PR comment
   - name: Post PR comment
     if: steps.modes.outputs.dashboard == 'true' && inputs.mode != 'dashboard-only' && github.event_name == 'pull_request'
     shell: bash
@@ -302,16 +288,14 @@ runs:
       if [ -f scripts/summary-comment.js ]; then node scripts/summary-comment.js; fi
     continue-on-error: true
 
-  # -----------------------------------------------------------
   # 8. Summaries & metrics
-  # -----------------------------------------------------------
   - name: Summarise tests
     id: test-summary
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
     run: |
       echo "📈 Summarising tests…"
-      ## (summary logic – unchanged for brevity)
+      # (summary logic omitted for brevity)
     continue-on-error: true
 
   - name: Extract quality metrics
@@ -320,24 +304,23 @@ runs:
     shell: bash
     run: |
       echo "📈 Calculating quality score…"
-      ## (metrics logic – unchanged for brevity)
+      # (metrics logic omitted for brevity)
     continue-on-error: true
 
-  # -----------------------------------------------------------
   # 9. Optional failure gate
-  # -----------------------------------------------------------
   - name: Validate test results
     if: steps.modes.outputs.playwright == 'true' && inputs.fail-on-test-failure == 'true'
     shell: bash
     run: |
       if [[ -f artifacts/playwright-summary-pr.json ]]; then
         FAILED=$(jq -r '.failed' artifacts/playwright-summary-pr.json)
-        [[ "$FAILED" != "0" ]] && { echo "::error::Playwright tests failed"; exit 1; }
+        if [[ "$FAILED" != "0" ]]; then
+          echo "::error::Playwright tests failed"
+          exit 1
+        fi
       fi
 
-  # -----------------------------------------------------------
   # 10. Done
-  # -----------------------------------------------------------
   - name: Finish
     shell: bash
     run: echo "✅ GUI-Based Testing Code Review action completed."

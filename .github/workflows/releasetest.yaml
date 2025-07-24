@@ -16,7 +16,7 @@ jobs:
       - run: npm ci
 
       # (You may still prefer the native playwright reporter; here's the full action)
-      - uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v.1.0.8
+      - uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: test-only                    # ← runs only Playwright
@@ -43,7 +43,7 @@ jobs:
       - uses: actions/setup-node@v4
       - run: npm ci
 
-      - uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v.1.0.8
+      - uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: lint-only                    # ← only lint
@@ -76,7 +76,7 @@ jobs:
       # Build + (optionally) deploy the dashboard
       - name: Dashboard / PR comment
         id: review
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v.1.0.8
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: dashboard-only               # ← no lint, no tests
