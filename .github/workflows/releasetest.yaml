@@ -1,72 +1,93 @@
+# ───────────────────────────────────────────────────────────────
+#  Split-Module GUI Test Pipeline
+# ───────────────────────────────────────────────────────────────
 name: Split-Module GUI Test Pipeline
 
 on:
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
-###############################################################################
-# 1. Playwright tests only
-###############################################################################
+# ───────────────────────────────────────────────────────────────
+# 1. Playwright tests (produce artifacts, no Pages deploy)
+# ───────────────────────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
-        with: { cache: npm }
+        with:
+          cache: npm
+
       - run: npm install
 
-      - name: Playwright tests
+      # Playwright only – dashboard & lint disabled here
+      - name: GUI Test – Playwright only
         uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.12
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: test-only
           test-files: tests
+          enable-dashboard: 'false'      # let the dashboard job build it
           enable-github-pages: 'false'
-          enable-dashboard:  'false'
 
-      - name: Build JSON summary
+      # ── build summary AFTER the action has moved the metrics file ─────────
+      - name: Build playwright-summary-pr.json
+        shell: bash
         run: |
           node - <<'EOF'
-          const fs=require('fs');
-          const rpt=JSON.parse(fs.readFileSync('playwright-metrics.json','utf8'));
-          const out={total:rpt.stats.total,
-            passed:rpt.stats.passed??rpt.stats.expected,failed:rpt.stats.failed??rpt.stats.unexpected,
-            skipped:rpt.stats.skipped??0,duration:rpt.stats.duration,
-            pass_rate:+(((rpt.stats.passed??rpt.stats.expected)/rpt.stats.total)*100).toFixed(2)};
-          fs.mkdirSync('artifacts',{recursive:true});
-          fs.writeFileSync('artifacts/playwright-summary-pr.json',JSON.stringify(out,null,2));
-          fs.copyFileSync('playwright-metrics.json','artifacts/playwright-metrics.json');
+          const fs = require('fs');
+          const p  = JSON.parse(fs.readFileSync('artifacts/playwright-metrics.json','utf8'));
+          const out = {
+            total:     p.stats.total,
+            passed:    p.stats.passed ?? p.stats.expected,
+            failed:    p.stats.failed ?? p.stats.unexpected,
+            skipped:   p.stats.skipped ?? 0,
+            duration:  p.stats.duration,
+            pass_rate: +(((p.stats.passed ?? p.stats.expected)/p.stats.total)*100).toFixed(2)
+          };
+          fs.writeFileSync('artifacts/playwright-summary-pr.json', JSON.stringify(out, null, 2));
           EOF
 
+      # ── upload three small artifacts for the dashboard job ────────────────
       - uses: actions/upload-artifact@v4
-        with: { name: playwright-summary, path: artifacts/playwright-summary-pr.json }
-      - uses: actions/upload-artifact@v4
-        with: { name: playwright-metrics, path: artifacts/playwright-metrics.json }
-      - uses: actions/upload-artifact@v4
-        with: { name: playwright-report,  path: artifacts/pr-report/ }
+        with:
+          name: playwright-summary
+          path: artifacts/playwright-summary-pr.json
 
-###############################################################################
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playwright-metrics
+          path: artifacts/playwright-metrics.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: artifacts/pr-report/
+
+# ───────────────────────────────────────────────────────────────
 # 2. ESLint / Prettier only
-###############################################################################
+# ───────────────────────────────────────────────────────────────
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { cache: npm }
+        with:
+          cache: npm
       - run: npm install
-      - name: Lint only
+      - name: GUI Test – Lint only
         uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.12
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: lint-only
 
-###############################################################################
-# 3. Dashboard from artifacts
-###############################################################################
+# ───────────────────────────────────────────────────────────────
+# 3. Dashboard / checklist / PR comment / Pages deploy
+# ───────────────────────────────────────────────────────────────
   dashboard:
-    needs: [test, lint]
+    needs: [ test, lint ]
     runs-on: ubuntu-latest
 
     permissions:
@@ -82,22 +103,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # NPM install only if repo provides package.json (avoids EUSAGE)
       - name: Install npm if needed
         run: |
-          if [ -f package.json ]; then npm ci 2>/dev/null || npm install; fi
+          if [ -f package.json ]; then
+            npm ci 2>/dev/null || npm install
+          fi
+
+      # Download the three artifacts produced in the "test" job
+      - uses: actions/download-artifact@v4
+        with:
+          name: playwright-summary
+          path: dl
 
       - uses: actions/download-artifact@v4
-        with: { name: playwright-summary, path: dl }
-      - uses: actions/download-artifact@v4
-        with: { name: playwright-metrics, path: dl }
-      - uses: actions/download-artifact@v4
-        with: { name: playwright-report,  path: dl/pr-report }
+        with:
+          name: playwright-metrics
+          path: dl
 
-      - name: Build & deploy dashboard
-        id: review
+      - uses: actions/download-artifact@v4
+        with:
+          name: playwright-report
+          path: dl/pr-report
+
+      # Build dashboard, flow-chart, checklist, PR comment, deploy Pages
+      - id: review
+        name: Build dashboard & deploy
         uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.12
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: dashboard-only
           custom-artifacts-path: dl
-          enable-github-pages: 'true'
+          enable-github-pages: 'true'      # turn off if you don’t want Pages
