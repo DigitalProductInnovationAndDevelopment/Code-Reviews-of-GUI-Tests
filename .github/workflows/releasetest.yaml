@@ -1,33 +1,36 @@
+# ───────────────────────────────────────────────────────────────
+#  Split-Module GUI Test Pipeline
+# ───────────────────────────────────────────────────────────────
 name: Split-Module GUI Test Pipeline
 
 on:
   pull_request:
-    branches: [main]          # adjust to your default branch
+    branches: [main]           # adjust if your default branch differs
 
 jobs:
 # ───────────────────────────────────────────────────────────────
-# 1. Playwright tests only  (Action builds artifacts, no Pages)
+# 1. Playwright tests (action packages artifacts, no Pages deploy)
 # ───────────────────────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
-        with:
-          cache: npm
+        with: { cache: npm }
       - run: npm install
 
-      - name: GUI Test – Playwright only (with artifacts)
+      - name: GUI Test – Playwright only
         uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          mode: full                  # ← run all parts, but…
-          enable-lint: 'false'        # ← …skip lint
-          enable-dashboard: 'true'    # package artifacts
-          enable-github-pages: 'false'
-          test-files: 'tests/**/*.spec.{js,ts}'
 
+          # Run Playwright + package dashboard artifacts in one go
+          mode: full                    # run all modules
+          enable-lint: 'false'          # but skip lint
+          enable-github-pages: 'false'  # don't deploy in this job
+          enable-pr-comments: 'false'   # avoid fork permission errors
+
+          test-files: 'tests/**/*.spec.*'   # ← Playwright-safe glob
 
 # ───────────────────────────────────────────────────────────────
 # 2. ESLint / Prettier only
@@ -36,10 +39,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
-        with:
-          cache: npm
+        with: { cache: npm }
       - run: npm install
 
       - name: GUI Test – Lint only
@@ -47,12 +48,13 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: lint-only
+          enable-pr-comments: 'false'
 
 # ───────────────────────────────────────────────────────────────
 # 3. Build dashboard from artifacts produced in `test`
 # ───────────────────────────────────────────────────────────────
   dashboard:
-    needs: [test, lint]       # wait for both jobs
+    needs: [test, lint]
     runs-on: ubuntu-latest
 
     permissions:              # required for PR comment & Pages deploy
@@ -61,26 +63,27 @@ jobs:
       pages: write
       id-token: write
 
-    environment:              # gives the nice green “github-pages / deployment” check
-      name: github-pages
+    environment:
+      name: github-pages       # gives the green “github-pages / deployment” check
       url: ${{ steps.review.outputs.dashboard-url }}
 
     steps:
       - uses: actions/checkout@v4
 
-      # ⬇️ Download the single artifact package created by the test job
+      # ⬇️ Download single artifact package created in the test job
       - name: Download GUI artifacts
         uses: actions/download-artifact@v4
         with:
           name: gui-test-visual-artifacts
-          path: artifacts         # will be artifacts/web-report/, artifacts/pr-report/, etc.
+          path: dl   # <-- different from 'artifacts' to avoid cp same-file issue
 
-      # ⬇️ Build the dashboard (and deploy to Pages)
+      # ⬇️ Generate & deploy dashboard
       - name: Dashboard / PR comment
         id: review
         uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          mode: dashboard-only
-          custom-artifacts-path: artifacts
-          enable-github-pages: 'true'   # set to 'false' to skip deployment
+          mode: dashboard-only            # just build dashboard
+          custom-artifacts-path: dl       # folder we downloaded to
+          enable-github-pages: 'true'     # set 'false' to skip deployment
+          enable-pr-comments: 'false'     # still disabled for forks
