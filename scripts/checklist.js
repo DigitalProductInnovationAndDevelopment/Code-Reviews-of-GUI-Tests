@@ -13,7 +13,8 @@ fs.mkdirSync(ART, { recursive: true });
 
 const exists = f => fs.existsSync(path.join(ART, f));
 
-const hasPlay  = exists('playwright-summary.json');
+const hasPlay  = exists('playwright-summary.json') || 
+                exists('playwright-summary-pr.json');
 const hasLint  = exists('lint-summary.json');
 const hasFlow  = exists('flowchart.png');
 const hasBadge = exists('test-summary.txt');  
