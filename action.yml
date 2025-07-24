@@ -241,27 +241,28 @@ runs:
       fi
       if [ ! -f artifacts/playwright-summary-pr.json ] && [ -f artifacts/playwright-metrics.json ]; then
         jq '
-          # ── helper: walk tree and count objects matching a filter -------------
+          # count helper — walks the whole tree
           def count($f): [ .. | objects | select($f) ] | length ;
         
-          # ── derive numbers with fall-backs ------------------------------------
-          ($passed  := ( .stats.passed  // .stats.passes     // .stats.expected
-                         // count(.outcome=="expected"  or .status=="passed")    )) ,
-          ($failed  := ( .stats.failed  // .stats.failures   // .stats.unexpected
-                         // count(.outcome=="unexpected" or .status=="failed")   )) ,
-          ($skipped := ( .stats.skipped // count(.outcome=="skipped"  or .status=="skipped") )) ,
-          ($total   := ( $passed + $failed + $skipped )) ,
+          # derive numbers with portable `as` bindings
+          ( .stats.passed  // .stats.passes   // .stats.expected
+            // count(.outcome=="expected"  or .status=="passed") )        as $passed
+        | ( .stats.failed  // .stats.failures // .stats.unexpected
+            // count(.outcome=="unexpected" or .status=="failed") )       as $failed
+        | ( .stats.skipped // count(.outcome=="skipped"  or .status=="skipped") ) as $skipped
+        | ($passed + $failed + $skipped)                                  as $total
         
-          # ── emit summary object -----------------------------------------------
-          {
-            total:    ($total | tonumber),
-            passed:   ($passed | tonumber),
-            failed:   ($failed | tonumber),
-            skipped:  ($skipped | tonumber),
-            duration: ((.stats.duration // 0) | tonumber),
-            pass_rate: ( if $total==0 then 0 else (( $passed * 100 ) / $total | floor) end )
+        | {
+            total:    $total,
+            passed:   $passed,
+            failed:   $failed,
+            skipped:  $skipped,
+            duration: (.stats.duration // 0),
+            pass_rate: ( if $total==0 then 0
+                         else ( ($passed * 100) / $total | floor ) end )
           }
         '  artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
+
       fi
 
   - name: Alias summary for checklist
@@ -289,25 +290,25 @@ runs:
 
       if [ ! -f artifacts/playwright-summary-main.json ] && [ -f artifacts/playwright-metrics.json ]; then
         jq '
-          # ── helper: walk tree and count objects matching a filter -------------
+          # count helper — walks the whole tree
           def count($f): [ .. | objects | select($f) ] | length ;
         
-          # ── derive numbers with fall-backs ------------------------------------
-          ($passed  := ( .stats.passed  // .stats.passes     // .stats.expected
-                         // count(.outcome=="expected"  or .status=="passed")    )) ,
-          ($failed  := ( .stats.failed  // .stats.failures   // .stats.unexpected
-                         // count(.outcome=="unexpected" or .status=="failed")   )) ,
-          ($skipped := ( .stats.skipped // count(.outcome=="skipped"  or .status=="skipped") )) ,
-          ($total   := ( $passed + $failed + $skipped )) ,
+          # derive numbers with portable `as` bindings
+          ( .stats.passed  // .stats.passes   // .stats.expected
+            // count(.outcome=="expected"  or .status=="passed") )        as $passed
+        | ( .stats.failed  // .stats.failures // .stats.unexpected
+            // count(.outcome=="unexpected" or .status=="failed") )       as $failed
+        | ( .stats.skipped // count(.outcome=="skipped"  or .status=="skipped") ) as $skipped
+        | ($passed + $failed + $skipped)                                  as $total
         
-          # ── emit summary object -----------------------------------------------
-          {
-            total:    ($total | tonumber),
-            passed:   ($passed | tonumber),
-            failed:   ($failed | tonumber),
-            skipped:  ($skipped | tonumber),
-            duration: ((.stats.duration // 0) | tonumber),
-            pass_rate: ( if $total==0 then 0 else (( $passed * 100 ) / $total | floor) end )
+        | {
+            total:    $total,
+            passed:   $passed,
+            failed:   $failed,
+            skipped:  $skipped,
+            duration: (.stats.duration // 0),
+            pass_rate: ( if $total==0 then 0
+                         else ( ($passed * 100) / $total | floor ) end )
           }
         '  artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
 
