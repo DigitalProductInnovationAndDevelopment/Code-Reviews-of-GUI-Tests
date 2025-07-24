@@ -35,13 +35,10 @@ jobs:
       # ── run the composite action in FULL mode  ─────────────────
       - id: review
         name: GUI-Based Testing Code Review
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.25
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.26
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          # mode defaults to "full" so no need to set it explicitly
-          # you can still override other knobs if you wish, e.g.:
-          # test-files: tests
-          # enable-visual-comparison: 'true'
+          enable-visual-comparison: 'true'
 
       # Optional: surface the dashboard link in the job summary
       - name: Echo dashboard URL
