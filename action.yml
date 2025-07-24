@@ -1,6 +1,5 @@
 # ───────────────────────────────────────────────────────────────
-#  GUI-BASED TESTING CODE REVIEW – MODULAR COMPOSITE ACTION
-#  (full, lint-only, dashboard-only, test-only)
+#  GUI-BASED TESTING CODE REVIEW — MODULAR COMPOSITE ACTION
 # ───────────────────────────────────────────────────────────────
 name: 'GUI-Based Testing Code Review'
 description: 'Visual dashboard & bot comments for Playwright GUI tests + ESLint, fully modular'
@@ -19,7 +18,6 @@ inputs:
     required: true
     default: ${{ github.token }}
 
-  # —— core behaviour switches ————————————————————————————
   mode:
     description: |
       Execution mode:
@@ -43,7 +41,6 @@ inputs:
     required: false
     default: 'true'
 
-  # —— test / lint settings ————————————————————————————————
   test-files:
     description: 'Glob pattern for GUI test files'
     required: false
@@ -69,7 +66,6 @@ inputs:
     required: false
     default: 'tests/demo-todo-app.spec.ts'
 
-  # —— dashboard / upload settings ————————————————————————
   enable-github-pages:
     description: 'Deploy dashboard to GitHub Pages'
     required: false
@@ -87,7 +83,6 @@ inputs:
     required: false
     default: 'false'
 
-  # —— advanced —————————————————————————————————————————————
   extra-npm-dependencies:
     description: 'Space-separated list of extra npm packages to install'
     required: false
@@ -95,27 +90,49 @@ inputs:
   custom-artifacts-path:
     description: |
       Path containing existing artifacts (used in dashboard-only mode).
-      The folder must contain:
-        - playwright-summary*.json
-        - playwright-report/ (HTML & screenshots)
+      Must contain:
+        • playwright-summary*.json
+        • playwright-report/ (HTML & screenshots)
     required: false
     default: ''
 
 # ───────────────────────────────────────────────────────────────
-# ▸▸ Outputs  (unchanged, still provided for compatibility)
+# ▸▸ Outputs   (now expanded → no inline mapping)
 # ───────────────────────────────────────────────────────────────
 outputs:
-  test-results:           { value: ${{ steps.test-summary.outputs.results }} }
-  visual-artifacts-path:  { value: ${{ steps.setup.outputs.artifacts-path }} }
-  dashboard-url:          { value: ${{ steps.deploy-report.outputs.page_url }} }
-  test-pass-rate:         { value: ${{ steps.test-summary.outputs.pass-rate }} }
-  total-gui-tests:        { value: ${{ steps.test-summary.outputs.total-tests }} }
-  code-quality-score:     { value: ${{ steps.lint-summary.outputs.quality-score }} }
-  pr-test-results:        { value: ${{ steps.test-summary.outputs.pr-results }} }
-  main-test-results:      { value: ${{ steps.test-summary.outputs.main-results }} }
-  visual-comparison:      { value: ${{ steps.test-summary.outputs.visual-comparison }} }
-  gui-regression-detected:{ value: ${{ steps.test-summary.outputs.regression-detected }} }
-  review-checklist-status:{ value: ${{ steps.checklist.outputs.status }} }
+  test-results:
+    description: 'Comprehensive JSON summary of GUI test results'
+    value: ${{ steps.test-summary.outputs.results }}
+  visual-artifacts-path:
+    description: 'Path to generated visual artifacts and screenshots'
+    value: ${{ steps.setup.outputs.artifacts-path }}
+  dashboard-url:
+    description: 'URL of the deployed visual dashboard'
+    value: ${{ steps.deploy-report.outputs.page_url }}
+  test-pass-rate:
+    description: 'GUI test pass-rate percentage'
+    value: ${{ steps.test-summary.outputs.pass-rate }}
+  total-gui-tests:
+    description: 'Total number of GUI tests executed'
+    value: ${{ steps.test-summary.outputs.total-tests }}
+  code-quality-score:
+    description: 'Overall code-quality score from linting'
+    value: ${{ steps.lint-summary.outputs.quality-score }}
+  pr-test-results:
+    description: 'JSON summary of PR-branch GUI tests'
+    value: ${{ steps.test-summary.outputs.pr-results }}
+  main-test-results:
+    description: 'JSON summary of main-branch GUI tests'
+    value: ${{ steps.test-summary.outputs.main-results }}
+  visual-comparison:
+    description: 'Visual comparison analysis (PR vs main)'
+    value: ${{ steps.test-summary.outputs.visual-comparison }}
+  gui-regression-detected:
+    description: 'Whether a GUI regression was detected'
+    value: ${{ steps.test-summary.outputs.regression-detected }}
+  review-checklist-status:
+    description: 'Status of the code-review checklist'
+    value: ${{ steps.checklist.outputs.status }}
 
 # ───────────────────────────────────────────────────────────────
 # ▸▸ Composite run
@@ -124,59 +141,50 @@ runs:
   using: 'composite'
   steps:
 
-# -------------------------------------------------------------
-# 0. Derive effective switches from `mode`
-# -------------------------------------------------------------
+  # -----------------------------------------------------------
+  # 0. Derive switches from `mode`
+  # -----------------------------------------------------------
   - name: Derive mode switches
     id: modes
     shell: bash
     run: |
-      set -e
       MODE="${{ inputs.mode }}"
-      p="${{ inputs.enable-playwright }}"   # respect manual override
+      p="${{ inputs.enable-playwright }}"
       l="${{ inputs.enable-lint }}"
       d="${{ inputs.enable-dashboard }}"
-
       case "$MODE" in
         lint-only)      p="false"; d="false" ;;
         test-only)      l="false"; d="false" ;;
         dashboard-only) p="false"; l="false" ;;
       esac
+      echo "playwright=$p" >>"$GITHUB_OUTPUT"
+      echo "lint=$l"       >>"$GITHUB_OUTPUT"
+      echo "dashboard=$d"  >>"$GITHUB_OUTPUT"
 
-      echo "playwright=$p" >> "$GITHUB_OUTPUT"
-      echo "lint=$l"       >> "$GITHUB_OUTPUT"
-      echo "dashboard=$d"  >> "$GITHUB_OUTPUT"
-
-# -------------------------------------------------------------
-# 1. Basic setup (always)
-# -------------------------------------------------------------
-  - name: Setup workspace folders
+  # -----------------------------------------------------------
+  # 1. Setup
+  # -----------------------------------------------------------
+  - name: Prepare workspace
     id: setup
     shell: bash
     run: |
       mkdir -p artifacts
-      echo "artifacts-path=artifacts" >> "$GITHUB_OUTPUT"
+      echo "artifacts-path=artifacts" >>"$GITHUB_OUTPUT"
 
   - uses: actions/setup-node@v4
     with: { node-version: ${{ inputs.node-version }} }
 
-# -------------------------------------------------------------
-# 2. Install dependencies  (project + optional extra)
-# -------------------------------------------------------------
   - name: Install npm dependencies
-    if: always()      # we need node modules even in lint-only / dashboard-only
     shell: bash
     run: |
-      if [ -f package.json ]; then
-        npm install
-      fi
+      if [ -f package.json ]; then npm ci; fi
       if [ -n "${{ inputs.extra-npm-dependencies }}" ]; then
         npm install --no-save ${{ inputs.extra-npm-dependencies }}
       fi
 
-# -------------------------------------------------------------
-# 3. Lint  (lint == true)
-# -------------------------------------------------------------
+  # -----------------------------------------------------------
+  # 2. Lint (conditional)
+  # -----------------------------------------------------------
   - uses: reviewdog/action-setup@v1
     if: steps.modes.outputs.lint == 'true' && github.event_name == 'pull_request'
     with: { reviewdog_version: latest }
@@ -190,75 +198,61 @@ runs:
       REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
       REVIEWDOG_REPORTER: ${{ inputs.reviewdog-reporter }}
     run: |
-      echo "🔍 Running lint..."
-      if [ -f scripts/lint.js ]; then
-        node scripts/lint.js
-      elif [ -f .gui-test-review-action/scripts/lint.js ]; then
-        node .gui-test-review-action/scripts/lint.js
-      else
-        # Fallback: run ESLint if present in project
-        if npx --no-install eslint --version &>/dev/null; then
-          npx eslint .
-        else
-          echo "⚠️ No lint script found; skipping."
-        fi
-      fi
+      echo "🔍 Linting..."
+      if [ -f scripts/lint.js ];        then node scripts/lint.js
+      elif [ -f .gui-test-review-action/scripts/lint.js ]; then node .gui-test-review-action/scripts/lint.js
+      elif npx --no-install eslint --version &>/dev/null;  then npx eslint .
+      else echo "⚠️ No lint script found; skipping."; fi
     continue-on-error: true
 
-# -------------------------------------------------------------
-# 4. Playwright tests  (playwright == true)
-# -------------------------------------------------------------
+  # -----------------------------------------------------------
+  # 3. Playwright tests (conditional)
+  # -----------------------------------------------------------
   - name: Install Playwright browsers
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
     run: npx playwright install --with-deps
 
-  - name: Run Playwright tests on PR branch
+  - name: Run Playwright tests
     id: gui-tests-pr
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
     env:
       PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
       TEST_FILES: ${{ inputs.test-files }}
-    run: |
-      echo "🧪 Running Playwright tests..."
-      npx playwright test $TEST_FILES
+    run: npx playwright test $TEST_FILES
     continue-on-error: true
 
-  - name: Archive Playwright summary (PR)
+  - name: Archive Playwright artifacts
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
     run: |
-      if [ -f playwright-summary.json ]; then
+      [[ -f playwright-summary.json ]] && \
         cp playwright-summary.json artifacts/playwright-summary-pr.json
-      fi
-      if [ -d playwright-report ]; then
+      if [[ -d playwright-report ]]; then
         mkdir -p artifacts/pr-report
         mv playwright-report/* artifacts/pr-report/
       fi
     continue-on-error: true
 
-# -------------------------------------------------------------
-# 5. Dashboard-only path: copy provided artifacts
-# -------------------------------------------------------------
-  - name: Copy provided artifacts (dashboard-only)
+  # -----------------------------------------------------------
+  # 4. Dashboard-only path
+  # -----------------------------------------------------------
+  - name: Copy provided artifacts
     if: inputs.mode == 'dashboard-only'
     shell: bash
     run: |
-      echo "📦 Copying pre-built artifacts from ${{ inputs.custom-artifacts-path }}"
+      echo "📦 Copying artifacts from ${{ inputs.custom-artifacts-path }}"
       cp -R "${{ inputs.custom-artifacts-path }}/." artifacts/
 
-# -------------------------------------------------------------
-# 6. Dashboard generation  (dashboard == true)
-# -------------------------------------------------------------
+  # -----------------------------------------------------------
+  # 5. Dashboard generation (conditional)
+  # -----------------------------------------------------------
   - name: Generate flowchart
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
     run: |
-      echo "📊 Generating flowchart..."
-      if [ -f scripts/generate-flowchart.js ]; then
-        node scripts/generate-flowchart.js
-      fi
+      if [ -f scripts/generate-flowchart.js ];          then node scripts/generate-flowchart.js; fi
     continue-on-error: true
 
   - name: Build dashboard
@@ -266,15 +260,12 @@ runs:
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
     run: |
-      echo "🎨 Building dashboard..."
-      if [ -f scripts/generate-webpage.js ]; then
-        node scripts/generate-webpage.js
-      fi
+      if [ -f scripts/generate-webpage.js ];            then node scripts/generate-webpage.js; fi
     continue-on-error: true
 
-# -------------------------------------------------------------
-# 7. Upload + deploy (only if dashboard == true)
-# -------------------------------------------------------------
+  # -----------------------------------------------------------
+  # 6. Upload artifacts & deploy (conditional)
+  # -----------------------------------------------------------
   - uses: actions/upload-artifact@v4
     if: steps.modes.outputs.dashboard == 'true'
     with:
@@ -294,12 +285,13 @@ runs:
     id: deploy-report
     if: steps.modes.outputs.dashboard == 'true' && inputs.enable-github-pages == 'true'
     uses: actions/deploy-pages@v4
-    with: { artifact_name: gui-test-visual-artifacts }
+    with:
+      artifact_name: gui-test-visual-artifacts
     continue-on-error: true
 
-# -------------------------------------------------------------
-# 8. PR comment  (dashboard == true)
-# -------------------------------------------------------------
+  # -----------------------------------------------------------
+  # 7. PR comment (conditional)
+  # -----------------------------------------------------------
   - name: Post PR comment
     if: steps.modes.outputs.dashboard == 'true' && inputs.mode != 'dashboard-only' && github.event_name == 'pull_request'
     shell: bash
@@ -307,51 +299,45 @@ runs:
       GITHUB_TOKEN: ${{ inputs.github-token }}
       WEB_REPORT_URL: ${{ inputs.web-report-url || steps.deploy-report.outputs.page_url }}
     run: |
-      echo "💬 Posting dashboard link..."
-      if [ -f scripts/summary-comment.js ]; then
-        node scripts/summary-comment.js
-      fi
+      if [ -f scripts/summary-comment.js ]; then node scripts/summary-comment.js; fi
     continue-on-error: true
 
-# -------------------------------------------------------------
-# 9. Test summary & quality score  (playwright || lint)
-# -------------------------------------------------------------
-  - name: Build test summary
+  # -----------------------------------------------------------
+  # 8. Summaries & metrics
+  # -----------------------------------------------------------
+  - name: Summarise tests
     id: test-summary
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
     run: |
-      echo "📈 Summarising tests..."
-      # (summary logic as before – omitted for brevity)
+      echo "📈 Summarising tests…"
+      ## (summary logic – unchanged for brevity)
     continue-on-error: true
 
-  - name: Extract code quality metrics
+  - name: Extract quality metrics
     id: lint-summary
     if: steps.modes.outputs.lint == 'true'
     shell: bash
     run: |
-      echo "📈 Calculating quality score..."
-      # (metrics logic as before – omitted for brevity)
+      echo "📈 Calculating quality score…"
+      ## (metrics logic – unchanged for brevity)
     continue-on-error: true
 
-# -------------------------------------------------------------
-# 10. Fail build if tests failed (optional)
-# -------------------------------------------------------------
+  # -----------------------------------------------------------
+  # 9. Optional failure gate
+  # -----------------------------------------------------------
   - name: Validate test results
     if: steps.modes.outputs.playwright == 'true' && inputs.fail-on-test-failure == 'true'
     shell: bash
     run: |
-      if [ -f artifacts/playwright-summary-pr.json ]; then
+      if [[ -f artifacts/playwright-summary-pr.json ]]; then
         FAILED=$(jq -r '.failed' artifacts/playwright-summary-pr.json)
-        if [ "$FAILED" != "0" ]; then
-          echo "::error::Playwright tests failed."
-          exit 1
-        fi
+        [[ "$FAILED" != "0" ]] && { echo "::error::Playwright tests failed"; exit 1; }
       fi
 
-# -------------------------------------------------------------
-# 11. Final echo (always)
-# -------------------------------------------------------------
+  # -----------------------------------------------------------
+  # 10. Done
+  # -----------------------------------------------------------
   - name: Finish
     shell: bash
     run: echo "✅ GUI-Based Testing Code Review action completed."
