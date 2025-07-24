@@ -1,0 +1,40 @@
+name: Comprehensive GUI Test Analysis
+
+on: [push, pull_request]
+
+jobs:
+  gui-analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      pages: write
+      id-token: write
+
+    environment:                # optional, gives a nice Pages check
+      name: github-pages
+      url: ${{ steps.gui-review.outputs.dashboard-url }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Advanced GUI Test Review
+        id: gui-review
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.6
+        # ▸ or: uses: ./.github/actions/gui-test-review
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          test-files: 'tests/**/*.spec.{js,ts}'
+          enable-visual-comparison: 'true'
+          reviewdog-reporter: 'github-pr-review'
+          artifacts-retention-days: '30'
+          fail-on-test-failure: 'false'
+
+      - name: Check for GUI regressions
+        if: steps.gui-review.outputs.gui-regression-detected == 'true'
+        run: |
+          echo "⚠️ GUI test regression detected!"
+          echo "Dashboard: ${{ steps.gui-review.outputs.dashboard-url }}"
+          echo "Quality Score: ${{ steps.gui-review.outputs.code-quality-score }}/100"
