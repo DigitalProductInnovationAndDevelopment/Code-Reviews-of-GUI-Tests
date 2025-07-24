@@ -1,82 +1,88 @@
 name: Split-Module GUI Test Pipeline
 
-on: [pull_request]
+on:
+  pull_request:
+    branches: [main]          # adjust to your default branch
 
 jobs:
-  # ───────────────────────────────────────────────────────────
-  # 1. Playwright tests only
-  # ───────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────
+# 1. Playwright tests only  (Action builds artifacts, no Pages)
+# ───────────────────────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
+        with:
+          cache: npm
       - run: npm install
 
-      # (You may still prefer the native playwright reporter; here's the full action)
-      - uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
+      - name: GUI Test – Playwright only
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          mode: test-only                    # ← runs only Playwright
+          mode: test-only
+
+          # 👇 turn on artifact packaging, but skip Pages deploy
+          enable-dashboard: 'true'
+          enable-github-pages: 'false'
+
           test-files: 'tests/**/*.spec.{js,ts}'
-          # any other Playwright-specific inputs here
+          # (add other Playwright-specific inputs as needed)
 
-      # Upload the files for the dashboard job
-      - uses: actions/upload-artifact@v4
-        with:
-          name: playwright-summary
-          path: artifacts/playwright-summary-pr.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: artifacts/pr-report/
-
-  # ───────────────────────────────────────────────────────────
-  # 2. ESLint / Prettier only
-  # ───────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────
+# 2. ESLint / Prettier only
+# ───────────────────────────────────────────────────────────────
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
+        with:
+          cache: npm
       - run: npm install
 
-      - uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
+      - name: GUI Test – Lint only
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          mode: lint-only                    # ← only lint
+          mode: lint-only
 
-  # ───────────────────────────────────────────────────────────
-  # 3. Build dashboard from artifacts
-  # ───────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────
+# 3. Build dashboard from artifacts produced in `test`
+# ───────────────────────────────────────────────────────────────
   dashboard:
-    needs: [test, lint]
+    needs: [test, lint]       # wait for both jobs
     runs-on: ubuntu-latest
-    permissions:
+
+    permissions:              # required for PR comment & Pages deploy
       contents: read
       pull-requests: write
-      pages: write          # needed if you deploy to Pages
+      pages: write
       id-token: write
 
-    environment:            # pretty green “github-pages / deployment”
+    environment:              # gives the nice green “github-pages / deployment” check
       name: github-pages
       url: ${{ steps.review.outputs.dashboard-url }}
 
     steps:
       - uses: actions/checkout@v4
 
-      # Pull artifacts created by `test`
-      - uses: actions/download-artifact@v4
-        with: { name: playwright-summary, path: artifacts }
-      - uses: actions/download-artifact@v4
-        with: { name: playwright-report,  path: artifacts/pr-report }
+      # ⬇️ Download the single artifact package created by the test job
+      - name: Download GUI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: gui-test-visual-artifacts
+          path: artifacts         # will be artifacts/web-report/, artifacts/pr-report/, etc.
 
-      # Build + (optionally) deploy the dashboard
+      # ⬇️ Build the dashboard (and deploy to Pages)
       - name: Dashboard / PR comment
         id: review
         uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          mode: dashboard-only               # ← no lint, no tests
-          custom-artifacts-path: artifacts   # ← where we downloaded things
-          enable-github-pages: 'true'        
+          mode: dashboard-only
+          custom-artifacts-path: artifacts
+          enable-github-pages: 'true'   # set to 'false' to skip deployment
