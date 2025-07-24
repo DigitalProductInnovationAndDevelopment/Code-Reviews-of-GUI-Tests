@@ -174,7 +174,9 @@ runs:
   - name: Install npm dependencies
     shell: bash
     run: |
-      if [ -f package.json ]; then npm ci; fi
+      if [ -f package.json ]; then 
+        npm ci || npm install
+      fi
       if [ -n "${{ inputs.extra-npm-dependencies }}" ]; then
         npm install --no-save ${{ inputs.extra-npm-dependencies }}
       fi
