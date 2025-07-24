@@ -321,4 +321,5 @@ runs:
   # 10 ── final marker
   - name: Finish
     shell: bash
+
     run: echo '✅ GUI-Based Testing action finished.'
