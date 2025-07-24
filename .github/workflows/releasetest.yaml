@@ -20,7 +20,7 @@ jobs:
 
       # ── run Playwright with MAIN-branch comparison ────────────
       - name: GUI Test – Playwright only
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.15
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.16
         with:
           github-token:          ${{ secrets.GITHUB_TOKEN }}
           mode:                  test-only
@@ -90,7 +90,7 @@ jobs:
       - run: npm install
 
       - name: GUI Test – Lint only
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.15
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.16
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode:        lint-only
@@ -144,7 +144,7 @@ jobs:
       # ── build dashboard, flowchart, PR comment, deploy Pages ──
       - id: review
         name: Dashboard / PR comment / Pages
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.15
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.16
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: dashboard-only
