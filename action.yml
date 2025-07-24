@@ -240,6 +240,17 @@ runs:
         mkdir -p artifacts/pr-report
         mv playwright-report/* artifacts/pr-report/
       fi
+      # ── NEW fallback for PR summary ───────────────────────────
+      if [ ! -f artifacts/playwright-summary-pr.json ] && [ -f artifacts/playwright-metrics.json ]; then
+        jq '{ total:    .stats.tests,
+             passed:   .stats.passed,
+             failed:   (.stats.failed // 0),
+             skipped:  (.stats.skipped // 0),
+             duration: .stats.duration,
+             pass_rate: ( .stats.tests | tonumber | if .==0 then 0 else
+                          ((.stats.passed /.stats.tests)*100) end ) }' \
+          artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
+      fi
     continue-on-error: true
 
   - name: Alias summary for checklist
@@ -247,7 +258,7 @@ runs:
     shell: bash
     run: |
       [ -f artifacts/playwright-summary-pr.json ] && \
-        cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json
+        cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json || true
 
   # 3b Playwright on MAIN branch (comparison)
   - name: Run Playwright on main branch
