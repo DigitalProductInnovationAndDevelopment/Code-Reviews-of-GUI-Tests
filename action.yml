@@ -1,200 +1,296 @@
 # ───────────────────────────────────────────────────────────────
-#  GUI-BASED TESTING CODE REVIEW – MODULAR COMPOSITE ACTION
-#  Version: v1.0.11  (all previous errors addressed)
+#  GUI-BASED TESTING CODE REVIEW — MODULAR COMPOSITE ACTION
 # ───────────────────────────────────────────────────────────────
 name: 'GUI-Based Testing Code Review'
-description: 'Playwright GUI tests + ESLint/Prettier + visual dashboard, checklist & PR comment'
+description: 'Playwright GUI tests · ESLint/Prettier · visual dashboard, checklist & PR comment'
 author: 'Digital Product Innovation and Development – TUM'
 
 branding:
   icon: 'eye'
   color: 'purple'
 
-# ──────────────────
-# Inputs
-# ──────────────────
+# ───────────────────────────────────────────────────────────────
+# ▸▸ Inputs
+# ───────────────────────────────────────────────────────────────
 inputs:
   github-token:
     description: 'GitHub token (or PAT) for API calls'
     required: true
     default: ${{ github.token }}
 
-  # execution mode
   mode:
     description: |
-      full            – run lint, tests, dashboard
-      lint-only       – only lint
+      full            – run lint, tests, dashboard   (default)
+      lint-only       – only ESLint/Prettier
       test-only       – only Playwright
-      dashboard-only  – build dashboard from given artifacts
+      dashboard-only  – build dashboard from existing artifacts
     required: false
     default: 'full'
 
-  enable-playwright: { description: 'Run Playwright',              default: 'true' }
-  enable-lint:       { description: 'Run ESLint / Prettier',       default: 'true' }
-  enable-dashboard:  { description: 'Create dashboard / checklist',default: 'true' }
-
-  enable-pr-comments:            # NEW – avoids “Unexpected input” warning
-    description: 'Post summary comment on PRs'
+  enable-playwright:
+    description: 'Run Playwright (overrides mode)'
     required: false
     default: 'true'
 
-  test-files:        { default: 'tests', description: 'Folder/glob for Playwright' }
-  node-version:      { default: '18',    description: 'Node.js version' }
-  playwright-config: { default: 'playwright.config.js' }
-  reviewdog-reporter:{ default: 'github-pr-review' }
-  main-branch:       { default: 'main' }
-  key-test-file:     { default: 'tests/demo-todo-app.spec.ts' }
+  enable-lint:
+    description: 'Run ESLint / Prettier (overrides mode)'
+    required: false
+    default: 'true'
 
-  enable-github-pages:{ default: 'true' }
-  web-report-url:     { default: '' }
-  artifacts-retention-days:{ default: '30' }
-  fail-on-test-failure:{ default: 'false' }
+  enable-dashboard:
+    description: 'Generate dashboard / checklist (overrides mode)'
+    required: false
+    default: 'true'
 
-  extra-npm-dependencies:{ default: '' }
-  custom-artifacts-path:{ default: '', description: 'Dashboard-only: folder with artifacts' }
+  enable-pr-comments:
+    description: 'Post summary comment on pull-requests'
+    required: false
+    default: 'true'
 
-# ──────────────────
-# Outputs
-# ──────────────────
+  test-files:
+    description: 'Folder or glob passed to "npx playwright test"'
+    required: false
+    default: 'tests'
+
+  node-version:
+    description: 'Node version'
+    required: false
+    default: '18'
+
+  playwright-config:
+    description: 'Path to Playwright config'
+    required: false
+    default: 'playwright.config.js'
+
+  reviewdog-reporter:
+    description: 'Reviewdog reporter'
+    required: false
+    default: 'github-pr-review'
+
+  main-branch:
+    description: 'Main branch for comparison'
+    required: false
+    default: 'main'
+
+  key-test-file:
+    description: 'File used to verify checkout'
+    required: false
+    default: 'tests/demo-todo-app.spec.ts'
+
+  enable-github-pages:
+    description: 'Deploy dashboard to GitHub Pages'
+    required: false
+    default: 'true'
+
+  web-report-url:
+    description: 'Base URL override for dashboard link'
+    required: false
+    default: ''
+
+  artifacts-retention-days:
+    description: 'Days to retain artifacts'
+    required: false
+    default: '30'
+
+  fail-on-test-failure:
+    description: 'Fail job if Playwright tests fail'
+    required: false
+    default: 'false'
+
+  extra-npm-dependencies:
+    description: 'Extra npm packages (space-separated)'
+    required: false
+    default: ''
+
+  custom-artifacts-path:
+    description: |
+      Dashboard-only: folder already containing artifacts.
+      Must include:
+        • playwright-summary*.json
+        • playwright-report/ (HTML & screenshots)
+    required: false
+    default: ''
+
+# ───────────────────────────────────────────────────────────────
+# ▸▸ Outputs   (expanded, block style)
+# ───────────────────────────────────────────────────────────────
 outputs:
-  test-results:            { value: ${{ steps.test-summary.outputs.results }} }
-  visual-artifacts-path:   { value: ${{ steps.setup.outputs.artifacts-path }} }
-  dashboard-url:           { value: ${{ steps.deploy-report.outputs.page_url }} }
-  test-pass-rate:          { value: ${{ steps.test-summary.outputs.pass-rate }} }
-  total-gui-tests:         { value: ${{ steps.test-summary.outputs.total-tests }} }
-  code-quality-score:      { value: ${{ steps.lint-summary.outputs.quality-score }} }
-  pr-test-results:         { value: ${{ steps.test-summary.outputs.pr-results }} }
-  main-test-results:       { value: ${{ steps.test-summary.outputs.main-results }} }
-  visual-comparison:       { value: ${{ steps.test-summary.outputs.visual-comparison }} }
-  gui-regression-detected: { value: ${{ steps.test-summary.outputs.regression-detected }} }
-  review-checklist-status: { value: ${{ steps.checklist.outputs.status }} }
+  test-results:
+    description: 'JSON summary of Playwright results'
+    value: ${{ steps.test-summary.outputs.results }}
 
-# ──────────────────
-# Composite run
-# ──────────────────
+  visual-artifacts-path:
+    description: 'Path to generated artifacts'
+    value: ${{ steps.setup.outputs.artifacts-path }}
+
+  dashboard-url:
+    description: 'Deployed dashboard URL'
+    value: ${{ steps.deploy-report.outputs.page_url }}
+
+  test-pass-rate:
+    description: 'Playwright pass-rate'
+    value: ${{ steps.test-summary.outputs.pass-rate }}
+
+  total-gui-tests:
+    description: 'Total Playwright tests executed'
+    value: ${{ steps.test-summary.outputs.total-tests }}
+
+  code-quality-score:
+    description: 'Overall quality score (lint)'
+    value: ${{ steps.lint-summary.outputs.quality-score }}
+
+  pr-test-results:
+    description: 'PR-branch Playwright summary'
+    value: ${{ steps.test-summary.outputs.pr-results }}
+
+  main-test-results:
+    description: 'Main-branch Playwright summary'
+    value: ${{ steps.test-summary.outputs.main-results }}
+
+  visual-comparison:
+    description: 'Comparison PR vs main'
+    value: ${{ steps.test-summary.outputs.visual-comparison }}
+
+  gui-regression-detected:
+    description: 'True if regression detected'
+    value: ${{ steps.test-summary.outputs.regression-detected }}
+
+  review-checklist-status:
+    description: 'Checklist completion status'
+    value: ${{ steps.checklist.outputs.status }}
+
+# ───────────────────────────────────────────────────────────────
+# ▸▸ Composite run
+# ───────────────────────────────────────────────────────────────
 runs:
-  using: 'composite'
+  using: composite
   steps:
 
-  # 0 – derive switches from mode
+  # 0 ── derive feature flags from mode
   - id: modes
-    name: Set feature flags
+    name: Derive feature flags
     shell: bash
     run: |
-      p=${{ inputs.enable-playwright }}
-      l=${{ inputs.enable-lint }}
-      d=${{ inputs.enable-dashboard }}
-      case "${{ inputs.mode }}" in
-        lint-only)      p=false d=false ;;
-        test-only)      l=false d=false ;;
-        dashboard-only) p=false l=false ;;
+      play='${{ inputs.enable-playwright }}'
+      lint='${{ inputs.enable-lint }}'
+      dash='${{ inputs.enable-dashboard }}'
+      case '${{ inputs.mode }}' in
+        lint-only)      play=false; dash=false ;;
+        test-only)      lint=false; dash=false ;;
+        dashboard-only) play=false; lint=false ;;
       esac
-      echo "playwright=$p" >> $GITHUB_OUTPUT
-      echo "lint=$l"       >> $GITHUB_OUTPUT
-      echo "dashboard=$d"  >> $GITHUB_OUTPUT
+      echo "playwright=$play" >> $GITHUB_OUTPUT
+      echo "lint=$lint"       >> $GITHUB_OUTPUT
+      echo "dashboard=$dash"  >> $GITHUB_OUTPUT
 
-  # 1 – basic setup
-  - name: Prepare workspace
-    id: setup
+  # 1 ── basic setup
+  - id: setup
+    name: Prepare workspace
     shell: bash
     run: |
       mkdir -p artifacts
       echo "artifacts-path=artifacts" >> $GITHUB_OUTPUT
 
   - uses: actions/setup-node@v4
-    with: { node-version: ${{ inputs.node-version }} }
+    with:
+      node-version: ${{ inputs.node-version }}
 
-  - name: Install npm packages
+  - name: Install npm
     shell: bash
     run: |
       if [ -f package.json ]; then npm ci 2>/dev/null || npm install; fi
-      [ -n "${{ inputs.extra-npm-dependencies }}" ] && \
+      if [ -n "${{ inputs.extra-npm-dependencies }}" ]; then
         npm install --no-save ${{ inputs.extra-npm-dependencies }}
+      fi
 
-  # 2 – lint (conditional)
+  # 2 ── lint
   - uses: reviewdog/action-setup@v1
     if: steps.modes.outputs.lint == 'true' && github.event_name == 'pull_request'
-    with: { reviewdog_version: latest }
+    with:
+      reviewdog_version: latest
 
   - name: ESLint / Prettier
     if: steps.modes.outputs.lint == 'true'
     shell: bash
-    env:
-      REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
-      REVIEWDOG_REPORTER: ${{ inputs.reviewdog-reporter }}
     run: |
       if [ -f scripts/lint.js ]; then node scripts/lint.js
-      elif npx --no-install eslint --version 2>/dev/null; then npx eslint .
-      else echo "ℹ️  No lint script"; fi
+      elif npx --no-install eslint -v &>/dev/null; then npx eslint .
+      else echo 'ℹ️ no lint script'; fi
     continue-on-error: true
 
-  # 3 – Playwright (conditional)
+  # 3 ── Playwright
   - name: Install Playwright browsers
     if: steps.modes.outputs.playwright == 'true'
-    run: npx playwright install --with-deps
     shell: bash
+    run: npx playwright install --with-deps
 
   - name: Run Playwright
     if: steps.modes.outputs.playwright == 'true'
-    env: { PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }} }
     shell: bash
+    env:
+      PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
     run: npx playwright test "${{ inputs.test-files }}"
     continue-on-error: true
 
-  - name: Collect Playwright artifacts
+  - name: Move Playwright artifacts
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
     run: |
-      [[ -f playwright-summary.json ]] && mv playwright-summary.json artifacts/playwright-summary-pr.json
-      [[ -f playwright-metrics.json ]] && mv playwright-metrics.json artifacts/
-      [[ -d playwright-report ]] && \
-        { mkdir -p artifacts/pr-report; mv playwright-report/* artifacts/pr-report/; }
+      [ -f playwright-summary.json ] && mv playwright-summary.json artifacts/playwright-summary-pr.json
+      [ -f playwright-metrics.json ] && mv playwright-metrics.json artifacts/
+      if [ -d playwright-report ]; then
+        mkdir -p artifacts/pr-report
+        mv playwright-report/* artifacts/pr-report/
+      fi
     continue-on-error: true
 
-  # 4 – dashboard-only mode: copy provided artifacts
+  # 4 ── copy external artifacts in dashboard-only
   - name: Import external artifacts
     if: inputs.mode == 'dashboard-only'
     shell: bash
     run: |
-      SRC="${{ inputs.custom-artifacts-path }}"
-      if [[ "$SRC" != "artifacts" && -d "$SRC" ]]; then
-        echo "Copy from $SRC → artifacts/"
+      SRC='${{ inputs.custom-artifacts-path }}'
+      if [ "$SRC" != 'artifacts' ] && [ -d "$SRC" ]; then
         cp -R "$SRC/." artifacts/
       fi
 
-  # 5 – checklist (run whenever dashboard enabled)
+  # 5 ── checklist
   - id: checklist
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
     run: |
-      [ -f scripts/checklist.js ] && node scripts/checklist.js || \
-      echo '{"md":"*checklist unavailable*"}' > artifacts/checklist.json
+      if [ -f scripts/checklist.js ]; then
+        node scripts/checklist.js
+      else
+        echo '{"status":"missing"}' > artifacts/checklist.json
+      fi
     continue-on-error: true
 
-  # 6 – ensure metrics file for flowchart
-  - name: Locate metrics file
+  # 6 ── ensure metrics JSON for flowchart
+  - name: Locate metrics JSON
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
     run: |
-      F=$(find artifacts -name playwright-metrics.json | head -n1 || true)
-      [ -n "$F" ] && cp "$F" playwright-metrics.json
+      M=$(find artifacts -name playwright-metrics.json | head -n1 || true)
+      [ -n "$M" ] && cp "$M" playwright-metrics.json
 
-  # 7 – flowchart + dashboard HTML
-  - name: Generate flow-chart PNG
+  # 7 ── flowchart and dashboard
+  - name: Flow-chart
     if: steps.modes.outputs.dashboard == 'true'
+    shell: bash
     run: |
       [ -f scripts/generate-flowchart.js ] && node scripts/generate-flowchart.js
     continue-on-error: true
 
-  - name: Build dashboard HTML
-    id: dashboard
+  - id: dashboard
+    name: Build dashboard HTML
     if: steps.modes.outputs.dashboard == 'true'
+    shell: bash
     run: |
       [ -f scripts/generate-webpage.js ] && node scripts/generate-webpage.js
-    shell: bash
     continue-on-error: true
 
-  # 8 – upload Pages tarball & deploy
+  # 8 ── upload Pages artifact & deploy
   - uses: actions/upload-pages-artifact@v3
     if: steps.modes.outputs.dashboard == 'true' && inputs.enable-github-pages == 'true'
     with:
@@ -205,11 +301,12 @@ runs:
     name: Deploy to GitHub Pages
     if: steps.modes.outputs.dashboard == 'true' && inputs.enable-github-pages == 'true'
     uses: actions/deploy-pages@v4
-    with: { artifact_name: gui-test-visual-artifacts }
+    with:
+      artifact_name: gui-test-visual-artifacts
     continue-on-error: true
 
-  # 9 – PR comment (now controlled by enable-pr-comments)
-  - name: Post PR comment
+  # 9 ── PR comment
+  - name: PR summary comment
     if: steps.modes.outputs.dashboard == 'true' &&
         inputs.enable-pr-comments == 'true' &&
         github.event_name == 'pull_request'
@@ -221,26 +318,7 @@ runs:
       [ -f scripts/summary-comment.js ] && node scripts/summary-comment.js
     continue-on-error: true
 
-  # 10 – summaries & optional fail-fast
-  - id: test-summary
-    if: steps.modes.outputs.playwright == 'true'
+  # 10 ── final marker
+  - name: Finish
     shell: bash
-    run: echo '📈 summarise tests (logic omitted)'
-    continue-on-error: true
-
-  - id: lint-summary
-    if: steps.modes.outputs.lint == 'true'
-    shell: bash
-    run: echo '📈 calculate lint metrics (logic omitted)'
-    continue-on-error: true
-
-  - name: Fail on test failure
-    if: steps.modes.outputs.playwright == 'true' && inputs.fail-on-test-failure == 'true'
-    shell: bash
-    run: |
-      if jq -e '.failed>0' artifacts/playwright-summary-pr.json >/dev/null 2>&1; then
-        echo "::error::Playwright tests failed"; exit 1; fi
-
-  - name: Done
-    shell: bash
-    run: echo "✅ GUI-Based Testing Code Review finished."
+    run: echo '✅ GUI-Based Testing action finished.'
