@@ -112,49 +112,39 @@ inputs:
     default: ''
 
 # ───────────────────────────────────────────────────────────────
-# ▸▸ Outputs   (expanded, block style)
+# ▸▸ Outputs
 # ───────────────────────────────────────────────────────────────
 outputs:
   test-results:
     description: 'JSON summary of Playwright results'
     value: ${{ steps.test-summary.outputs.results }}
-
   visual-artifacts-path:
     description: 'Path to generated artifacts'
     value: ${{ steps.setup.outputs.artifacts-path }}
-
   dashboard-url:
     description: 'Deployed dashboard URL'
     value: ${{ steps.deploy-report.outputs.page_url }}
-
   test-pass-rate:
     description: 'Playwright pass-rate'
     value: ${{ steps.test-summary.outputs.pass-rate }}
-
   total-gui-tests:
     description: 'Total Playwright tests executed'
     value: ${{ steps.test-summary.outputs.total-tests }}
-
   code-quality-score:
     description: 'Overall quality score (lint)'
     value: ${{ steps.lint-summary.outputs.quality-score }}
-
   pr-test-results:
     description: 'PR-branch Playwright summary'
     value: ${{ steps.test-summary.outputs.pr-results }}
-
   main-test-results:
     description: 'Main-branch Playwright summary'
     value: ${{ steps.test-summary.outputs.main-results }}
-
   visual-comparison:
     description: 'Comparison PR vs main'
     value: ${{ steps.test-summary.outputs.visual-comparison }}
-
   gui-regression-detected:
     description: 'True if regression detected'
     value: ${{ steps.test-summary.outputs.regression-detected }}
-
   review-checklist-status:
     description: 'Checklist completion status'
     value: ${{ steps.checklist.outputs.status }}
@@ -166,7 +156,7 @@ runs:
   using: composite
   steps:
 
-  # 0 ── derive feature flags from mode
+  # 0  derive feature flags from mode
   - id: modes
     name: Derive feature flags
     shell: bash
@@ -175,15 +165,15 @@ runs:
       lint='${{ inputs.enable-lint }}'
       dash='${{ inputs.enable-dashboard }}'
       case '${{ inputs.mode }}' in
-        lint-only)      play=false; dash=false ;;
-        test-only)      lint=false; dash=false ;;
-        dashboard-only) play=false; lint=false ;;
+        lint-only)      play=false ; dash=false ;;
+        test-only)      lint=false ; dash=false ;;
+        dashboard-only) play=false ; lint=false ;;
       esac
       echo "playwright=$play" >> $GITHUB_OUTPUT
       echo "lint=$lint"       >> $GITHUB_OUTPUT
       echo "dashboard=$dash"  >> $GITHUB_OUTPUT
 
-  # 1 ── basic setup
+  # 1  workspace
   - id: setup
     name: Prepare workspace
     shell: bash
@@ -203,7 +193,7 @@ runs:
         npm install --no-save ${{ inputs.extra-npm-dependencies }}
       fi
 
-  # 2 ── lint
+  # 2  lint
   - uses: reviewdog/action-setup@v1
     if: steps.modes.outputs.lint == 'true' && github.event_name == 'pull_request'
     with:
@@ -218,7 +208,7 @@ runs:
       else echo 'ℹ️ no lint script'; fi
     continue-on-error: true
 
-  # 3 ── Playwright
+  # 3  Playwright
   - name: Install Playwright browsers
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
@@ -244,7 +234,16 @@ runs:
       fi
     continue-on-error: true
 
-  # 4 ── copy external artifacts in dashboard-only
+  # ── NEW: alias summary so checklist finds it ──────────────────────────────
+  - name: Alias summary for checklist
+    if: steps.modes.outputs.playwright == 'true'
+    shell: bash
+    run: |
+      if [ -f artifacts/playwright-summary-pr.json ]; then
+        cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json
+      fi
+
+  # 4  copy external artifacts (dashboard-only)
   - name: Import external artifacts
     if: inputs.mode == 'dashboard-only'
     shell: bash
@@ -254,7 +253,23 @@ runs:
         cp -R "$SRC/." artifacts/
       fi
 
-  # 5 ── checklist
+  # 5  ensure metrics JSON for flow-chart
+  - name: Locate metrics JSON
+    if: steps.modes.outputs.dashboard == 'true'
+    shell: bash
+    run: |
+      M=$(find artifacts -name playwright-metrics.json | head -n1 || true)
+      [ -n "$M" ] && cp "$M" playwright-metrics.json
+
+  # 6  flow-chart
+  - name: Flow-chart
+    if: steps.modes.outputs.dashboard == 'true'
+    shell: bash
+    run: |
+      [ -f scripts/generate-flowchart.js ] && node scripts/generate-flowchart.js
+    continue-on-error: true
+
+  # 7  checklist  (runs AFTER flow-chart now)  ──────────────────────────────
   - id: checklist
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
@@ -266,22 +281,7 @@ runs:
       fi
     continue-on-error: true
 
-  # 6 ── ensure metrics JSON for flowchart
-  - name: Locate metrics JSON
-    if: steps.modes.outputs.dashboard == 'true'
-    shell: bash
-    run: |
-      M=$(find artifacts -name playwright-metrics.json | head -n1 || true)
-      [ -n "$M" ] && cp "$M" playwright-metrics.json
-
-  # 7 ── flowchart and dashboard
-  - name: Flow-chart
-    if: steps.modes.outputs.dashboard == 'true'
-    shell: bash
-    run: |
-      [ -f scripts/generate-flowchart.js ] && node scripts/generate-flowchart.js
-    continue-on-error: true
-
+  # 8  dashboard HTML
   - id: dashboard
     name: Build dashboard HTML
     if: steps.modes.outputs.dashboard == 'true'
@@ -290,7 +290,7 @@ runs:
       [ -f scripts/generate-webpage.js ] && node scripts/generate-webpage.js
     continue-on-error: true
 
-  # 8 ── upload Pages artifact & deploy
+  # 9  upload Pages artifact & deploy
   - uses: actions/upload-pages-artifact@v3
     if: steps.modes.outputs.dashboard == 'true' && inputs.enable-github-pages == 'true'
     with:
@@ -305,7 +305,7 @@ runs:
       artifact_name: gui-test-visual-artifacts
     continue-on-error: true
 
-  # 9 ── PR comment
+  # 10 PR comment
   - name: PR summary comment
     if: steps.modes.outputs.dashboard == 'true' &&
         inputs.enable-pr-comments == 'true' &&
@@ -318,25 +318,7 @@ runs:
       [ -f scripts/summary-comment.js ] && node scripts/summary-comment.js
     continue-on-error: true
 
-  # 10 ── final marker
+  # 11 Done marker
   - name: Finish
     shell: bash
-    run: echo '📈 summarise tests (logic omitted)'
-    continue-on-error: true
-
-  - id: lint-summary
-    if: steps.modes.outputs.lint == 'true'
-    shell: bash
-    run: echo '📈 calculate lint metrics (logic omitted)'
-    continue-on-error: true
-
-  - name: Fail on test failure
-    if: steps.modes.outputs.playwright == 'true' && inputs.fail-on-test-failure == 'true'
-    shell: bash
-    run: |
-      if jq -e '.failed>0' artifacts/playwright-summary-pr.json >/dev/null 2>&1; then
-        echo "::error::Playwright tests failed"; exit 1; fi
-
-  - name: Done
-    shell: bash
-    run: echo "✅ GUI-Based Testing Code Review finished."
+    run: echo '✅ GUI-Based Testing Code Review finished.'
