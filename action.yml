@@ -228,8 +228,7 @@ runs:
     env:
       PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
     run: |
-      npx playwright test "${{ inputs.test-files }}" \
-          --reporter=list,json=playwright-metrics.json
+      npx playwright test "${{ inputs.test-files }}" 
     continue-on-error: true
 
   - name: Move Playwright artifacts (PR)
@@ -271,8 +270,7 @@ runs:
       git fetch --quiet origin "${{ inputs.main-branch }}" || true
       git checkout origin/${{ inputs.main-branch }} -- tests/ playwright.config.js || true
 
-      npx playwright test "${{ inputs.test-files }}" \
-          --reporter=list,json=playwright-metrics.json
+      npx playwright test "${{ inputs.test-files }}" 
 
       mkdir -p artifacts/main-report
       [ -d playwright-report ] && mv playwright-report/* artifacts/main-report/ || true
