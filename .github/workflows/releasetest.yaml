@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-      - run: npm ci
+      - run: npm install
 
       # (You may still prefer the native playwright reporter; here's the full action)
       - uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
@@ -39,7 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-      - run: npm ci
+      - run: npm install
 
       - uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
         with:
