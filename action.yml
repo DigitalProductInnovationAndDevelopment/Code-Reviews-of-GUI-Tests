@@ -127,6 +127,27 @@ runs:
         echo "🚀 Setting up GUI-Based Testing Code Review environment..."
         mkdir -p artifacts
         echo "artifacts-path=artifacts" >> $GITHUB_OUTPUT
+        
+        # Copy action scripts to workspace if using published action
+        if [ -d "${{ github.action_path }}/scripts" ]; then
+          echo "📂 Copying action scripts to workspace..."
+          mkdir -p .gui-test-review-action/scripts
+          cp -r "${{ github.action_path }}/scripts"/* .gui-test-review-action/scripts/
+          
+          # Create a minimal package.json for action dependencies
+          cat > .gui-test-review-action/package.json << 'EOF'
+        {
+          "name": "gui-test-review-action-deps",
+          "version": "1.0.0",
+          "private": true,
+          "dependencies": {
+            "@octokit/core": "^5.0.0",
+            "marked": "15.0.12"
+          }
+        }
+        EOF
+        fi
+        
         echo "✅ Environment ready for visual GUI test analysis"
     
     - name: Setup Node.js for GUI test tools
@@ -138,12 +159,27 @@ runs:
       shell: bash
       run: |
         echo "📦 Installing dependencies for GUI test analysis..."
+        
+        # Install project dependencies if package.json exists
         if [ -f "package.json" ]; then
           npm install
-          echo "✅ Dependencies installed successfully"
+          echo ""
+          echo "--- Installed Top-Level Dependencies ---"
+          npm list --depth=0
+          echo "----------------------------------------"
         else
           echo "⚠️ No package.json found, skipping npm install"
         fi
+        
+        # Install action dependencies if we copied scripts
+        if [ -d ".gui-test-review-action" ]; then
+          echo "📦 Installing action dependencies..."
+          cd .gui-test-review-action
+          npm install --production
+          cd ..
+        fi
+        
+        echo "✅ Dependencies installed successfully"
     
     - name: Install Playwright browsers for GUI testing
       shell: bash
@@ -168,10 +204,19 @@ runs:
         REVIEWDOG_REPORTER: ${{ inputs.reviewdog-reporter }}
       run: |
         echo "🔍 Running code quality analysis for GUI tests..."
-        if [ -f "${{ github.action_path }}/scripts/lint.js" ]; then
-          node "${{ github.action_path }}/scripts/lint.js"
+        
+        # Determine script location
+        SCRIPT_PATH=""
+        if [ -f ".gui-test-review-action/scripts/lint.js" ]; then
+          SCRIPT_PATH=".gui-test-review-action/scripts/lint.js"
+        elif [ -f "${{ github.action_path }}/scripts/lint.js" ]; then
+          SCRIPT_PATH="${{ github.action_path }}/scripts/lint.js"
         elif [ -f "scripts/lint.js" ]; then
-          node scripts/lint.js
+          SCRIPT_PATH="scripts/lint.js"
+        fi
+        
+        if [ -n "$SCRIPT_PATH" ]; then
+          node "$SCRIPT_PATH"
         else
           echo "⚠️ Lint script not found, skipping code quality analysis"
         fi
@@ -186,10 +231,19 @@ runs:
         TEST_FILES: ${{ inputs.test-files }}
       run: |
         echo "🧪 Executing GUI tests on PR branch..."
-        if [ -f "${{ github.action_path }}/scripts/playwright-test.js" ]; then
-          node "${{ github.action_path }}/scripts/playwright-test.js"
+        
+        # Determine script location
+        SCRIPT_PATH=""
+        if [ -f ".gui-test-review-action/scripts/playwright-test.js" ]; then
+          SCRIPT_PATH=".gui-test-review-action/scripts/playwright-test.js"
+        elif [ -f "${{ github.action_path }}/scripts/playwright-test.js" ]; then
+          SCRIPT_PATH="${{ github.action_path }}/scripts/playwright-test.js"
         elif [ -f "scripts/playwright-test.js" ]; then
-          node scripts/playwright-test.js
+          SCRIPT_PATH="scripts/playwright-test.js"
+        fi
+        
+        if [ -n "$SCRIPT_PATH" ]; then
+          node "$SCRIPT_PATH"
         else
           echo "🎭 Running Playwright tests directly..."
           npx playwright test ${{ inputs.test-files }}
@@ -242,10 +296,18 @@ runs:
           echo "✅ Main branch test files checked out successfully"
           echo "🧪 Running GUI tests on main branch version..."
           
-          if [ -f "${{ github.action_path }}/scripts/playwright-test.js" ]; then
-            node "${{ github.action_path }}/scripts/playwright-test.js"
+          # Determine script location
+          SCRIPT_PATH=""
+          if [ -f ".gui-test-review-action/scripts/playwright-test.js" ]; then
+            SCRIPT_PATH=".gui-test-review-action/scripts/playwright-test.js"
+          elif [ -f "${{ github.action_path }}/scripts/playwright-test.js" ]; then
+            SCRIPT_PATH="${{ github.action_path }}/scripts/playwright-test.js"
           elif [ -f "scripts/playwright-test.js" ]; then
-            node scripts/playwright-test.js
+            SCRIPT_PATH="scripts/playwright-test.js"
+          fi
+          
+          if [ -n "$SCRIPT_PATH" ]; then
+            node "$SCRIPT_PATH"
           else
             npx playwright test ${{ inputs.test-files }}
           fi
@@ -290,10 +352,19 @@ runs:
       shell: bash
       run: |
         echo "📊 Generating visual flowchart of GUI test execution..."
-        if [ -f "${{ github.action_path }}/scripts/generate-flowchart.js" ]; then
-          node "${{ github.action_path }}/scripts/generate-flowchart.js"
+        
+        # Determine script location
+        SCRIPT_PATH=""
+        if [ -f ".gui-test-review-action/scripts/generate-flowchart.js" ]; then
+          SCRIPT_PATH=".gui-test-review-action/scripts/generate-flowchart.js"
+        elif [ -f "${{ github.action_path }}/scripts/generate-flowchart.js" ]; then
+          SCRIPT_PATH="${{ github.action_path }}/scripts/generate-flowchart.js"
         elif [ -f "scripts/generate-flowchart.js" ]; then
-          node scripts/generate-flowchart.js
+          SCRIPT_PATH="scripts/generate-flowchart.js"
+        fi
+        
+        if [ -n "$SCRIPT_PATH" ]; then
+          node "$SCRIPT_PATH"
         else
           echo "⚠️ Flowchart script not found, skipping visualization"
         fi
@@ -305,10 +376,19 @@ runs:
       shell: bash
       run: |
         echo "📋 Building comprehensive review checklist..."
-        if [ -f "${{ github.action_path }}/scripts/checklist.js" ]; then
-          node "${{ github.action_path }}/scripts/checklist.js"
+        
+        # Determine script location
+        SCRIPT_PATH=""
+        if [ -f ".gui-test-review-action/scripts/checklist.js" ]; then
+          SCRIPT_PATH=".gui-test-review-action/scripts/checklist.js"
+        elif [ -f "${{ github.action_path }}/scripts/checklist.js" ]; then
+          SCRIPT_PATH="${{ github.action_path }}/scripts/checklist.js"
         elif [ -f "scripts/checklist.js" ]; then
-          node scripts/checklist.js
+          SCRIPT_PATH="scripts/checklist.js"
+        fi
+        
+        if [ -n "$SCRIPT_PATH" ]; then
+          node "$SCRIPT_PATH"
         else
           echo "⚠️ Checklist script not found, skipping checklist generation"
         fi
@@ -327,10 +407,21 @@ runs:
       shell: bash
       run: |
         echo "🎨 Building interactive visual dashboard..."
-        if [ -f "${{ github.action_path }}/scripts/generate-webpage.js" ]; then
-          node "${{ github.action_path }}/scripts/generate-webpage.js"
+        
+        # Determine script location and set NODE_PATH if needed
+        SCRIPT_PATH=""
+        NODE_PATH_PREFIX=""
+        if [ -f ".gui-test-review-action/scripts/generate-webpage.js" ]; then
+          SCRIPT_PATH=".gui-test-review-action/scripts/generate-webpage.js"
+          NODE_PATH_PREFIX="NODE_PATH=.gui-test-review-action/node_modules:$NODE_PATH"
+        elif [ -f "${{ github.action_path }}/scripts/generate-webpage.js" ]; then
+          SCRIPT_PATH="${{ github.action_path }}/scripts/generate-webpage.js"
         elif [ -f "scripts/generate-webpage.js" ]; then
-          node scripts/generate-webpage.js
+          SCRIPT_PATH="scripts/generate-webpage.js"
+        fi
+        
+        if [ -n "$SCRIPT_PATH" ]; then
+          eval "$NODE_PATH_PREFIX node \"$SCRIPT_PATH\""
         else
           echo "⚠️ Dashboard script not found, skipping dashboard generation"
         fi
@@ -445,10 +536,21 @@ runs:
         WEB_REPORT_URL: ${{ inputs.web-report-url || steps.deploy-report.outputs.page_url || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
       run: |
         echo "💬 Posting comprehensive visual feedback to PR..."
-        if [ -f "${{ github.action_path }}/scripts/summary-comment.js" ]; then
-          node "${{ github.action_path }}/scripts/summary-comment.js"
+        
+        # Determine script location and set NODE_PATH if needed
+        SCRIPT_PATH=""
+        NODE_PATH_PREFIX=""
+        if [ -f ".gui-test-review-action/scripts/summary-comment.js" ]; then
+          SCRIPT_PATH=".gui-test-review-action/scripts/summary-comment.js"
+          NODE_PATH_PREFIX="NODE_PATH=.gui-test-review-action/node_modules:$NODE_PATH"
+        elif [ -f "${{ github.action_path }}/scripts/summary-comment.js" ]; then
+          SCRIPT_PATH="${{ github.action_path }}/scripts/summary-comment.js"
         elif [ -f "scripts/summary-comment.js" ]; then
-          node scripts/summary-comment.js
+          SCRIPT_PATH="scripts/summary-comment.js"
+        fi
+        
+        if [ -n "$SCRIPT_PATH" ]; then
+          eval "$NODE_PATH_PREFIX node \"$SCRIPT_PATH\""
         else
           echo "⚠️ Summary comment script not found, skipping PR comment"
         fi

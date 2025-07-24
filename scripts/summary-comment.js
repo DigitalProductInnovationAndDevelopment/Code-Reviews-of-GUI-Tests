@@ -10,7 +10,27 @@
 
 const fs = require('fs');
 const path = require('path');
-const { Octokit } = require('@octokit/core');
+
+// Dynamic require for @octokit/core
+let Octokit;
+try {
+  // Try local node_modules first
+  Octokit = require('@octokit/core').Octokit;
+} catch (e1) {
+  try {
+    // Try action's node_modules
+    Octokit = require(path.join(process.cwd(), '.gui-test-review-action/node_modules/@octokit/core')).Octokit;
+  } catch (e2) {
+    try {
+      // Try parent directory
+      Octokit = require(path.join(__dirname, '../node_modules/@octokit/core')).Octokit;
+    } catch (e3) {
+      console.error('Could not load @octokit/core module. Please ensure @octokit/core is installed.');
+      console.error('You can install it with: npm install @octokit/core@^5.0.0');
+      process.exit(1);
+    }
+  }
+}
 
 const ART = process.env.ARTIFACTS_DIR || 'artifacts';
 
@@ -32,11 +52,22 @@ const checklist = (() => {
 })();
 
 /* GitHub context */
-const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+let event;
+try {
+  event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+} catch (e) {
+  console.error('Could not read GitHub event file:', e.message);
+  process.exit(1);
+}
+
 const prNumber =
   event.pull_request?.number ??
   (event.issue?.pull_request && event.issue.number);
-if (!prNumber) { console.error('Not a PR event'); process.exit(0); }
+  
+if (!prNumber) { 
+  console.error('Not a PR event'); 
+  process.exit(0); 
+}
 
 const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
@@ -46,8 +77,8 @@ const mdChecklist = checklist || '_No checklist found_';
 const mdPlay = `
 | Run | Total | Passed | Failed | Skipped | Pass-rate | Duration |
 |-----|------:|-------:|-------:|--------:|-----------|---------:|
-| **PR**   | ${playPR.total??0} | ${playPR.passed??0} | ${playPR.failed??0} | ${playPR.skipped??0} | ${playPR.pass_rate??0}% | ${playPR.duration??0} ms |
-${hasMain ? `| **Main** | ${playMain.total??0} | ${playMain.passed??0} | ${playMain.failed??0} | ${playMain.skipped??0} | ${playMain.pass_rate??0}% | ${playMain.duration??0} ms |` : ''}`;
+| **PR**   | ${playPR.total??0} | ${playPR.passed??0} | ${playPR.failed??0} | ${playPR.skipped??0} | ${playPR.pass_rate??0}% | ${playPR.duration??0} ms |
+${hasMain ? `| **Main** | ${playMain.total??0} | ${playMain.passed??0} | ${playMain.failed??0} | ${playMain.skipped??0} | ${playMain.pass_rate??0}% | ${playMain.duration??0} ms |` : ''}`;
 
 const mdPrettier = `
 | Metric | PR |
@@ -110,21 +141,27 @@ _Automated comment — updates on every push._
 
 /* upsert sticky comment */
 (async () => {
-  const { data: comments } = await octokit.request(
-    'GET /repos/{owner}/{repo}/issues/{issue_number}/comments',
-    { owner, repo, issue_number: prNumber }
-  );
-  const existing = comments.find(
-    c => c.user.type === 'Bot' && c.body.startsWith('# 🔍 **GUI Test Review**')
-  );
+  try {
+    const { data: comments } = await octokit.request(
+      'GET /repos/{owner}/{repo}/issues/{issue_number}/comments',
+      { owner, repo, issue_number: prNumber }
+    );
+    
+    const existing = comments.find(
+      c => c.user.type === 'Bot' && c.body.startsWith('# 🔍 **GUI Test Review**')
+    );
 
-  const endpoint = existing
-    ? 'PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}'
-    : 'POST /repos/{owner}/{repo}/issues/{issue_number}/comments'; // ← fixed double-space
-  const params = existing
-    ? { owner, repo, comment_id: existing.id, body }
-    : { owner, repo, issue_number: prNumber, body };
+    const endpoint = existing
+      ? 'PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}'
+      : 'POST /repos/{owner}/{repo}/issues/{issue_number}/comments';
+    const params = existing
+      ? { owner, repo, comment_id: existing.id, body }
+      : { owner, repo, issue_number: prNumber, body };
 
-  await octokit.request(endpoint, params);
-  console.log(existing ? '🔄 Updated comment.' : '💬 Created comment.');
-})().catch(err => { console.error(err); process.exit(1); });
+    await octokit.request(endpoint, params);
+    console.log(existing ? '🔄 Updated comment.' : '💬 Created comment.');
+  } catch (error) {
+    console.error('Failed to post/update comment:', error.message);
+    process.exit(1);
+  }
+})();
