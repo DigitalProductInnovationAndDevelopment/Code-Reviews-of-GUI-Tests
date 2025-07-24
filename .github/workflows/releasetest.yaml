@@ -81,4 +81,4 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: dashboard-only               # ← no lint, no tests
           custom-artifacts-path: artifacts   # ← where we downloaded things
-          enable-github-pages: 'true'        # set 'false' if you don’t want Pages
+          enable-github-pages: 'true'        
