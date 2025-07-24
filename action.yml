@@ -514,21 +514,26 @@ runs:
         echo "✅ Code quality metrics extracted"
       continue-on-error: true
     
-    - name: Upload visual artifacts for code reviewers
-      uses: actions/upload-artifact@v4
+    # ────────────────────────────────────────────────────────────
+    # ✅  Upload dashboard as a *Pages artefact*  ⇣  (FIX #1)
+    # ────────────────────────────────────────────────────────────
+    - name: Upload Pages artifact
+      if: inputs.enable-github-pages == 'true' && always()
+      uses: actions/upload-pages-artifact@v3
       with:
-        name: gui-test-visual-artifacts
-        path: artifacts/
-        retention-days: ${{ inputs.artifacts-retention-days }}
+        name: gui-test-visual-artifacts          # referenced below
+        path: artifacts/web-report               # directory that contains index.html
       continue-on-error: true
-    
+
+    # ────────────────────────────────────────────────────────────
+    # ✅  Deploy to GitHub Pages                    (FIX #2)
+    # ────────────────────────────────────────────────────────────
     - name: Deploy visual dashboard to GitHub Pages
       id: deploy-report
       if: inputs.enable-github-pages == 'true' && always()
       uses: actions/deploy-pages@v4
       with:
-        artifact_name: gui-test-visual-artifacts
-        path: artifacts/web-report
+        artifact_name: gui-test-visual-artifacts # matches upload step
       continue-on-error: true
     
     - name: Post comprehensive visual feedback to PR
