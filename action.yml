@@ -227,7 +227,10 @@ runs:
     shell: bash
     env:
       PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
-    run: npx playwright test "${{ inputs.test-files }}"
+    run: >
+      npx playwright test "${{ inputs.test-files }}"
+      --reporter=list,json
+      --reporter-options jsonFile=playwright-metrics.json
     continue-on-error: true
 
   - name: Move Playwright artifacts (PR)
@@ -240,7 +243,7 @@ runs:
         mkdir -p artifacts/pr-report
         mv playwright-report/* artifacts/pr-report/
       fi
-      # ── NEW fallback for PR summary ───────────────────────────
+      # fallback summary if reporter file missing
       if [ ! -f artifacts/playwright-summary-pr.json ] && [ -f artifacts/playwright-metrics.json ]; then
         jq '{ total:    .stats.tests,
              passed:   .stats.passed,
@@ -271,14 +274,15 @@ runs:
       git checkout origin/${{ inputs.main-branch }} -- tests/ playwright.config.js || true
 
       echo '🧪  Running Playwright on main branch'
-      npx playwright test "${{ inputs.test-files }}"
+      npx playwright test "${{ inputs.test-files }}" \
+          --reporter=list,json \
+          --reporter-options jsonFile=playwright-metrics.json
 
       echo '📦  Archiving main-branch artifacts'
       mkdir -p artifacts/main-report
       [ -d playwright-report ] && mv playwright-report/* artifacts/main-report/ || true
       [ -f playwright-summary.json ] && mv playwright-summary.json artifacts/playwright-summary-main.json || true
 
-      # fallback: build minimal summary if file absent
       if [ ! -f artifacts/playwright-summary-main.json ] && [ -f artifacts/playwright-metrics.json ]; then
         jq '{ total:    .stats.tests,
              passed:   .stats.passed,
