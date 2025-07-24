@@ -1,6 +1,5 @@
 # ───────────────────────────────────────────────────────────────
 #  GUI-BASED TESTING CODE REVIEW — MODULAR COMPOSITE ACTION
-#  v1.0.15  ·  includes PR-vs-Main comparison
 # ───────────────────────────────────────────────────────────────
 name: 'GUI-Based Testing Code Review'
 description: 'Playwright GUI tests · ESLint/Prettier · visual dashboard, checklist & PR comment'
@@ -242,17 +241,19 @@ runs:
       fi
       if [ ! -f artifacts/playwright-summary-pr.json ] && [ -f artifacts/playwright-metrics.json ]; then
         jq '{
-              total:      (.stats.tests      // 0 | tonumber),
-              passed:     (.stats.passes     // 0 | tonumber),
-              failed:     (.stats.failures   // 0 | tonumber),
-              skipped:    (.stats.skipped    // 0 | tonumber),
-              duration:   (.stats.duration   // 0 | tonumber),
-              pass_rate:  ( (.stats.tests // 0 | tonumber) as $t
-                           | (.stats.passes // 0 | tonumber) as $p
-                           | if $t==0 then 0 else (( $p * 100 ) / $t | floor) end )
-            }' artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
+             total:    ((.stats.tests   // .stats.total      // 0) | tonumber),
+             passed:   ((.stats.passed  // .stats.passes     // .stats.expected   // 0) | tonumber),
+             failed:   ((.stats.failed  // .stats.failures   // .stats.unexpected // 0) | tonumber),
+             skipped:  ((.stats.skipped // 0) | tonumber),
+             duration: ((.stats.duration // 0) | tonumber),
+             pass_rate: ( (.stats.tests   // .stats.total // 0)  as $t
+                        | (.stats.passed  // .stats.passes
+                                          // .stats.expected // 0) as $p
+                        | ($t|tonumber) as $T
+                        | ($p|tonumber) as $P
+                        | if $T==0 then 0 else (( $P * 100 ) / $T | floor) end )
+           }' artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
       fi
-    continue-on-error: true
 
   - name: Alias summary for checklist
     if: steps.modes.outputs.playwright == 'true'
@@ -261,7 +262,7 @@ runs:
       [ -f artifacts/playwright-summary-pr.json ] && \
         cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json || true
 
-  # 3b ── Playwright on main branch
+  # 3b ── Playwright on main branch -----------------------------------------
   - name: Run Playwright on main
     if: steps.modes.outputs.compare == 'true' && github.event_name == 'pull_request'
     shell: bash
@@ -280,15 +281,18 @@ runs:
 
       if [ ! -f artifacts/playwright-summary-main.json ] && [ -f artifacts/playwright-metrics.json ]; then
         jq '{
-              total:      (.stats.tests      // 0 | tonumber),
-              passed:     (.stats.passes     // 0 | tonumber),
-              failed:     (.stats.failures   // 0 | tonumber),
-              skipped:    (.stats.skipped    // 0 | tonumber),
-              duration:   (.stats.duration   // 0 | tonumber),
-              pass_rate:  ( (.stats.tests // 0 | tonumber) as $t
-                           | (.stats.passes // 0 | tonumber) as $p
-                           | if $t==0 then 0 else (( $p * 100 ) / $t | floor) end )
-            }' artifacts/playwright-metrics.json > artifacts/playwright-summary-main.json
+             total:    ((.stats.tests   // .stats.total      // 0) | tonumber),
+             passed:   ((.stats.passed  // .stats.passes     // .stats.expected   // 0) | tonumber),
+             failed:   ((.stats.failed  // .stats.failures   // .stats.unexpected // 0) | tonumber),
+             skipped:  ((.stats.skipped // 0) | tonumber),
+             duration: ((.stats.duration // 0) | tonumber),
+             pass_rate: ( (.stats.tests   // .stats.total // 0)  as $t
+                        | (.stats.passed  // .stats.passes
+                                          // .stats.expected // 0) as $p
+                        | ($t|tonumber) as $T
+                        | ($p|tonumber) as $P
+                        | if $T==0 then 0 else (( $P * 100 ) / $T | floor) end )
+           }' artifacts/playwright-metrics.json > artifacts/playwright-summary-main.json
       fi
 
       git checkout HEAD -- tests/ playwright.config.js
