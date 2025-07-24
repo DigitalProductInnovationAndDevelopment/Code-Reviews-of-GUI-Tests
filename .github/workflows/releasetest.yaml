@@ -18,18 +18,16 @@ jobs:
           cache: npm
       - run: npm install
 
-      - name: GUI Test – Playwright only
+      - name: GUI Test – Playwright only (with artifacts)
         uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          mode: test-only
-
-          # 👇 turn on artifact packaging, but skip Pages deploy
-          enable-dashboard: 'true'
+          mode: full                  # ← run all parts, but…
+          enable-lint: 'false'        # ← …skip lint
+          enable-dashboard: 'true'    # package artifacts
           enable-github-pages: 'false'
-
           test-files: 'tests/**/*.spec.{js,ts}'
-          # (add other Playwright-specific inputs as needed)
+
 
 # ───────────────────────────────────────────────────────────────
 # 2. ESLint / Prettier only
