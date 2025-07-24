@@ -1,89 +1,132 @@
-# ───────────────────────────────────────────────────────────────
-#  Split-Module GUI Test Pipeline
-# ───────────────────────────────────────────────────────────────
 name: Split-Module GUI Test Pipeline
 
 on:
   pull_request:
-    branches: [main]           # adjust if your default branch differs
+    branches: [main]
 
+###############################################################################
+# 1. Playwright tests only  (produce artifacts, no Pages deploy)
+###############################################################################
 jobs:
-# ───────────────────────────────────────────────────────────────
-# 1. Playwright tests (action packages artifacts, no Pages deploy)
-# ───────────────────────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { cache: npm }
-      - run: npm install
+    - uses: actions/checkout@v4
 
-      - name: GUI Test – Playwright only
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+    - uses: actions/setup-node@v4
+      with: { cache: npm }
+    - run: npm install
 
-          # Run Playwright + package dashboard artifacts in one go
-          mode: full                    # run all modules
-          enable-lint: 'false'          # but skip lint
-          enable-github-pages: 'false'  # don't deploy in this job
-          enable-pr-comments: 'false'   # avoid fork permission errors
+    # ── run Playwright (tests only) ───────────────────────────────────────────
+    - name: GUI Test – Playwright only
+      uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        mode: test-only
+        test-files: 'tests/.*\\.spec\\.(js|ts)$'  # ← safe regex
+        enable-github-pages: 'false'             # don’t deploy here
+        enable-dashboard:  'false'               # don’t package dashboard
+                                                  # (we’ll do that in job 3)
 
-          test-files: 'tests/**/*.spec.*'   # ← Playwright-safe glob
+    # ── build playwright-summary.json (needed for dashboard) ─────────────────
+    - name: Build Playwright summary
+      run: |
+        node - <<'EOF'
+        const fs = require('fs');
+        const rep = JSON.parse(fs.readFileSync('playwright-metrics.json'));
+        const sum = {
+          total:     rep.stats.total,
+          passed:    rep.stats.passed  ?? rep.stats.expected,
+          failed:    rep.stats.failed  ?? rep.stats.unexpected,
+          skipped:   rep.stats.skipped ?? 0,
+          duration:  rep.stats.duration,
+          pass_rate: (((rep.stats.passed ?? rep.stats.expected) / rep.stats.total) * 100).toFixed(2)
+        };
+        fs.mkdirSync('artifacts', { recursive: true });
+        fs.writeFileSync('artifacts/playwright-summary-pr.json', JSON.stringify(sum, null, 2));
+        fs.copyFileSync('playwright-metrics.json', 'artifacts/playwright-metrics.json');
+        EOF
 
-# ───────────────────────────────────────────────────────────────
+    # ── upload three small artifacts ─────────────────────────────────────────
+    - uses: actions/upload-artifact@v4
+      with:
+        name: playwright-summary
+        path: artifacts/playwright-summary-pr.json
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: playwright-metrics
+        path: artifacts/playwright-metrics.json
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report
+        path: artifacts/pr-report/
+
+###############################################################################
 # 2. ESLint / Prettier only
-# ───────────────────────────────────────────────────────────────
+###############################################################################
   lint:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { cache: npm }
-      - run: npm install
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with: { cache: npm }
+    - run: npm install
 
-      - name: GUI Test – Lint only
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          mode: lint-only
-          enable-pr-comments: 'false'
+    - name: GUI Test – Lint only
+      uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        mode: lint-only
 
-# ───────────────────────────────────────────────────────────────
-# 3. Build dashboard from artifacts produced in `test`
-# ───────────────────────────────────────────────────────────────
+###############################################################################
+# 3. Build dashboard from artifacts   –   no duplicate upload!
+###############################################################################
   dashboard:
     needs: [test, lint]
     runs-on: ubuntu-latest
 
-    permissions:              # required for PR comment & Pages deploy
+    permissions:
       contents: read
       pull-requests: write
       pages: write
       id-token: write
 
     environment:
-      name: github-pages       # gives the green “github-pages / deployment” check
+      name: github-pages
       url: ${{ steps.review.outputs.dashboard-url }}
 
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      # ⬇️ Download single artifact package created in the test job
-      - name: Download GUI artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: gui-test-visual-artifacts
-          path: dl   # <-- different from 'artifacts' to avoid cp same-file issue
+    # ── lightweight npm install (only when package.json exists) ──────────────
+    - name: Install npm if needed
+      run: |
+        if [ -f package-lock.json ] || [ -f package.json ]; then
+          npm ci 2>/dev/null || npm install
+        else
+          echo "🛈 No package.json – skipping npm install"
+        fi
 
-      # ⬇️ Generate & deploy dashboard
-      - name: Dashboard / PR comment
-        id: review
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          mode: dashboard-only            # just build dashboard
-          custom-artifacts-path: dl       # folder we downloaded to
-          enable-github-pages: 'true'     # set 'false' to skip deployment
-          enable-pr-comments: 'false'     # still disabled for forks
+    # ── download the three artifacts produced in job 1 ───────────────────────
+    - uses: actions/download-artifact@v4
+      with: { name: playwright-summary, path: dl }
+
+    - uses: actions/download-artifact@v4
+      with: { name: playwright-metrics, path: dl }
+
+    - uses: actions/download-artifact@v4
+      with: { name: playwright-report,  path: dl/pr-report }
+
+    # ── run the action in dashboard-only mode (generates & deploys) ──────────
+    - name: Dashboard / PR comment
+      id: review
+      uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.9
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        mode: dashboard-only
+        custom-artifacts-path: dl
+        enable-github-pages: 'true'   # set to 'false' to skip deployment
