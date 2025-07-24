@@ -1,5 +1,6 @@
 # ───────────────────────────────────────────────────────────────
 #  GUI-BASED TESTING CODE REVIEW — MODULAR COMPOSITE ACTION
+#  Version: v1.0.10
 # ───────────────────────────────────────────────────────────────
 name: 'GUI-Based Testing Code Review'
 description: 'Visual dashboard & bot comments for Playwright GUI tests + ESLint, fully modular'
@@ -42,9 +43,9 @@ inputs:
     default: 'true'
 
   test-files:
-    description: 'Glob pattern for GUI test files'
+    description: 'Glob or folder path for GUI test files'
     required: false
-    default: 'tests/**/*.spec.{js,ts,tsx}'
+    default: 'tests'
   node-version:
     description: 'Node.js version'
     required: false
@@ -97,7 +98,7 @@ inputs:
     default: ''
 
 # ───────────────────────────────────────────────────────────────
-# ▸▸ Outputs  (expanded, no inline maps)
+# ▸▸ Outputs  (expanded mapping, YAML-safe)
 # ───────────────────────────────────────────────────────────────
 outputs:
   test-results:
@@ -141,7 +142,7 @@ runs:
   using: 'composite'
   steps:
 
-  # 0. Derive switches from `mode`
+  # 0. Derive switches from mode
   - name: Derive mode switches
     id: modes
     shell: bash
@@ -159,7 +160,7 @@ runs:
       echo "lint=$l"       >>"$GITHUB_OUTPUT"
       echo "dashboard=$d"  >>"$GITHUB_OUTPUT"
 
-  # 1. Setup
+  # 1. Prepare workspace
   - name: Prepare workspace
     id: setup
     shell: bash
@@ -174,14 +175,14 @@ runs:
   - name: Install npm dependencies
     shell: bash
     run: |
-      if [ -f package.json ]; then 
-        npm ci || npm install
+      if [ -f package.json ]; then
+        npm ci 2>/dev/null || npm install
       fi
       if [ -n "${{ inputs.extra-npm-dependencies }}" ]; then
         npm install --no-save ${{ inputs.extra-npm-dependencies }}
       fi
 
-  # 2. Lint
+  # 2. Lint (conditional)
   - uses: reviewdog/action-setup@v1
     if: steps.modes.outputs.lint == 'true' && github.event_name == 'pull_request'
     with:
@@ -203,7 +204,7 @@ runs:
       else echo "⚠️  No lint script found; skipping."; fi
     continue-on-error: true
 
-  # 3. Playwright tests
+  # 3. Playwright tests (conditional)
   - name: Install Playwright browsers
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
@@ -215,8 +216,7 @@ runs:
     shell: bash
     env:
       PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
-      TEST_FILES: ${{ inputs.test-files }}
-    run: npx playwright test $TEST_FILES
+    run: npx playwright test "${{ inputs.test-files }}"
     continue-on-error: true
 
   - name: Archive Playwright artifacts
@@ -225,19 +225,24 @@ runs:
     run: |
       [[ -f playwright-summary.json ]] && \
         cp playwright-summary.json artifacts/playwright-summary-pr.json
+      [[ -f playwright-metrics.json  ]] && \
+        cp playwright-metrics.json  artifacts/
       if [[ -d playwright-report ]]; then
         mkdir -p artifacts/pr-report
         mv playwright-report/* artifacts/pr-report/
       fi
     continue-on-error: true
 
-  # 4. Dashboard-only path
+  # 4. Dashboard-only: copy provided artifacts (skip if already in artifacts/)
   - name: Copy provided artifacts
     if: inputs.mode == 'dashboard-only'
     shell: bash
     run: |
-      echo "📦 Copying artifacts from ${{ inputs.custom-artifacts-path }}"
-      cp -R "${{ inputs.custom-artifacts-path }}/." artifacts/
+      SRC="${{ inputs.custom-artifacts-path }}"
+      if [ "$SRC" != "artifacts" ] && [ -d "$SRC" ]; then
+        echo "📦 Copying artifacts from $SRC"
+        cp -R "$SRC/." artifacts/
+      fi
 
   # 5. Dashboard generation
   - name: Generate flowchart
@@ -255,15 +260,7 @@ runs:
       if [ -f scripts/generate-webpage.js ]; then node scripts/generate-webpage.js; fi
     continue-on-error: true
 
-  # 6. Upload artifacts & deploy
-  - uses: actions/upload-artifact@v4
-    if: steps.modes.outputs.dashboard == 'true'
-    with:
-      name: gui-test-visual-artifacts
-      path: artifacts/
-      retention-days: ${{ inputs.artifacts-retention-days }}
-    continue-on-error: true
-
+  # 6. Create Pages tarball & deploy (no duplicate plain upload)
   - uses: actions/upload-pages-artifact@v3
     if: steps.modes.outputs.dashboard == 'true' && inputs.enable-github-pages == 'true'
     with:
@@ -279,7 +276,7 @@ runs:
       artifact_name: gui-test-visual-artifacts
     continue-on-error: true
 
-  # 7. PR comment
+  # 7. PR comment (still conditioned on github.event_name)
   - name: Post PR comment
     if: steps.modes.outputs.dashboard == 'true' && inputs.mode != 'dashboard-only' && github.event_name == 'pull_request'
     shell: bash
