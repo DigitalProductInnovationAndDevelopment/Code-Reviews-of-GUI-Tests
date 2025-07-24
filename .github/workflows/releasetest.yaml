@@ -1,40 +1,84 @@
-name: Comprehensive GUI Test Analysis
+name: Split-Module GUI Test Pipeline
 
-on: [push, pull_request]
+on:
+  pull_request:
+    branches: [main]      # adjust as needed
 
 jobs:
-  gui-analysis:
+  # ───────────────────────────────────────────────────────────
+  # 1. Playwright tests only
+  # ───────────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - run: npm ci
+
+      # (You may still prefer the native playwright reporter; here's the full action)
+      - uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: test-only                    # ← runs only Playwright
+          test-files: 'tests/**/*.spec.{js,ts}'
+          # any other Playwright-specific inputs here
+
+      # Upload the files for the dashboard job
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playwright-summary
+          path: artifacts/playwright-summary-pr.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: artifacts/pr-report/
+
+  # ───────────────────────────────────────────────────────────
+  # 2. ESLint / Prettier only
+  # ───────────────────────────────────────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - run: npm ci
+
+      - uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: lint-only                    # ← only lint
+
+  # ───────────────────────────────────────────────────────────
+  # 3. Build dashboard from artifacts
+  # ───────────────────────────────────────────────────────────
+  dashboard:
+    needs: [test, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
-      pages: write
+      pages: write          # needed if you deploy to Pages
       id-token: write
 
-    environment:                # optional, gives a nice Pages check
+    environment:            # pretty green “github-pages / deployment”
       name: github-pages
-      url: ${{ steps.gui-review.outputs.dashboard-url }}
+      url: ${{ steps.review.outputs.dashboard-url }}
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Advanced GUI Test Review
-        id: gui-review
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.6
-        # ▸ or: uses: ./.github/actions/gui-test-review
+      # Pull artifacts created by `test`
+      - uses: actions/download-artifact@v4
+        with: { name: playwright-summary, path: artifacts }
+      - uses: actions/download-artifact@v4
+        with: { name: playwright-report,  path: artifacts/pr-report }
+
+      # Build + (optionally) deploy the dashboard
+      - name: Dashboard / PR comment
+        id: review
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          test-files: 'tests/**/*.spec.{js,ts}'
-          enable-visual-comparison: 'true'
-          reviewdog-reporter: 'github-pr-review'
-          artifacts-retention-days: '30'
-          fail-on-test-failure: 'false'
-
-      - name: Check for GUI regressions
-        if: steps.gui-review.outputs.gui-regression-detected == 'true'
-        run: |
-          echo "⚠️ GUI test regression detected!"
-          echo "Dashboard: ${{ steps.gui-review.outputs.dashboard-url }}"
-          echo "Quality Score: ${{ steps.gui-review.outputs.code-quality-score }}/100"
+          mode: dashboard-only               # ← no lint, no tests
+          custom-artifacts-path: artifacts   # ← where we downloaded things
+          enable-github-pages: 'true'        # set 'false' if you don’t want Pages
