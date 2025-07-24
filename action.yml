@@ -321,5 +321,22 @@ runs:
   # 10 ── final marker
   - name: Finish
     shell: bash
+    run: echo '📈 summarise tests (logic omitted)'
+    continue-on-error: true
 
-    run: echo '✅ GUI-Based Testing action finished.'
+  - id: lint-summary
+    if: steps.modes.outputs.lint == 'true'
+    shell: bash
+    run: echo '📈 calculate lint metrics (logic omitted)'
+    continue-on-error: true
+
+  - name: Fail on test failure
+    if: steps.modes.outputs.playwright == 'true' && inputs.fail-on-test-failure == 'true'
+    shell: bash
+    run: |
+      if jq -e '.failed>0' artifacts/playwright-summary-pr.json >/dev/null 2>&1; then
+        echo "::error::Playwright tests failed"; exit 1; fi
+
+  - name: Done
+    shell: bash
+    run: echo "✅ GUI-Based Testing Code Review finished."
