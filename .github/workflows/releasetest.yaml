@@ -17,7 +17,7 @@ jobs:
       - run: npm install
 
       - name: Playwright tests
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.11
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.12
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: test-only
@@ -57,7 +57,7 @@ jobs:
         with: { cache: npm }
       - run: npm install
       - name: Lint only
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.11
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.12
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: lint-only
@@ -95,7 +95,7 @@ jobs:
 
       - name: Build & deploy dashboard
         id: review
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.11
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.0.12
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: dashboard-only
