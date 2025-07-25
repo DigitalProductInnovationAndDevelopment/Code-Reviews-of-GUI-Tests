@@ -137,10 +137,10 @@ with:
 
 ## 📚 Documentation
 
-- [**Configuration Reference**](wiki/Configuration-Reference) - All inputs, outputs, and options
-- [**Integration Patterns**](wiki/Integration-Patterns) - Advanced CI/CD setups
-- [**Architecture Guide**](wiki/Architecture) - How it works under the hood
-- [**Troubleshooting**](wiki/Troubleshooting) - Common issues and solutions
+- [**Configuration Reference**](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/wiki/Configuration-Reference) - All inputs, outputs, and options
+- [**Integration Patterns**](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/wiki/Integration-Patterns) - Advanced CI/CD setups
+- [**Architecture Guide**](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/wiki/Architecture-Guide) - How it works under the hood
+- [**Troubleshooting**](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/wiki/Troubleshooting-Guide) - Common issues and solutions
 
 ## 🤝 Contributing
 
