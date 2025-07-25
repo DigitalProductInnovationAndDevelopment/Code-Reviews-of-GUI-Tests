@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Playwright](https://img.shields.io/badge/Playwright-Ready-45ba4b?logo=playwright)](https://playwright.dev/)
 
-![Dashboard Preview](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/assets/demo-dashboard.png)
+![Dashboard preview](demo-dashboard.png)
 
 ## ✨ What This Does
 
@@ -146,7 +146,7 @@ with:
 
 This project was developed for the Digital Product Innovation and Development Seminar at TUM.
 
-[📚 **Full Configuration Guide →**](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/wiki/Academic-Context-&-References)
+[📚 **Full Academic Context & References →**](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/wiki/Academic-Context-&-References)
 
 ## 📄 License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
