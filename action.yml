@@ -248,6 +248,8 @@ runs:
   - name: ESLint / Prettier
     if: steps.modes.outputs.lint == 'true'
     shell: bash
+    env:
+      NODE_PATH: ${{ github.workspace }}/node_modules
     run: |
       ACTION_PATH="${{ github.action_path }}"
       if [ -f "$ACTION_PATH/scripts/lint.js" ]; then 
@@ -383,6 +385,8 @@ runs:
   - name: Flow-chart
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
+    env:
+      NODE_PATH: ${{ github.workspace }}/node_modules
     run: |
       ACTION_PATH="${{ github.action_path }}"
       [ -f "$ACTION_PATH/scripts/generate-flowchart.js" ] && node "$ACTION_PATH/scripts/generate-flowchart.js"
@@ -392,6 +396,8 @@ runs:
   - id: checklist
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
+    env:
+      NODE_PATH: ${{ github.workspace }}/node_modules
     run: |
       ACTION_PATH="${{ github.action_path }}"
       if [ -f "$ACTION_PATH/scripts/checklist.js" ]; then
@@ -406,6 +412,8 @@ runs:
     name: Build dashboard HTML
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
+    env:
+      NODE_PATH: ${{ github.workspace }}/node_modules
     run: |
       ACTION_PATH="${{ github.action_path }}"
       [ -f "$ACTION_PATH/scripts/generate-webpage.js" ] && node "$ACTION_PATH/scripts/generate-webpage.js"
@@ -435,6 +443,7 @@ runs:
     env:
       GITHUB_TOKEN: ${{ inputs.github-token }}
       WEB_REPORT_URL: ${{ inputs.web-report-url || steps.deploy-report.outputs.page_url }}
+      NODE_PATH: ${{ github.workspace }}/node_modules
     run: |
       ACTION_PATH="${{ github.action_path }}"
       [ -f "$ACTION_PATH/scripts/summary-comment.js" ] && node "$ACTION_PATH/scripts/summary-comment.js"
