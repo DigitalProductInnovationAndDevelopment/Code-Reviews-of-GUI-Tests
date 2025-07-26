@@ -235,9 +235,14 @@ runs:
     if: steps.modes.outputs.lint == 'true'
     shell: bash
     run: |
-      if [ -f scripts/lint.js ]; then node scripts/lint.js
-      elif npx --no-install eslint -v &>/dev/null; then npx eslint .
-      else echo 'ℹ️ no lint script'; fi
+      ACTION_PATH="${{ github.action_path }}"
+      if [ -f "$ACTION_PATH/scripts/lint.js" ]; then 
+        node "$ACTION_PATH/scripts/lint.js"
+      elif npx --no-install eslint -v &>/dev/null; then 
+        npx eslint .
+      else 
+        echo 'ℹ️ no lint script'
+      fi
     continue-on-error: true
 
   # 3 ── Playwright on PR branch
@@ -365,7 +370,8 @@ runs:
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
     run: |
-      [ -f scripts/generate-flowchart.js ] && node scripts/generate-flowchart.js
+      ACTION_PATH="${{ github.action_path }}"
+      [ -f "$ACTION_PATH/scripts/generate-flowchart.js" ] && node "$ACTION_PATH/scripts/generate-flowchart.js"
     continue-on-error: true
 
   # 7 checklist
@@ -373,8 +379,9 @@ runs:
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
     run: |
-      if [ -f scripts/checklist.js ]; then
-        node scripts/checklist.js
+      ACTION_PATH="${{ github.action_path }}"
+      if [ -f "$ACTION_PATH/scripts/checklist.js" ]; then
+        node "$ACTION_PATH/scripts/checklist.js"
       else
         echo '{"status":"missing"}' > artifacts/checklist.json
       fi
@@ -386,7 +393,8 @@ runs:
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
     run: |
-      [ -f scripts/generate-webpage.js ] && node scripts/generate-webpage.js
+      ACTION_PATH="${{ github.action_path }}"
+      [ -f "$ACTION_PATH/scripts/generate-webpage.js" ] && node "$ACTION_PATH/scripts/generate-webpage.js"
     continue-on-error: true
 
   # 9 upload Pages artifact & deploy
@@ -414,7 +422,8 @@ runs:
       GITHUB_TOKEN: ${{ inputs.github-token }}
       WEB_REPORT_URL: ${{ inputs.web-report-url || steps.deploy-report.outputs.page_url }}
     run: |
-      [ -f scripts/summary-comment.js ] && node scripts/summary-comment.js
+      ACTION_PATH="${{ github.action_path }}"
+      [ -f "$ACTION_PATH/scripts/summary-comment.js" ] && node "$ACTION_PATH/scripts/summary-comment.js"
     continue-on-error: true
 
   # 11 done
