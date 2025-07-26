@@ -89,13 +89,24 @@ Add these to your `package.json`:
 
 Add these to your `playwright.config.js`:
 
-```json
-module.exports = {
+```javascript
+const { defineConfig } = require('@playwright/test');
+
+module.exports = defineConfig({
+  testDir: './tests',
+  use: {
+    headless: true,
+    screenshot: 'on',
+    trace: 'on',
+    video: 'off',
+    ignoreHTTPSErrors: true,
+  },
   reporter: [
-    ['json', { outputFile: 'playwright-metrics.json' }],
-    ['html', { outputFolder: 'playwright-report' }]
-  ]
-};
+    ['list'],
+    ['json', { outputFile: 'playwright-metrics.json' }],   // ← relative path
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+  ],
+});
 ```
 
 ## 🔧 Common Configurations
