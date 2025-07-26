@@ -217,13 +217,27 @@ runs:
     with:
       node-version: ${{ inputs.node-version }}
 
-  - name: Install npm
+  - name: Install npm dependencies
     shell: bash
     run: |
-      if [ -f package.json ]; then npm ci 2>/dev/null || npm install; fi
+      # Install user dependencies if package.json exists
+      if [ -f package.json ]; then 
+        echo "📦 Installing project dependencies..."
+        npm ci 2>/dev/null || npm install
+      fi
+      
+      # Always install action's required runtime dependencies
+      echo "📦 Installing action dependencies..."
+      npm install --no-save marked@15.0.12 @octokit/core@^5.0.0 @mermaid-js/mermaid-cli@10.6.1
+      
+      # Install any extra user-specified dependencies
       if [ -n "${{ inputs.extra-npm-dependencies }}" ]; then
+        echo "📦 Installing extra dependencies: ${{ inputs.extra-npm-dependencies }}"
         npm install --no-save ${{ inputs.extra-npm-dependencies }}
       fi
+      
+      # Create puppeteer config for mermaid-cli
+      echo '{ "args": ["--no-sandbox", "--disable-setuid-sandbox"] }' > puppeteer.json
 
   # 2 lint
   - uses: reviewdog/action-setup@v1
@@ -299,7 +313,7 @@ runs:
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
     run: |
-      cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json
+      cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json || true
 
   # 3b ── Playwright on main branch -----------------------------------------
   - name: Run Playwright on main
