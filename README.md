@@ -87,6 +87,17 @@ Add these to your `package.json`:
 }
 ```
 
+Add these to your `playwright.config.js`:
+
+```json
+module.exports = {
+  reporter: [
+    ['json', { outputFile: 'playwright-metrics.json' }],
+    ['html', { outputFolder: 'playwright-report' }]
+  ]
+};
+```
+
 ## 🔧 Common Configurations
 
 ### Use with Existing Tests
