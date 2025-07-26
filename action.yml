@@ -187,7 +187,32 @@ runs:
     run: |
       mkdir -p artifacts
       echo "artifacts-path=artifacts" >> $GITHUB_OUTPUT
-
+      
+  - name: Setup default configs
+    shell: bash
+    run: |
+      # Get action's directory path
+      ACTION_PATH="${{ github.action_path }}"
+      
+      # Check and copy Playwright config if missing
+      if [ ! -f "playwright.config.js" ] && [ ! -f "playwright.config.ts" ]; then
+        echo "📋 No Playwright config found, using default..."
+        cp "$ACTION_PATH/playwright.config.js" ./playwright.config.js
+      fi
+      
+      # Check and copy ESLint config if missing
+      if [ ! -f ".eslintrc.json" ] && [ ! -f ".eslintrc.js" ] && [ ! -f "eslint.config.js" ] && [ ! -f "eslint.config.mjs" ]; then
+        echo "📋 No ESLint config found, using default..."
+        # Copy the traditional format (since it's more compatible)
+        cp "$ACTION_PATH/.eslintrc.json" ./.eslintrc.json
+      fi
+      
+      # Check and copy Prettier config if missing  
+      if [ ! -f ".prettierrc" ] && [ ! -f ".prettierrc.json" ] && [ ! -f "prettier.config.js" ]; then
+        echo "📋 No Prettier config found, using default..."
+        cp "$ACTION_PATH/.prettierrc.json" ./.prettierrc.json
+      fi
+      
   - uses: actions/setup-node@v4
     with:
       node-version: ${{ inputs.node-version }}
