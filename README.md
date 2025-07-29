@@ -20,7 +20,7 @@ Automatically captures and displays visual context from your Playwright tests di
 - **🎨 Code Quality** - ESLint/Prettier checks with inline PR feedback via reviewdog
 - **🚀 Modular Design** - Use all-in-one or integrate with existing CI/CD
 - **💡 Actionable Insights** - Regression detection, flaky test identification, and prioritized recommendations
-- 
+
 ## 🚀 Quick Start
 
 Add to your workflow in 30 seconds:
