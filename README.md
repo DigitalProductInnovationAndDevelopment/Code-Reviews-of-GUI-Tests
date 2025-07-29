@@ -19,7 +19,8 @@ Automatically captures and displays visual context from your Playwright tests di
 - **📋 Review Checklists** - Automated tracking of review completeness
 - **🎨 Code Quality** - ESLint/Prettier checks with inline PR feedback via reviewdog
 - **🚀 Modular Design** - Use all-in-one or integrate with existing CI/CD
-
+- **💡 Actionable Insights** - Regression detection, flaky test identification, and prioritized recommendations
+- 
 ## 🚀 Quick Start
 
 Add to your workflow in 30 seconds:
@@ -43,13 +44,15 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           enable-visual-comparison: 'true'  # Compare PR vs main
+          max-test-retries: '2'             # Retry flaky tests
 ```
 
 **That's it!** The action will:
-1. Run your Playwright tests
+1. Run your Playwright tests with automatic retries
 2. Check code quality with ESLint/Prettier
-3. Generate an interactive dashboard
-4. Post a summary comment on your PR
+3. Analyze test failures and identify patterns
+4. Generate an interactive dashboard with performance metrics
+5. Post an insightful summary comment on your PR
 
 ## 🏗️ Required Project Structure
 
@@ -146,6 +149,22 @@ with:
 | `enable-visual-comparison` | Compare PR vs main branch | `false` |
 | `enable-github-pages` | Deploy dashboard to Pages | `true` |
 | `test-files` | Test file pattern | `tests` |
+| `max-test-retries` | Maximum retries for flaky tests | `2` |
+| `enable-pr-comments` | Post summary comment on PRs | `true` |
+| `fail-on-test-failure` | Fail job if tests fail | `false` |
+| `artifacts-retention-days` | Days to retain artifacts | `30` |
+
+### Enhanced Outputs
+
+| Output | Description |
+|--------|-------------|
+| `test-results` | JSON summary of Playwright results |
+| `dashboard-url` | Deployed dashboard URL |
+| `has-failures` | Boolean indicating if any tests failed |
+| `failure-details` | JSON array of failed test names |
+| `execution-time` | Total execution time in seconds |
+| `performance-metrics` | JSON object with performance data |
+| `gui-regression-detected` | True if regression detected vs main |
 
 [📚 **Full Configuration Guide →**](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/wiki/Configuration-Reference)
 
@@ -156,6 +175,8 @@ with:
 - **Inline Code Review** feedback via reviewdog
 - **Visual Comparisons** between branches
 - **Review Checklist** tracking
+- **Smart Test Failure Analysis** to identify patterns
+- **Performance Tracking** with optimization suggestions
 
 ## 📚 Documentation
 
