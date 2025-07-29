@@ -150,6 +150,7 @@ const pill = (txt, type) => {
 
 // Format duration in human readable format
 const formatDuration = (ms) => {
+  ms = Math.round(ms);
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   const minutes = Math.floor(ms / 60000);
