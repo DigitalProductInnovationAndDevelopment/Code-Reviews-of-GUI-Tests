@@ -616,7 +616,7 @@ runs:
     run: |
       # Read PR summary
       if [ -f artifacts/playwright-summary-pr.json ]; then
-        PR_RESULTS=$(cat artifacts/playwright-summary-pr.json)
+        PR_RESULTS=$(cat artifacts/playwright-summary-pr.json | jq -c .)
         TOTAL=$(echo "$PR_RESULTS" | jq -r '.total // 0')
         PASSED=$(echo "$PR_RESULTS" | jq -r '.passed // 0')
         FAILED=$(echo "$PR_RESULTS" | jq -r '.failed // 0')
@@ -630,7 +630,7 @@ runs:
         
         # Extract failed test names if any
         if [ -f artifacts/playwright-metrics.json ] && [ $FAILED -gt 0 ]; then
-          FAILED_TESTS=$(jq -r '[.. | objects | select(.status == "failed" or .outcome == "unexpected") | .title // .name // "Unknown test"] | unique' artifacts/playwright-metrics.json 2>/dev/null || echo '[]')
+          FAILED_TESTS=$(jq -c '[.. | objects | select(.status == "failed" or .outcome == "unexpected") | .title // .name // "Unknown test"] | unique' artifacts/playwright-metrics.json 2>/dev/null || echo '[]')
           echo "failure-details=$FAILED_TESTS" >> $GITHUB_OUTPUT
         else
           echo "failure-details=[]" >> $GITHUB_OUTPUT
@@ -639,7 +639,7 @@ runs:
       
       # Read main summary if exists
       if [ -f artifacts/playwright-summary-main.json ]; then
-        MAIN_RESULTS=$(cat artifacts/playwright-summary-main.json)
+        MAIN_RESULTS=$(cat artifacts/playwright-summary-main.json | jq -c .)
         echo "main-results=$MAIN_RESULTS" >> $GITHUB_OUTPUT
         
         # Calculate regression
