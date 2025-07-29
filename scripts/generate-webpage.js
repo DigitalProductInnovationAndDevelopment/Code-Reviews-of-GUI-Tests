@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * generate-webpage.js - Enhanced with modern, fancy dashboard design
+ * Now includes performance metrics collection and display
  *
  * Builds a beautiful static dashboard at artifacts/web-report/index.html
  *   · Playwright card with visual progress bars
@@ -8,6 +9,7 @@
  *   · ESLint card with severity indicators
  *   · Flow-chart image with zoom capability
  *   · Checklist card with animations
+ *   · Performance metrics card (NEW)
  *   · Dark mode support
  *   · Glassmorphism effects
  *   · Smooth animations and transitions
@@ -15,6 +17,9 @@
 
 const fs   = require('fs');
 const path = require('path');
+
+// Track dashboard generation time
+const dashboardStartTime = Date.now();
 
 // Dynamic require for marked module
 let marked;
@@ -53,11 +58,42 @@ const playPR   = readJSON('playwright-summary-pr.json');
 const playMain = readJSON('playwright-summary-main.json');
 const hasMainPlay = fs.existsSync(path.join(ART,'playwright-summary-main.json'));
 
+// Load performance metrics if available
+const perfMetrics = readJSON('performance-metrics.json');
+
 let checklistMD = '';
 try {
   checklistMD = fs.readFileSync(path.join(ART,'checklist.md'),'utf8');
 } catch (e) {
   console.warn('Checklist not found, continuing without it');
+}
+
+/* ─── Calculate performance metrics ────────────────────── */
+// Action execution time from environment or performance metrics
+const actionStartTime = process.env.ACTION_START_TIME ? parseInt(process.env.ACTION_START_TIME) * 1000 : null;
+const actionEndTime = Date.now();
+const actionDuration = actionStartTime ? actionEndTime - actionStartTime : (perfMetrics.executionTime || 0) * 1000;
+
+// Calculate total artifact size
+let totalArtifactSize = 0;
+try {
+  const getDirectorySize = (dirPath) => {
+    let size = 0;
+    const files = fs.readdirSync(dirPath);
+    for (const file of files) {
+      const filePath = path.join(dirPath, file);
+      const stats = fs.statSync(filePath);
+      if (stats.isDirectory()) {
+        size += getDirectorySize(filePath);
+      } else {
+        size += stats.size;
+      }
+    }
+    return size;
+  };
+  totalArtifactSize = getDirectorySize(ART) / (1024 * 1024); // Convert to MB
+} catch (error) {
+  console.warn('Could not calculate artifact size:', error.message);
 }
 
 /* ─── copy assets ────────────────────────────────────── */
@@ -112,6 +148,15 @@ const pill = (txt, type) => {
   return `<span class="pill" style="--bg: ${style.bg};">${style.icon} ${txt}</span>`;
 };
 
+// Format duration in human readable format
+const formatDuration = (ms) => {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  const minutes = Math.floor(ms / 60000);
+  const seconds = ((ms % 60000) / 1000).toFixed(0);
+  return `${minutes}m ${seconds}s`;
+};
+
 /* ─── Generate fancy cards ────────────────────────────── */
 const playwrightStats = [
   statCard('🎯', 'Total Tests', playPR.total || 0, '#3b82f6'),
@@ -152,7 +197,7 @@ const playwrightCard = `
           <div>
             ${progressBar(playPR.passed || 0, playPR.total || 1, '#10b981')}
           </div>
-          <div>${((playPR.duration || 0) / 1000).toFixed(2)}s</div>
+          <div>${formatDuration(playPR.duration || 0)}</div>
         </div>
         ${hasMainPlay ? `
         <div class="comparison-row">
@@ -163,7 +208,7 @@ const playwrightCard = `
           <div>
             ${progressBar(playMain.passed || 0, playMain.total || 1, '#10b981')}
           </div>
-          <div>${((playMain.duration || 0) / 1000).toFixed(2)}s</div>
+          <div>${formatDuration(playMain.duration || 0)}</div>
         </div>
         ` : ''}
       </div>
@@ -288,6 +333,83 @@ const eslintCard = `
         <p>Code quality check passed!</p>
       </div>
     `}
+  </div>
+`;
+
+// New Performance Metrics Card
+const performanceCard = `
+  <div class="card card-performance">
+    <div class="card-header">
+      <h2><span class="icon">⚡</span> Performance Metrics</h2>
+      ${actionDuration < 60000 ? pill('Fast execution', 'success') : 
+        actionDuration < 180000 ? pill('Normal execution', 'info') : 
+        pill('Slow execution', 'warning')}
+    </div>
+    
+    <div class="perf-grid">
+      <div class="perf-item">
+        <div class="perf-icon">⏱️</div>
+        <div class="perf-details">
+          <div class="perf-label">Action Execution Time</div>
+          <div class="perf-value">${formatDuration(actionDuration)}</div>
+        </div>
+      </div>
+      
+      <div class="perf-item">
+        <div class="perf-icon">📊</div>
+        <div class="perf-details">
+          <div class="perf-label">Dashboard Generation</div>
+          <div class="perf-value">${formatDuration(Date.now() - dashboardStartTime)}</div>
+        </div>
+      </div>
+      
+      <div class="perf-item">
+        <div class="perf-icon">💾</div>
+        <div class="perf-details">
+          <div class="perf-label">Total Artifact Size</div>
+          <div class="perf-value">${totalArtifactSize.toFixed(2)} MB</div>
+        </div>
+      </div>
+      
+      ${playPR.total ? `
+      <div class="perf-item">
+        <div class="perf-icon">🧪</div>
+        <div class="perf-details">
+          <div class="perf-label">Avg Test Duration</div>
+          <div class="perf-value">${formatDuration((playPR.duration || 0) / (playPR.total || 1))}</div>
+        </div>
+      </div>
+      ` : ''}
+    </div>
+    
+    ${actionDuration > 180000 ? `
+      <div class="alert alert-warning">
+        <div class="alert-icon">⚠️</div>
+        <div class="alert-content">
+          <strong>Performance optimization suggested</strong>
+          <p>The action took over 3 minutes to complete. Consider:</p>
+          <ul>
+            <li>Running jobs in parallel</li>
+            <li>Caching dependencies</li>
+            <li>Optimizing test execution</li>
+          </ul>
+        </div>
+      </div>
+    ` : ''}
+    
+    <div class="perf-breakdown">
+      <h4>Execution Breakdown</h4>
+      <div class="timing-chart">
+        ${playPR.duration ? `
+        <div class="timing-bar" style="--width: ${(playPR.duration / actionDuration * 100).toFixed(1)}%; --color: #3b82f6;">
+          <span class="timing-label">Tests: ${formatDuration(playPR.duration)}</span>
+        </div>
+        ` : ''}
+        <div class="timing-bar" style="--width: ${((Date.now() - dashboardStartTime) / actionDuration * 100).toFixed(1)}%; --color: #10b981;">
+          <span class="timing-label">Dashboard: ${formatDuration(Date.now() - dashboardStartTime)}</span>
+        </div>
+      </div>
+    </div>
   </div>
 `;
 
@@ -765,6 +887,11 @@ body::before {
   margin-bottom: 0.5rem;
 }
 
+.alert-content ul {
+  margin-left: 1.5rem;
+  margin-top: 0.5rem;
+}
+
 .command {
   background: var(--bg-primary);
   border: 1px solid var(--border);
@@ -775,6 +902,94 @@ body::before {
   color: var(--text-primary);
   margin-top: 0.5rem;
   overflow-x: auto;
+}
+
+/* Performance Metrics Styles */
+.perf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.perf-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.perf-item:hover {
+  background: rgba(99, 102, 241, 0.05);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.perf-icon {
+  font-size: 2rem;
+  opacity: 0.8;
+}
+
+.perf-details {
+  flex: 1;
+}
+
+.perf-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.perf-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.perf-breakdown {
+  margin-top: 1.5rem;
+}
+
+.perf-breakdown h4 {
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  color: var(--text-secondary);
+}
+
+.timing-chart {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.timing-bar {
+  height: 24px;
+  background: var(--color);
+  border-radius: 4px;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  padding: 0 0.75rem;
+  transition: width 1s ease;
+  animation: slideIn 0.5s ease;
+}
+
+@keyframes slideIn {
+  from { width: 0; }
+  to { width: var(--width); }
+}
+
+.timing-label {
+  font-size: 0.75rem;
+  color: white;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 /* Issue Summary */
@@ -1164,6 +1379,10 @@ body::before {
   .card {
     padding: 1.5rem;
   }
+  
+  .perf-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Print Styles */
@@ -1191,6 +1410,7 @@ body::before {
   ${playwrightCard}
   ${prettierCard}
   ${eslintCard}
+  ${performanceCard}
   ${flowCard}
   ${checklistCard}
 
@@ -1239,6 +1459,13 @@ document.addEventListener('DOMContentLoaded', function() {
       bar.style.width = bar.style.getPropertyValue('--progress');
     });
   }, 500);
+  
+  // Animate timing bars
+  setTimeout(() => {
+    document.querySelectorAll('.timing-bar').forEach(bar => {
+      bar.style.width = bar.style.getPropertyValue('--width');
+    });
+  }, 800);
 });
 
 // Theme toggle (future enhancement)
@@ -1257,4 +1484,23 @@ if (localStorage.getItem('theme') === 'light') {
 
 /* ─── write page ─────────────────────────────────────── */
 fs.writeFileSync(path.join(OUT,'index.html'),html,'utf8');
-console.log('✨ Enhanced dashboard written → web-report/index.html');
+
+// Calculate final dashboard generation time
+const dashboardEndTime = Date.now();
+const dashboardDuration = dashboardEndTime - dashboardStartTime;
+
+// Save performance metrics for future use
+const performanceData = {
+  dashboardGenerationMs: dashboardDuration,
+  actionExecutionMs: actionDuration,
+  artifactSizeMB: totalArtifactSize,
+  timestamp: new Date().toISOString()
+};
+
+fs.writeFileSync(
+  path.join(ART, 'dashboard-performance.json'), 
+  JSON.stringify(performanceData, null, 2)
+);
+
+console.log('✨ Enhanced dashboard with performance metrics written → web-report/index.html');
+console.log(`⚡ Dashboard generation took ${dashboardDuration}ms`);

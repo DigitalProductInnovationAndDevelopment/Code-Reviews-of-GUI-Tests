@@ -2,6 +2,7 @@
 /**
  * CRITICAL: This script provides non-blocking lint feedback via reviewdog.
  * Enhanced with debugging to troubleshoot missing comments.
+ * Now includes quick fix suggestions and better error messages.
  */
 const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
@@ -258,6 +259,10 @@ function runPrettier() {
     
   } catch (error) {
     console.error('❌ Prettier failed:', error.message);
+    console.error('📝 This might be caused by:', error.message.includes('prettier') ? 
+      'Prettier not being installed. Try running: npm install --save-dev prettier' : 
+      'Unknown error - please check the logs above'
+    );
     
     return {
       filesWithIssues: 0,
@@ -281,6 +286,7 @@ function runESLint() {
       raw = e.stdout?.toString() || '';
       if (!raw && e.stderr) {
         console.error('❌ ESLint error:', e.stderr.toString());
+        console.error('📝 This might be a configuration issue. Check your .eslintrc file.');
         return {
           files: 0,
           errors: 0,
@@ -303,6 +309,7 @@ function runESLint() {
       results = JSON.parse(raw);
     } catch (parseError) {
       console.error('❌ Failed to parse ESLint JSON:', parseError.message);
+      console.error('📝 ESLint output might be corrupted. Try running ESLint manually to debug.');
       return { files: 0, errors: 0, warnings: 0, error: 'Parse error' };
     }
 
@@ -335,8 +342,19 @@ function runESLint() {
     });
 
     console.log(`📊 ESLint: ${errors} errors, ${warnings} warnings in ${files.size} files`);
+    
+    // Add quick fix suggestions
     if (fixErr > 0 || fixWarn > 0) {
-      console.log(`🔧 Fixable: ${fixErr} errors, ${fixWarn} warnings`);
+      console.log(`
+💡 **Quick Fix Available!**
+Run this command locally to auto-fix ${fixErr + fixWarn} issues:
+\`\`\`bash
+npx eslint . --fix
+\`\`\`
+      `);
+      console.log(`🔧 This will automatically fix:`);
+      if (fixErr > 0) console.log(`  - ${fixErr} error${fixErr > 1 ? 's' : ''}`);
+      if (fixWarn > 0) console.log(`  - ${fixWarn} warning${fixWarn > 1 ? 's' : ''}`);
     }
 
     if (raw && (errors > 0 || warnings > 0)) {
@@ -365,6 +383,7 @@ function runESLint() {
     
   } catch (error) {
     console.error('❌ ESLint failed:', error.message);
+    console.error('📝 This might be a bug in the action. Please report: https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/issues');
     return { files: 0, errors: 0, warnings: 0, error: error.message };
   }
 }
@@ -399,6 +418,7 @@ if (IS_PR && HAS_REVIEWDOG_TOKEN) {
     }
   } catch (error) {
     console.error('❌ Reviewdog not found or not working:', error.message);
+    console.error('📝 Make sure reviewdog is installed. The action should handle this automatically.');
   }
 } else {
   console.log('📝 Reviewdog will be skipped (not a PR or no token)');
