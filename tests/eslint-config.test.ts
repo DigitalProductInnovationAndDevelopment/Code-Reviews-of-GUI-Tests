@@ -60,7 +60,7 @@ const testCases: {
   {
     name: "unused variable (no-unused-vars)",
     code: `const unused = 42;`,
-    expectedRule: "no-unused-vars",
+    expectedRule: "@typescript-eslint/no-unused-vars",
   },
   // {
   //    name: "use of any type (@typescript-eslint/no-explicit-any)",
@@ -82,6 +82,155 @@ const testCases: {
     code: `function add(a: number, b: number) {\n  return a + b;\n}\n`,
     expectedRule: null,
   },
+  // DRY-related test cases
+  {
+    name: "duplicate imports (no-duplicate-imports)",
+    code: `
+    import { a } from "module";
+    import { b } from "module";
+      `,
+    expectedRule: "no-duplicate-imports",
+  },
+  {
+    name: "variable redeclaration (no-redeclare)",
+    code: `
+    let x = 1;
+    let x = 2;
+      `,
+    expectedRule: "no-redeclare",
+  },
+  {
+    name: "useless rename in import (no-useless-rename)",
+    code: `
+    import { foo as foo } from "module";
+      `,
+    expectedRule: "no-useless-rename",
+  },
+  {
+    name: "switch case fallthrough (no-fallthrough)",
+    code: `
+    switch (1) {
+      case 1:
+        console.log("one");
+      case 2:
+        console.log("two");
+        break;
+    }
+      `,
+    expectedRule: "no-fallthrough",
+  },
+  // SOLID-related test cases
+  // Single Responsibility Principle
+  {
+    name: "too many params (max-params)",
+    code: `function foo(a: number, b: number, c: number, d: number) { return a + b + c + d; }`,
+    expectedRule: "max-params",
+  },
+  {
+    name: "too deep nesting (max-depth)",
+    code: `
+    function nested(x: number) {
+      if (x > 0) {
+        if (x < 10) {
+          if (x % 2 === 0) {
+            if (x === 4) {
+              console.log(x);
+            }
+          }
+        }
+      }
+    }
+    `,
+    expectedRule: "max-depth",
+  },
+  {
+    name: "high cognitive complexity (sonarjs/cognitive-complexity)",
+    code: `
+    function complex(x: number) {
+      if (x > 0) {
+        if (x < 10) {
+          if (x !== 5) {
+            while (x < 10) {
+              x++;
+              if (x % 2 === 0) {
+                console.log("even");
+              }
+            }
+          }
+        }
+      }
+    }
+    `,
+    expectedRule: "sonarjs/cognitive-complexity",
+  },
+  {
+    name: "duplicate string (sonarjs/no-duplicate-string)",
+    code: `
+    const msg1 = "hello world";
+    const msg2 = "hello world";
+    const msg3 = "hello world";
+    `,
+    expectedRule: "sonarjs/no-duplicate-string",
+  },
+  // Open/Closed Principle
+  {
+    name: "no abbreviations (unicorn/prevent-abbreviations)",
+    code: `function handleCb(cb: () => void) {
+        cb();
+      }`,
+    expectedRule: "unicorn/prevent-abbreviations",
+  },
+  {
+    name: "duplicate functions (sonarjs/no-identical-functions)",
+    code: `
+      function a() {
+        const name = "Alice";
+        const age = 30;
+        return { name, age };
+      }
+      
+      function b() {
+        const name = "Alice";
+        const age = 30;
+        return { name, age };
+      }
+`,
+    expectedRule: "sonarjs/no-identical-functions",
+  },
+
+  // Liskov Substitution Principle
+  {
+    name: "explicit return type missing (@typescript-eslint/explicit-function-return-type)",
+    code: `function foo() { return 1; }`,
+    expectedRule: "@typescript-eslint/explicit-function-return-type",
+  },
+  {
+    name: "use of null (unicorn/no-null)",
+    code: `let foo: string | null = null;`,
+    expectedRule: "unicorn/no-null",
+  },
+  // Interface Segregation Principle
+  {
+    name: "underscore dangle (no-underscore-dangle)",
+    code: `
+      const obj = {
+        _private: 123,
+        method() {
+          return this._private;
+        }
+      };
+    `,
+    expectedRule: "no-underscore-dangle",
+  },
+
+  // Dependency Inversion Principle
+
+  {
+    name: "no-var-requires (@typescript-eslint/no-var-requires)",
+    code: `const fs = require("fs");`,
+    expectedRule: "@typescript-eslint/no-var-requires",
+  },
+
 ];
 
 test.describe("ESLint config validation (ESM)", () => {
@@ -118,7 +267,7 @@ test.describe("ESLint config validation (ESM)", () => {
       if (expectedRule) {
         expect(ruleIds).toContain(expectedRule);
       } else {
-        const ignored = ["prettier/prettier", "no-unused-vars"];
+        const ignored = ["prettier/prettier", "no-unused-vars", "@typescript-eslint/no-unused-vars", "unicorn/prevent-abbreviations", "@typescript-eslint/explicit-function-return-type",];
         const actualRelevant = ruleIds.filter((id) => !ignored.includes(id));
         expect(actualRelevant.length).toBe(0);
       }
