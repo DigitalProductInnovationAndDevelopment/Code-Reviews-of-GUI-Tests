@@ -18,7 +18,7 @@ jobs:
       pages: write
       id-token: write
 
-    environment:          # gives the green "github-pages / deployment" check
+    environment: 
       name: github-pages
       url: ${{ steps.review.outputs.dashboard-url }}
 
