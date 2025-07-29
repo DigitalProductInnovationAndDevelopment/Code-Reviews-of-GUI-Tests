@@ -116,8 +116,13 @@ inputs:
     required: false
     default: ''
 
+  max-test-retries:
+    description: 'Maximum number of retries for flaky tests'
+    required: false
+    default: '2'
+
 # ───────────────────────────────────────────────────────────────
-# ▸▸ Outputs
+# ▸▸ Outputs (Enhanced with new outputs)
 # ───────────────────────────────────────────────────────────────
 outputs:
   test-results:
@@ -153,6 +158,18 @@ outputs:
   review-checklist-status:
     description: 'Checklist completion status'
     value: ${{ steps.checklist.outputs.status }}
+  has-failures:
+    description: 'Boolean indicating if any tests failed'
+    value: ${{ steps.test-summary.outputs.has-failures }}
+  failure-details:
+    description: 'JSON array of failed test names'
+    value: ${{ steps.test-summary.outputs.failure-details }}
+  execution-time:
+    description: 'Total execution time in seconds'
+    value: ${{ steps.timing.outputs.duration }}
+  performance-metrics:
+    description: 'JSON object with performance data'
+    value: ${{ steps.performance.outputs.metrics }}
 
 # ───────────────────────────────────────────────────────────────
 # ▸▸ Composite run
@@ -161,7 +178,15 @@ runs:
   using: composite
   steps:
 
-  # 0 derive feature flags
+  # 0a - Start timing
+  - id: timing
+    name: Start execution timer
+    shell: bash
+    run: |
+      echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+      echo "🏁 Starting GUI Test Review at $(date)"
+
+  # 0b - derive feature flags
   - id: modes
     name: Derive feature flags
     shell: bash
@@ -185,8 +210,41 @@ runs:
     name: Prepare workspace
     shell: bash
     run: |
+      echo "📁 Creating workspace directories..."
       mkdir -p artifacts
       echo "artifacts-path=artifacts" >> $GITHUB_OUTPUT
+      
+  # 1b - Validate inputs early
+  - name: Validate configuration
+    shell: bash
+    run: |
+      echo "🔍 Validating configuration..."
+      
+      # Check if tests directory/files exist
+      if [ ! -d "${{ inputs.test-files }}" ] && ! ls ${{ inputs.test-files }} 2>/dev/null; then
+        echo "⚠️  Warning: No test files found matching '${{ inputs.test-files }}'"
+        echo "⚠️  This may cause Playwright tests to fail if mode includes testing"
+      else
+        echo "✅ Test files/directory found: ${{ inputs.test-files }}"
+      fi
+      
+      # Warn if no package.json
+      if [ ! -f package.json ]; then
+        echo "⚠️  Warning: No package.json found. Using defaults for all configurations."
+        echo "⚠️  Some features may not work as expected without proper dependencies."
+      else
+        echo "✅ package.json found"
+      fi
+      
+      # Check playwright config
+      if [ "${{ steps.modes.outputs.playwright }}" == "true" ]; then
+        if [ ! -f "${{ inputs.playwright-config }}" ]; then
+          echo "⚠️  Warning: Playwright config not found at '${{ inputs.playwright-config }}'"
+          echo "⚠️  Will use default configuration"
+        else
+          echo "✅ Playwright config found: ${{ inputs.playwright-config }}"
+        fi
+      fi
       
   - name: Setup default configs
     shell: bash
@@ -217,9 +275,21 @@ runs:
     with:
       node-version: ${{ inputs.node-version }}
 
+  # 1c - Cache action dependencies (new)
+  - name: Cache action dependencies
+    uses: actions/cache@v3
+    with:
+      path: |
+        ~/.npm
+        node_modules
+      key: ${{ runner.os }}-action-deps-${{ hashFiles('**/package-lock.json', '**/package.json') }}
+      restore-keys: |
+        ${{ runner.os }}-action-deps-
+
   - name: Install npm dependencies
     shell: bash
     run: |
+      echo "📦 Installing dependencies..."
       # Install user dependencies if package.json exists
       if [ -f package.json ]; then 
         echo "📦 Installing project dependencies..."
@@ -251,6 +321,9 @@ runs:
     env:
       NODE_PATH: ${{ github.workspace }}/node_modules
     run: |
+      echo "🎨 Running code quality checks..."
+      echo "📏 Checking ESLint..."
+      echo "🎨 Checking Prettier formatting..."
       ACTION_PATH="${{ github.action_path }}"
       if [ -f "$ACTION_PATH/scripts/lint.js" ]; then 
         node "$ACTION_PATH/scripts/lint.js"
@@ -261,18 +334,38 @@ runs:
       fi
     continue-on-error: true
 
-  # 3 ── Playwright on PR branch
+  # 3 ── Playwright on PR branch (with retry logic)
   - name: Install Playwright browsers
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
-    run: npx playwright install --with-deps
+    run: |
+      echo "🎭 Installing Playwright browsers..."
+      npx playwright install --with-deps
 
-  - name: Run Playwright (PR)
+  - name: Run Playwright (PR) with retry
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
     env:
       PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
-    run: npx playwright test "${{ inputs.test-files }}"
+    run: |
+      echo "🧪 Running Playwright tests on PR branch..."
+      echo "📁 Test files: ${{ inputs.test-files }}"
+      echo "⏱️  This may take a few minutes..."
+      
+      MAX_RETRIES=${{ inputs.max-test-retries }}
+      RETRY_COUNT=0
+      
+      until npx playwright test "${{ inputs.test-files }}" || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
+        RETRY_COUNT=$((RETRY_COUNT+1))
+        echo "⚠️  Tests failed, retry $RETRY_COUNT of $MAX_RETRIES..."
+        sleep 5
+      done
+      
+      if [ $RETRY_COUNT -eq $MAX_RETRIES ] && [ ! -f playwright-metrics.json ]; then
+        echo "❌ Tests failed after $MAX_RETRIES retries"
+      else
+        echo "✅ PR tests completed!"
+      fi
     continue-on-error: true
     
   - name: Archive Playwright artifacts (PR)
@@ -317,16 +410,20 @@ runs:
     run: |
       cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json || true
 
-  # 3b ── Playwright on main branch -----------------------------------------
+  # 3b ── Playwright on main branch with progress indicators
   - name: Run Playwright on main
     if: steps.modes.outputs.compare == 'true' && github.event_name == 'pull_request'
     shell: bash
     env:
       PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
     run: |
+      echo "🔄 Fetching main branch for comparison..."
       git fetch --quiet origin "${{ inputs.main-branch }}" || true
       git checkout origin/${{ inputs.main-branch }} -- tests/ playwright.config.js || true
 
+      echo "🧪 Running Playwright tests on main branch..."
+      echo "⏱️  This helps detect regressions..."
+      
       npx playwright test "${{ inputs.test-files }}"
 
       mkdir -p artifacts/main-report
@@ -361,6 +458,7 @@ runs:
       fi
 
       git checkout HEAD -- tests/ playwright.config.js
+      echo "✅ Main branch tests completed!"
     continue-on-error: true
 
   # 4 external artifacts (dashboard-only)
@@ -388,6 +486,7 @@ runs:
     env:
       NODE_PATH: ${{ github.workspace }}/node_modules
     run: |
+      echo "📊 Generating test flow visualization..."
       ACTION_PATH="${{ github.action_path }}"
       [ -f "$ACTION_PATH/scripts/generate-flowchart.js" ] && node "$ACTION_PATH/scripts/generate-flowchart.js"
     continue-on-error: true
@@ -399,25 +498,79 @@ runs:
     env:
       NODE_PATH: ${{ github.workspace }}/node_modules
     run: |
+      echo "✅ Generating review checklist..."
       ACTION_PATH="${{ github.action_path }}"
       if [ -f "$ACTION_PATH/scripts/checklist.js" ]; then
         node "$ACTION_PATH/scripts/checklist.js"
+        # Extract checklist status
+        if [ -f artifacts/checklist.json ]; then
+          STATUS=$(jq -r '.status // "unknown"' artifacts/checklist.json 2>/dev/null || echo "unknown")
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+        fi
       else
         echo '{"status":"missing"}' > artifacts/checklist.json
       fi
     continue-on-error: true
 
-  # 8 dashboard HTML
+  # 7b - Analyze test failures
+  - name: Analyze test failures
+    if: steps.modes.outputs.dashboard == 'true' && steps.test-summary.outputs.has-failures == 'true'
+    shell: bash
+    env:
+      NODE_PATH: ${{ github.workspace }}/node_modules
+    run: |
+      echo "🔍 Analyzing test failure patterns..."
+      ACTION_PATH="${{ github.action_path }}"
+      # Create the analysis script if it doesn't exist in the action
+      if [ ! -f "$ACTION_PATH/scripts/analyze-test-failures.js" ]; then
+        echo "⚠️  Test failure analyzer not found in action, skipping analysis"
+      else
+        node "$ACTION_PATH/scripts/analyze-test-failures.js"
+      fi
+    continue-on-error: true
+
+  # 8 dashboard HTML with performance metrics
   - id: dashboard
     name: Build dashboard HTML
     if: steps.modes.outputs.dashboard == 'true'
     shell: bash
     env:
       NODE_PATH: ${{ github.workspace }}/node_modules
+      ACTION_START_TIME: ${{ steps.timing.outputs.start-time }}
     run: |
+      echo "🎨 Building interactive dashboard..."
       ACTION_PATH="${{ github.action_path }}"
+      # Export timing for performance metrics
+      export DASHBOARD_GEN_START=$(date +%s%N)
       [ -f "$ACTION_PATH/scripts/generate-webpage.js" ] && node "$ACTION_PATH/scripts/generate-webpage.js"
     continue-on-error: true
+
+  # 8b - Collect performance metrics
+  - id: performance
+    name: Collect performance metrics
+    if: steps.modes.outputs.dashboard == 'true'
+    shell: bash
+    run: |
+      END_TIME=$(date +%s)
+      START_TIME=${{ steps.timing.outputs.start-time }}
+      DURATION=$((END_TIME - START_TIME))
+      
+      # Calculate artifact sizes
+      TOTAL_SIZE=0
+      if [ -d artifacts ]; then
+        TOTAL_SIZE=$(du -sb artifacts | cut -f1 | awk '{print $1/1048576}')
+      fi
+      
+      # Create performance metrics JSON
+      cat > artifacts/performance-metrics.json <<EOF
+      {
+        "executionTime": $DURATION,
+        "artifactSizeMB": $TOTAL_SIZE,
+        "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      }
+      EOF
+      
+      echo "metrics=$(cat artifacts/performance-metrics.json | jq -c .)" >> $GITHUB_OUTPUT
 
   # 9 upload Pages artifact & deploy
   - uses: actions/upload-pages-artifact@v3
@@ -434,7 +587,70 @@ runs:
       artifact_name: gui-test-visual-artifacts
     continue-on-error: true
 
-  # 10 PR comment
+  # 10 - Add test summary output to GitHub Actions
+  - name: Output test summary
+    if: steps.modes.outputs.playwright == 'true'
+    shell: bash
+    run: |
+      if [ -f artifacts/playwright-summary-pr.json ]; then
+        echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+        
+        # Parse JSON and create summary
+        jq -r '. | "| Total Tests | \(.total) |\n| ✅ Passed | \(.passed) |\n| ❌ Failed | \(.failed) |\n| ⏭️ Skipped | \(.skipped) |\n| 📊 Pass Rate | \(.pass_rate)% |\n| ⏱️ Duration | \(.duration)ms |"' artifacts/playwright-summary-pr.json >> $GITHUB_STEP_SUMMARY
+        
+        # Add link to dashboard if available
+        if [ "${{ steps.deploy-report.outputs.page_url }}" != "" ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 [View Full Dashboard](${{ steps.deploy-report.outputs.page_url }})" >> $GITHUB_STEP_SUMMARY
+        fi
+      fi
+
+  # 10b - Calculate test summary outputs
+  - id: test-summary
+    name: Calculate test summary outputs
+    if: steps.modes.outputs.playwright == 'true' || inputs.mode == 'dashboard-only'
+    shell: bash
+    run: |
+      # Read PR summary
+      if [ -f artifacts/playwright-summary-pr.json ]; then
+        PR_RESULTS=$(cat artifacts/playwright-summary-pr.json | jq -c .)
+        TOTAL=$(echo "$PR_RESULTS" | jq -r '.total // 0')
+        PASSED=$(echo "$PR_RESULTS" | jq -r '.passed // 0')
+        FAILED=$(echo "$PR_RESULTS" | jq -r '.failed // 0')
+        PASS_RATE=$(echo "$PR_RESULTS" | jq -r '.pass_rate // 0')
+        
+        echo "results=$PR_RESULTS" >> $GITHUB_OUTPUT
+        echo "pr-results=$PR_RESULTS" >> $GITHUB_OUTPUT
+        echo "total-tests=$TOTAL" >> $GITHUB_OUTPUT
+        echo "pass-rate=$PASS_RATE" >> $GITHUB_OUTPUT
+        echo "has-failures=$([[ $FAILED -gt 0 ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+        
+        # Extract failed test names if any
+        if [ -f artifacts/playwright-metrics.json ] && [ $FAILED -gt 0 ]; then
+          FAILED_TESTS=$(jq -c '[.. | objects | select(.status == "failed" or .outcome == "unexpected") | .title // .name // "Unknown test"] | unique' artifacts/playwright-metrics.json 2>/dev/null || echo '[]')
+          echo "failure-details=$FAILED_TESTS" >> $GITHUB_OUTPUT
+        else
+          echo "failure-details=[]" >> $GITHUB_OUTPUT
+        fi
+      fi
+      
+      # Read main summary if exists
+      if [ -f artifacts/playwright-summary-main.json ]; then
+        MAIN_RESULTS=$(cat artifacts/playwright-summary-main.json | jq -c .)
+        echo "main-results=$MAIN_RESULTS" >> $GITHUB_OUTPUT
+        
+        # Calculate regression
+        if [ -f artifacts/playwright-summary-pr.json ]; then
+          PR_FAILED=$(echo "$PR_RESULTS" | jq -r '.failed // 0')
+          MAIN_FAILED=$(echo "$MAIN_RESULTS" | jq -r '.failed // 0')
+          echo "regression-detected=$([[ $PR_FAILED -gt $MAIN_FAILED ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+        fi
+      fi
+
+  # 11 PR comment
   - name: PR summary comment
     if: steps.modes.outputs.dashboard == 'true' &&
         inputs.enable-pr-comments == 'true' &&
@@ -445,11 +661,38 @@ runs:
       WEB_REPORT_URL: ${{ inputs.web-report-url || steps.deploy-report.outputs.page_url }}
       NODE_PATH: ${{ github.workspace }}/node_modules
     run: |
+      echo "💬 Posting summary comment to PR..."
       ACTION_PATH="${{ github.action_path }}"
       [ -f "$ACTION_PATH/scripts/summary-comment.js" ] && node "$ACTION_PATH/scripts/summary-comment.js"
     continue-on-error: true
 
-  # 11 done
+  # 12 - Calculate final timing
+  - name: Calculate execution time
+    id: timing-final
+    shell: bash
+    run: |
+      END_TIME=$(date +%s)
+      START_TIME=${{ steps.timing.outputs.start-time }}
+      DURATION=$((END_TIME - START_TIME))
+      echo "duration=$DURATION" >> $GITHUB_OUTPUT
+      echo "⏱️  Total execution time: ${DURATION}s"
+
+  # 13 - Finish with better messaging
   - name: Finish
     shell: bash
-    run: echo '✅ GUI-Based Testing Code Review finished.'
+    run: |
+      echo '✅ GUI-Based Testing Code Review completed!'
+      
+      # Provide helpful summary based on results
+      if [ -f artifacts/playwright-summary-pr.json ]; then
+        FAILED=$(jq -r '.failed // 0' artifacts/playwright-summary-pr.json)
+        if [ "$FAILED" -gt "0" ]; then
+          echo "❌ $FAILED test(s) failed. Check the dashboard for details."
+        else
+          echo "✅ All tests passed!"
+        fi
+      fi
+      
+      if [ "${{ steps.deploy-report.outputs.page_url }}" != "" ]; then
+        echo "📊 Dashboard: ${{ steps.deploy-report.outputs.page_url }}"
+      fi

@@ -18,7 +18,7 @@ jobs:
       pages: write
       id-token: write
 
-    environment: 
+    environment:          # gives the green "github-pages / deployment" check
       name: github-pages
       url: ${{ steps.review.outputs.dashboard-url }}
 
@@ -28,7 +28,6 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          fetch-depth: 0 
           cache: npm
 
       - run: npm install
@@ -36,7 +35,7 @@ jobs:
       # ── run the composite action in FULL mode  ─────────────────
       - id: review
         name: GUI-Based Testing Code Review
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.2
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.2.5
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           enable-visual-comparison: 'true'
