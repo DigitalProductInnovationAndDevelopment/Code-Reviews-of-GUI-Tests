@@ -15,16 +15,20 @@ const HAS_REVIEWDOG_TOKEN = process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GI
 
 function runReviewdog(input, format, name) {
   if (!IS_PR) {
-    console.log(`📝 Skipping reviewdog - not a PR (IS_PR: ${IS_PR})`);
+    console.log(`📝 Skipping reviewdog - not a PR (event: ${process.env.GITHUB_EVENT_NAME})`);
     return;
   }
   
   if (!HAS_REVIEWDOG_TOKEN) {
-    console.log(`📝 Skipping reviewdog - no token (HAS_TOKEN: ${!!HAS_REVIEWDOG_TOKEN})`);
+    console.log(`📝 Skipping reviewdog - no token found`);
+    console.log(`  GITHUB_TOKEN: ${!!process.env.GITHUB_TOKEN}`);
+    console.log(`  REVIEWDOG_GITHUB_API_TOKEN: ${!!process.env.REVIEWDOG_GITHUB_API_TOKEN}`);
     return;
   }
 
   console.log(`🔍 Running reviewdog for ${name}...`);
+  console.log(`  Token available: ✓`);
+  console.log(`  PR number: ${process.env.GITHUB_EVENT_NAME === 'pull_request' ? 'from event' : 'n/a'}`);
   
   // Ensure artifacts directory exists
   try {
@@ -42,82 +46,52 @@ function runReviewdog(input, format, name) {
   }
   
   try {
-    // Try multiple approaches for better debugging
-    const configs = [
-      {
-        name: 'github-pr-review with diff_context',
-        args: [
-          `-f=${format}`,
-          `-name=${name}`,
-          '-reporter=github-pr-review',
-          '-filter-mode=diff_context',
-          '-level=info',
-          '-fail-on-error=false',
-          '-tee'  // Add tee for debug output
-        ]
-      },
-      {
-        name: 'github-check for fallback',
-        args: [
-          `-f=${format}`,
-          `-name=${name}`,
-          '-reporter=github-check',
-          '-filter-mode=added',
-          '-level=info',
-          '-fail-on-error=false',
-          '-tee'
-        ]
-      }
+    // Use the appropriate reporter and filter for PR comments
+    const args = [
+      `-f=${format}`,
+      `-name=${name}`,
+      '-reporter=github-pr-review',
+      '-filter-mode=added',  // Only comment on added/modified lines in the PR
+      '-level=info',
+      '-fail-on-error=false'
     ];
     
-    // Try each configuration
-    for (const config of configs) {
-      console.log(`\n🧪 Trying reviewdog with: ${config.name}`);
-      console.log(`📋 Full command: reviewdog ${config.args.join(' ')}`);
-      
-      // Show first 500 chars of input being sent
-      console.log(`📥 Input preview (first 500 chars):\n${input.slice(0, 500)}${input.length > 500 ? '\n...[truncated]' : ''}`);
-      
-      const rd = spawnSync('reviewdog', config.args, { 
-        input: input, 
-        stdio: ['pipe', 'pipe', 'pipe'],
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
-        }
-      });
-      
-      console.log(`📊 Exit code: ${rd.status}`);
-      
-      // Show ALL output for debugging
-      if (rd.stdout && rd.stdout.trim()) {
-        console.log(`📤 STDOUT (${rd.stdout.length} chars):`);
-        console.log(rd.stdout);
-      } else {
-        console.log(`📤 STDOUT: (empty)`);
+    console.log(`📋 Running: reviewdog ${args.join(' ')}`);
+    
+    const rd = spawnSync('reviewdog', args, { 
+      input: input, 
+      stdio: ['pipe', 'pipe', 'pipe'],
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        REVIEWDOG_GITHUB_API_TOKEN: process.env.GITHUB_TOKEN || process.env.REVIEWDOG_GITHUB_API_TOKEN
       }
-      
-      if (rd.stderr && rd.stderr.trim()) {
-        console.log(`📤 STDERR (${rd.stderr.length} chars):`);
-        console.log(rd.stderr);
-      } else {
-        console.log(`📤 STDERR: (empty)`);
-      }
-      
-      // Save outputs for debugging
-      try {
-        fs.writeFileSync(`artifacts/${name}-${config.name.replace(/[^a-zA-Z0-9]/g, '_')}-stdout.txt`, rd.stdout || '');
-        fs.writeFileSync(`artifacts/${name}-${config.name.replace(/[^a-zA-Z0-9]/g, '_')}-stderr.txt`, rd.stderr || '');
-      } catch (writeError) {
-        console.log(`⚠️  Could not save reviewdog output (non-critical):`, writeError.message);
-      }
-      
-      if (rd.status === 0) {
-        console.log(`✅ Reviewdog completed successfully with ${config.name}`);
-      } else {
-        console.log(`❌ Reviewdog failed with ${config.name}, exit code: ${rd.status}`);
-      }
+    });
+    
+    console.log(`📊 Exit code: ${rd.status}`);
+    
+    if (rd.stdout && rd.stdout.trim()) {
+      console.log(`📤 Output: ${rd.stdout.trim()}`);
+    }
+    
+    if (rd.stderr && rd.stderr.trim()) {
+      console.log(`⚠️  Warnings/Errors: ${rd.stderr.trim()}`);
+    }
+    
+    // Save outputs for debugging
+    try {
+      if (rd.stdout) fs.writeFileSync(`artifacts/${name}-reviewdog-stdout.txt`, rd.stdout);
+      if (rd.stderr) fs.writeFileSync(`artifacts/${name}-reviewdog-stderr.txt`, rd.stderr);
+    } catch (writeError) {
+      console.log(`⚠️  Could not save reviewdog output (non-critical):`, writeError.message);
+    }
+    
+    if (rd.status === 0) {
+      console.log(`✅ Reviewdog completed successfully for ${name}`);
+    } else if (rd.status === 1 && rd.stderr?.includes('no findings')) {
+      console.log(`✅ Reviewdog found no issues in modified files for ${name}`);
+    } else {
+      console.log(`❌ Reviewdog exited with code ${rd.status} for ${name}`);
     }
     
   } catch (error) {
@@ -132,7 +106,8 @@ function runPrettier() {
     // First, let's see what files prettier would change
     let filesToCheck = '';
     try {
-      filesToCheck = execSync('npx prettier --list-different "tests/**/*.{js,ts,tsx,json}"', { encoding: 'utf8' });
+      // Focus on test files as requested
+      filesToCheck = execSync('npx prettier --list-different "tests/**/*.{js,ts,tsx,json}" 2>/dev/null || true', { encoding: 'utf8' });
     } catch (e) {
       // If no files need formatting, prettier exits with code 1
       filesToCheck = e.stdout?.toString() || '';
@@ -279,14 +254,24 @@ function runESLint() {
   
   try {
     let raw = '';
+    let hasConfigError = false;
+    
     try {
       raw = execSync('npx eslint "tests/**/*.{js,ts,tsx}" --format json', { encoding: 'utf8' });
     } catch (e) {
-      // ESLint exits with code 1 when there are lint errors, but still outputs JSON
-      raw = e.stdout?.toString() || '';
-      if (!raw && e.stderr) {
-        console.error('❌ ESLint error:', e.stderr.toString());
-        console.error('📝 This might be a configuration issue. Check your .eslintrc file.');
+      // Check if it's a configuration error by looking at stderr
+      const stderr = e.stderr?.toString() || '';
+      if (stderr.includes('Oops!') || stderr.includes('Cannot find module') || stderr.includes('Configuration')) {
+        console.error('❌ ESLint configuration error:', stderr);
+        console.error('📝 Check your ESLint configuration files (.eslintrc.json, eslint.config.mjs, etc.)');
+        hasConfigError = true;
+      } else {
+        // ESLint exits with code 1 when there are lint errors, but still outputs JSON
+        raw = e.stdout?.toString() || '';
+      }
+      
+      if (!raw && !hasConfigError) {
+        console.error('❌ ESLint error:', stderr);
         return {
           files: 0,
           errors: 0,
@@ -294,22 +279,41 @@ function runESLint() {
           fixableErrors: 0,
           fixableWarnings: 0,
           first: '',
-          error: e.stderr.toString()
+          error: stderr
         };
       }
     }
 
-    if (!raw) {
-      console.log('✅ No ESLint output');
+    // If we have a config error, return early
+    if (hasConfigError) {
+      return {
+        files: 0,
+        errors: 0,
+        warnings: 0,
+        fixableErrors: 0,
+        fixableWarnings: 0,
+        first: '',
+        error: 'Configuration error'
+      };
+    }
+
+    if (!raw || raw.trim() === '') {
+      console.log('✅ No ESLint output (no files to lint or all files clean)');
       return { files: 0, errors: 0, warnings: 0 };
     }
 
     let results = [];
     try {
+      // Clean the output in case there's any non-JSON content
+      const jsonStart = raw.indexOf('[');
+      if (jsonStart > 0) {
+        console.log('⚠️  Found non-JSON content before results, cleaning...');
+        raw = raw.substring(jsonStart);
+      }
       results = JSON.parse(raw);
     } catch (parseError) {
       console.error('❌ Failed to parse ESLint JSON:', parseError.message);
-      console.error('📝 ESLint output might be corrupted. Try running ESLint manually to debug.');
+      console.error('📝 Raw output (first 500 chars):', raw.substring(0, 500));
       return { files: 0, errors: 0, warnings: 0, error: 'Parse error' };
     }
 
@@ -391,6 +395,12 @@ npx eslint . --fix
 // Main execution with enhanced debugging
 console.log('🚀 Starting lint checks with enhanced debugging...');
 
+// Check if test files exist
+const testDirExists = fs.existsSync('tests');
+if (!testDirExists) {
+  console.log('⚠️  Warning: No tests directory found. Lint checks may not find any files.');
+}
+
 // Environment info
 console.log('🔍 Environment:');
 console.log(`  ├─ Event: ${process.env.GITHUB_EVENT_NAME}`);
@@ -399,7 +409,8 @@ console.log(`  ├─ SHA: ${process.env.GITHUB_SHA?.slice(0, 8)}`);
 console.log(`  ├─ Ref: ${process.env.GITHUB_REF}`);
 console.log(`  ├─ Is PR: ${IS_PR}`);
 console.log(`  ├─ Has Token: ${!!HAS_REVIEWDOG_TOKEN}`);
-console.log(`  └─ Working Dir: ${process.cwd()}`);
+console.log(`  ├─ Working Dir: ${process.cwd()}`);
+console.log(`  └─ Test Dir Exists: ${testDirExists}`);
 
 // Check if reviewdog is available and get verbose version info
 if (IS_PR && HAS_REVIEWDOG_TOKEN) {
