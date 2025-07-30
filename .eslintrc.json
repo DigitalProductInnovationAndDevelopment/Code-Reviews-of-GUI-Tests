@@ -9,7 +9,5 @@
     "ecmaVersion": "latest",
     "sourceType": "module"
   },
-  "rules": {
-    "prettier/prettier": "off"
-  }
+  "rules": {}
 }
