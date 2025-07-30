@@ -320,6 +320,7 @@ runs:
     shell: bash
     env:
       NODE_PATH: ${{ github.workspace }}/node_modules
+      GITHUB_TOKEN: ${{ inputs.github-token }}
     run: |
       echo "🎨 Running code quality checks..."
       echo "📏 Checking ESLint..."
