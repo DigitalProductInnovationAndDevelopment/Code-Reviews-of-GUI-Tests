@@ -3,18 +3,15 @@
  * generate-test-city-3d.js 
  * Creates an interactive 3D city visualization from Playwright test results.
  * Each building represents a test, grouped by test suite.
+ * FIXED: Proper Three.js loading and data handling
  */
-
-/* eslint-disable no-console */
 
 const fs   = require('fs');
 const path = require('path');
 
-// ────────────────────────────────────────────────────────────
-// Constants / helpers
-// ────────────────────────────────────────────────────────────
-const ART = 'artifacts';                                           // dashboard output folder
-const HISTORY_FILE = path.join(ART, 'test-history-insights.json'); // output from track-test-history.js
+// Constants
+const ART = 'artifacts';
+const HISTORY_FILE = path.join(ART, 'test-history-insights.json');
 
 // Safe JSON reader
 function readJSON (filepath, def = null) {
@@ -28,26 +25,19 @@ function readJSON (filepath, def = null) {
   }
 }
 
-// ────────────────────────────────────────────────────────────
-// Extract all test data we have (metrics + history)
-// ────────────────────────────────────────────────────────────
+// Extract all test data
 function extractTestData () {
-  // Prefer the rich metrics file emitted by Playwright reporter
+  // Try multiple locations for metrics
   const candidatePaths = [
-    // Prefer PR‑branch detailed metrics first
     path.join(ART, 'playwright-metrics-pr.json'),
-    path.join(ART, 'playwright-summary-pr.json'), // minimal but PR‑scoped
-    // Fallbacks (may contain main‑branch data if workflow overwrote generic files)
-    'playwright-metrics.json',
     path.join(ART, 'playwright-metrics.json'),
+    'playwright-metrics.json',
+    path.join(ART, 'playwright-summary-pr.json'),
     path.join(ART, 'playwright-summary.json')
   ];
 
-  // ★ PATCH: keep looking until we find a file **with suites**.
-  //           If we only find summaries, remember the first one
-  //           and fall back to it later.
-  let metrics        = null;   // detailed (has suites)
-  let summaryMetrics = null;   // first summary found
+  let metrics = null;
+  let summaryMetrics = null;
 
   for (const p of candidatePaths) {
     if (!fs.existsSync(p)) continue;
@@ -55,91 +45,105 @@ function extractTestData () {
     const data = readJSON(p);
     if (!data) continue;
 
+    console.log(`📁 Checking ${p}...`);
+    
     if (data.suites) {
-      metrics = data;                               // detailed ⇒ stop
-      console.log(`Found detailed metrics at: ${p}`);
+      metrics = data;
+      console.log(`✅ Found detailed metrics at: ${p}`);
+      console.log(`   - Total suites: ${data.suites.length}`);
+      console.log(`   - Stats:`, data.stats);
       break;
     }
 
     if (!summaryMetrics && data.total) {
-      summaryMetrics = data;                        // remember first summary
-      console.log(`Found summary metrics at: ${p} (continuing search for detailed)`);
+      summaryMetrics = data;
+      console.log(`📊 Found summary metrics at: ${p}`);
     }
   }
 
-  if (!metrics) metrics = summaryMetrics;           // fall back if needed
+  if (!metrics) metrics = summaryMetrics;
 
-  // Fall‑back: if we only have a summary, return one pseudo‑suite so the UI still works
+  // Fallback if only summary exists
   if (!metrics || !metrics.suites) {
-    const summary = readJSON(path.join(ART, 'playwright-summary-pr.json'));
+    console.log('⚠️  No detailed metrics found, using summary fallback');
+    const summary = summaryMetrics || readJSON(path.join(ART, 'playwright-summary-pr.json'));
     if (summary && summary.total) {
-      console.log('Using summary data for visualization');
+      console.log('📊 Using summary data for visualization:', summary);
       return [{
-        id:          'summary-tests',
-        suite:       'All Tests',
-        describe:    'Summary',
-        name:        `${summary.passed} passed, ${summary.failed} failed`,
-        duration:    summary.duration || 0,
-        passRate:    summary.pass_rate || 0,
-        passed:      summary.passed || 0,
-        failed:      summary.failed || 0,
-        total:       summary.total || 0,
-        lastStatus:  summary.failed > 0 ? 'failed' : 'passed',
-        priority:    1
+        id: 'summary-tests',
+        suite: 'All Tests',
+        describe: 'Summary',
+        name: `${summary.passed} passed, ${summary.failed} failed`,
+        duration: summary.duration || 0,
+        passRate: summary.pass_rate || 0,
+        passed: summary.passed || 0,
+        failed: summary.failed || 0,
+        total: summary.total || 0,
+        lastStatus: summary.failed > 0 ? 'failed' : 'passed',
+        priority: 1
       }];
     }
-    // absolutely nothing to show
     return [];
   }
 
-  // Load history if it exists (for flakiness calc)
+  // Load history
   const historyData = readJSON(HISTORY_FILE, { tests: {} });
   const historyMap  = historyData.tests || {};
 
   const testData = [];
 
+  // Process detailed test data
   metrics.suites.forEach((suite, sIdx) => {
     const suiteName = path.basename(suite.file || `suite-${sIdx}`)
                       .replace(/\.(spec|test)\.(jsx?|tsx?)$/, '');
 
+    console.log(`Processing suite: ${suiteName}`);
+
     suite.suites.forEach((describe, dIdx) => {
       describe.specs.forEach((spec, tIdx) => {
         const fullName = `${suiteName} > ${describe.title} > ${spec.title}`;
-        const attempts  = spec.tests || [];
+        const attempts = spec.tests || [];
 
         let durationTotal = 0;
         let passed = 0, failed = 0, skipped = 0, lastStatus = 'unknown';
         const errors = [];
 
         attempts.forEach(attempt => {
-          attempt.results.forEach(r => {
+          (attempt.results || []).forEach(r => {
             durationTotal += r.duration || 0;
-            if (r.status === 'passed'    || r.status === 'expected')   { passed++;  lastStatus = 'passed';  }
-            else if (r.status === 'failed'   || r.status === 'unexpected') { failed++;  lastStatus = 'failed'; }
-            else if (r.status === 'skipped') { skipped++; lastStatus = 'skipped'; }
+            if (r.status === 'passed' || r.status === 'expected') {
+              passed++;
+              lastStatus = 'passed';
+            } else if (r.status === 'failed' || r.status === 'unexpected') {
+              failed++;
+              lastStatus = 'failed';
+            } else if (r.status === 'skipped') {
+              skipped++;
+              lastStatus = 'skipped';
+            }
             if (r.error) errors.push({ message: r.error.message, stack: r.error.stack });
           });
         });
 
-        const runs      = passed + failed + skipped;
-        const avgDur    = runs ? durationTotal / runs : 0;
-        const passRate  = runs ? (passed / runs) * 100 : 0;
+        const runs = passed + failed + skipped;
+        const avgDur = runs ? durationTotal / runs : 0;
+        const passRate = runs ? (passed / runs) * 100 : 0;
 
-        // flakiness: prefer history, else derive from current attempts
+        // Flakiness calculation
         let flakiness = 0;
         if (historyMap[fullName]) {
           flakiness = historyMap[fullName].flakiness || 0;
         } else if (runs > 1 && passed > 0 && failed > 0) {
-          flakiness = 50; // simplistic
+          flakiness = 50;
         }
 
-        // tag category
+        // Category detection
         let category = 'standard';
         const loTitle = spec.title.toLowerCase();
-        const loDesc  = describe.title.toLowerCase();
-        if (loTitle.includes('critical')  || loDesc.includes('critical'))  category = 'critical';
-        else if (loTitle.includes('smoke')   || loDesc.includes('smoke'))     category = 'smoke';
-        else if (loTitle.includes('regression'))                              category = 'regression';
+        const loDesc = describe.title.toLowerCase();
+        if (loTitle.includes('critical') || loDesc.includes('critical')) category = 'critical';
+        else if (loTitle.includes('smoke') || loDesc.includes('smoke')) category = 'smoke';
+        else if (loTitle.includes('regression')) category = 'regression';
 
         testData.push({
           id: `${suiteName}-${dIdx}-${tIdx}`,
@@ -166,6 +170,11 @@ function extractTestData () {
     });
   });
 
+  console.log(`📊 Extracted ${testData.length} tests`);
+  if (testData.length > 0) {
+    console.log('📊 Sample test:', JSON.stringify(testData[0], null, 2));
+  }
+
   return testData;
 }
 
@@ -174,13 +183,13 @@ function calcPriority (duration, passRate, flakiness, category) {
   if (category === 'critical') p *= 2;
   else if (category === 'smoke') p *= 1.5;
 
-  p *= 1 + duration / 5_000;        // slower → taller
-  p *= 2 - passRate / 100;          // failing → taller
-  if (flakiness > 30) p *= 1.5;     // flaky → taller
+  p *= 1 + duration / 5000;
+  p *= 2 - passRate / 100;
+  if (flakiness > 30) p *= 1.5;
   return p;
 }
 
-// Generate the 3D city HTML
+// Generate the 3D city HTML with fixed Three.js loading
 function generate3DCityHTML(testData) {
   // Group tests by suite
   const suites = {};
@@ -198,9 +207,11 @@ function generate3DCityHTML(testData) {
     failed: testData.filter(t => t.lastStatus === 'failed').length,
     skipped: testData.filter(t => t.lastStatus === 'skipped').length,
     flaky: testData.filter(t => t.flakiness > 30).length,
-    avgDuration: testData.reduce((sum, t) => sum + t.duration, 0) / testData.length,
+    avgDuration: testData.length > 0 ? testData.reduce((sum, t) => sum + t.duration, 0) / testData.length : 0,
     totalDuration: testData.reduce((sum, t) => sum + t.totalDuration, 0)
   };
+  
+  console.log('📊 Stats for visualization:', stats);
   
   return `
 <!DOCTYPE html>
@@ -234,6 +245,7 @@ body {
   border-radius: 12px;
   border: 1px solid #334155;
   max-width: 350px;
+  z-index: 100;
 }
 
 #info h1 {
@@ -300,6 +312,7 @@ body {
   border: 1px solid #334155;
   display: none;
   max-width: 400px;
+  z-index: 100;
 }
 
 #hover-info.visible {
@@ -332,6 +345,7 @@ body {
   padding: 15px;
   border-radius: 8px;
   border: 1px solid #334155;
+  z-index: 100;
 }
 
 .control-btn {
@@ -359,6 +373,7 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
+  z-index: 200;
 }
 
 .spinner {
@@ -375,9 +390,28 @@ body {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+#error-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  padding: 20px;
+  border-radius: 8px;
+  display: none;
+  z-index: 200;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
 </style>
+<!-- Fixed Three.js CDN loading -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.min.js"></script>
 </head>
 <body>
 
@@ -385,6 +419,11 @@ body {
   <div id="loading">
     <div class="spinner"></div>
     <div>Loading Test City...</div>
+  </div>
+  
+  <div id="error-message">
+    <h3>Error Loading 3D Visualization</h3>
+    <p id="error-details"></p>
   </div>
 </div>
 
@@ -450,13 +489,6 @@ body {
   <div class="test-details"></div>
 </div>
 
-<style>
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-</style>
-
 <script>
 // Test data from Playwright
 const testData = ${JSON.stringify(testData)};
@@ -471,109 +503,246 @@ let raycaster, mouse;
 let hoveredBuilding = null;
 let selectedBuilding = null;
 
+// OrbitControls implementation (fallback if CDN fails)
+class SimpleOrbitControls {
+  constructor(camera, domElement) {
+    this.camera = camera;
+    this.domElement = domElement;
+    this.enabled = true;
+    this.target = new THREE.Vector3();
+    this.enableDamping = true;
+    this.dampingFactor = 0.05;
+    this.autoRotate = false;
+    this.autoRotateSpeed = 2.0;
+    
+    this.rotateSpeed = 1.0;
+    this.zoomSpeed = 1.0;
+    
+    this.spherical = new THREE.Spherical();
+    this.sphericalDelta = new THREE.Spherical();
+    
+    this.mouseStart = new THREE.Vector2();
+    this.mouseEnd = new THREE.Vector2();
+    this.mouseDelta = new THREE.Vector2();
+    
+    this.isMouseDown = false;
+    
+    // Event listeners
+    this.domElement.addEventListener('mousedown', this.onMouseDown.bind(this));
+    this.domElement.addEventListener('mousemove', this.onMouseMove.bind(this));
+    this.domElement.addEventListener('mouseup', this.onMouseUp.bind(this));
+    this.domElement.addEventListener('wheel', this.onMouseWheel.bind(this));
+    
+    this.update();
+  }
+  
+  onMouseDown(event) {
+    if (!this.enabled) return;
+    this.isMouseDown = true;
+    this.mouseStart.set(event.clientX, event.clientY);
+    if (this.onStart) this.onStart();
+  }
+  
+  onMouseMove(event) {
+    if (!this.enabled || !this.isMouseDown) return;
+    
+    this.mouseEnd.set(event.clientX, event.clientY);
+    this.mouseDelta.subVectors(this.mouseEnd, this.mouseStart);
+    
+    const element = this.domElement;
+    this.sphericalDelta.theta -= 2 * Math.PI * this.mouseDelta.x / element.clientHeight * this.rotateSpeed;
+    this.sphericalDelta.phi -= 2 * Math.PI * this.mouseDelta.y / element.clientHeight * this.rotateSpeed;
+    
+    this.mouseStart.copy(this.mouseEnd);
+  }
+  
+  onMouseUp() {
+    this.isMouseDown = false;
+  }
+  
+  onMouseWheel(event) {
+    if (!this.enabled) return;
+    
+    if (event.deltaY < 0) {
+      this.sphericalDelta.radius *= 0.95;
+    } else {
+      this.sphericalDelta.radius *= 1.05;
+    }
+  }
+  
+  update() {
+    const offset = new THREE.Vector3();
+    const position = this.camera.position;
+    
+    offset.copy(position).sub(this.target);
+    this.spherical.setFromVector3(offset);
+    
+    if (this.autoRotate && !this.isMouseDown) {
+      this.sphericalDelta.theta -= 2 * Math.PI / 60 / 60 * this.autoRotateSpeed;
+    }
+    
+    this.spherical.theta += this.sphericalDelta.theta * this.dampingFactor;
+    this.spherical.phi += this.sphericalDelta.phi * this.dampingFactor;
+    this.spherical.radius += this.sphericalDelta.radius * this.dampingFactor;
+    
+    this.spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, this.spherical.phi));
+    this.spherical.radius = Math.max(10, Math.min(200, this.spherical.radius));
+    
+    this.sphericalDelta.theta *= 1 - this.dampingFactor;
+    this.sphericalDelta.phi *= 1 - this.dampingFactor;
+    this.sphericalDelta.radius *= 1 - this.dampingFactor;
+    
+    offset.setFromSpherical(this.spherical);
+    position.copy(this.target).add(offset);
+    this.camera.lookAt(this.target);
+  }
+  
+  addEventListener(type, listener) {
+    if (type === 'start') {
+      this.onStart = listener;
+    }
+  }
+}
+
 // Initialize the scene
 function init() {
-  // Hide loading
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('info').style.display = 'block';
-  document.getElementById('controls').style.display = 'block';
-  
-  // Scene setup
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0f172a);
-  scene.fog = new THREE.Fog(0x0f172a, 20, 100);
-  
-  // Camera
-  camera = new THREE.PerspectiveCamera(
-    60,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    1000
-  );
-  camera.position.set(30, 30, 30);
-  
-  // Renderer
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  document.getElementById('container').appendChild(renderer.domElement);
-  
-  // ★ PATCH: enable OrbitControls (damping + initial auto-rotate)
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping   = true;
-  controls.dampingFactor   = 0.05;
-  controls.autoRotate      = true;      // keep the original spinning behaviour
-  controls.autoRotateSpeed = 2.0;
-
-  // ★ PATCH: if the user starts dragging, stop auto-rotate & toggle button
-  controls.addEventListener('start', () => {
-    autoRotate = false;
-    controls.autoRotate = false;
-    document.querySelector('.control-btn.active')?.classList.remove('active');
-  });
-
-  // Lights
-  const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
-  scene.add(ambientLight);
-  
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-  directionalLight.position.set(20, 40, 20);
-  directionalLight.castShadow = true;
-  directionalLight.shadow.camera.near = 0.1;
-  directionalLight.shadow.camera.far = 100;
-  directionalLight.shadow.camera.left = -50;
-  directionalLight.shadow.camera.right = 50;
-  directionalLight.shadow.camera.top = 50;
-  directionalLight.shadow.camera.bottom = -50;
-  directionalLight.shadow.mapSize.width = 2048;
-  directionalLight.shadow.mapSize.height = 2048;
-  scene.add(directionalLight);
-  
-  // Add point light for glow effect
-  const pointLight = new THREE.PointLight(0x3b82f6, 0.5, 100);
-  pointLight.position.set(0, 20, 0);
-  scene.add(pointLight);
-  
-  // Ground
-  const groundSize = 100;
-  const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
-  const groundMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x1e293b,
-    roughness: 0.8,
-    metalness: 0.2
-  });
-  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-  
-  // Grid
-  const gridHelper = new THREE.GridHelper(groundSize, 50, 0x334155, 0x1e293b);
-  scene.add(gridHelper);
-  
-  // Build the city
-  buildCity();
-  
-  // Mouse interaction
-  raycaster = new THREE.Raycaster();
-  mouse = new THREE.Vector2();
-  
-  // Event listeners
-  window.addEventListener('resize', onWindowResize);
-  renderer.domElement.addEventListener('mousemove', onMouseMove);
-  renderer.domElement.addEventListener('click', onClick);
-  
-  // Start animation
-  animate();
+  try {
+    console.log('Initializing 3D scene...');
+    console.log('Test data available:', testData.length, 'tests');
+    
+    // Hide loading
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('info').style.display = 'block';
+    document.getElementById('controls').style.display = 'block';
+    
+    // Scene setup
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f172a);
+    scene.fog = new THREE.Fog(0x0f172a, 20, 100);
+    
+    // Camera
+    camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    camera.position.set(30, 30, 30);
+    
+    // Renderer
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.getElementById('container').appendChild(renderer.domElement);
+    
+    // Controls - try THREE.OrbitControls first, fallback to simple implementation
+    try {
+      if (typeof THREE.OrbitControls !== 'undefined') {
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        console.log('Using THREE.OrbitControls');
+      } else {
+        controls = new SimpleOrbitControls(camera, renderer.domElement);
+        console.log('Using fallback SimpleOrbitControls');
+      }
+    } catch (e) {
+      console.log('OrbitControls error, using fallback:', e);
+      controls = new SimpleOrbitControls(camera, renderer.domElement);
+    }
+    
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 2.0;
+    
+    controls.addEventListener('start', () => {
+      autoRotate = false;
+      controls.autoRotate = false;
+      document.querySelector('.control-btn.active')?.classList.remove('active');
+    });
+    
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(20, 40, 20);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.camera.near = 0.1;
+    directionalLight.shadow.camera.far = 100;
+    directionalLight.shadow.camera.left = -50;
+    directionalLight.shadow.camera.right = 50;
+    directionalLight.shadow.camera.top = 50;
+    directionalLight.shadow.camera.bottom = -50;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    scene.add(directionalLight);
+    
+    // Add point light for glow effect
+    const pointLight = new THREE.PointLight(0x3b82f6, 0.5, 100);
+    pointLight.position.set(0, 20, 0);
+    scene.add(pointLight);
+    
+    // Ground
+    const groundSize = 100;
+    const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
+    const groundMaterial = new THREE.MeshStandardMaterial({ 
+      color: 0x1e293b,
+      roughness: 0.8,
+      metalness: 0.2
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+    
+    // Grid
+    const gridHelper = new THREE.GridHelper(groundSize, 50, 0x334155, 0x1e293b);
+    scene.add(gridHelper);
+    
+    // Build the city
+    buildCity();
+    
+    // Mouse interaction
+    raycaster = new THREE.Raycaster();
+    mouse = new THREE.Vector2();
+    
+    // Event listeners
+    window.addEventListener('resize', onWindowResize);
+    renderer.domElement.addEventListener('mousemove', onMouseMove);
+    renderer.domElement.addEventListener('click', onClick);
+    
+    // Start animation
+    animate();
+    
+    console.log('3D scene initialized successfully');
+  } catch (error) {
+    console.error('Error initializing 3D scene:', error);
+    showError('Failed to initialize 3D scene: ' + error.message);
+  }
 }
 
 // Build the city from test data
 function buildCity() {
+  console.log('Building city from test data...');
+  
+  if (testData.length === 0) {
+    console.warn('No test data available for visualization');
+    // Create a placeholder
+    const geometry = new THREE.BoxGeometry(5, 10, 5);
+    const material = new THREE.MeshStandardMaterial({ color: 0x6366f1 });
+    const placeholder = new THREE.Mesh(geometry, material);
+    placeholder.position.set(0, 5, 0);
+    scene.add(placeholder);
+    return;
+  }
+  
   let districtX = 0;
   let maxHeight = 0;
   
   Object.entries(suites).forEach(([suiteName, tests], suiteIdx) => {
+    console.log(\`Building district for suite: \${suiteName} with \${tests.length} tests\`);
+    
     // Calculate district size
     const gridSize = Math.ceil(Math.sqrt(tests.length));
     const districtSize = gridSize * 2 + 4;
@@ -707,13 +876,18 @@ function buildCity() {
   });
   
   // Center camera on city
-  const cityWidth = districtX || 1;      // avoid /0 if no suites
+  const cityWidth = districtX || 20;
   camera.position.set(cityWidth / 2, maxHeight * 2, cityWidth / 2);
   camera.lookAt(cityWidth / 2, 0, 0);
-}
+  if (controls && controls.target) {
+    controls.target.set(cityWidth / 2, 0, 0);
+  }
+  
+  console.log(\`City built successfully with \${buildings.length} buildings\`);
+  }
 
-// Mouse interaction
-function onMouseMove(event) {
+  // Mouse interaction
+  function onMouseMove(event) {
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
   
@@ -736,9 +910,9 @@ function onMouseMove(event) {
     hideHoverInfo();
     renderer.domElement.style.cursor = 'default';
   }
-}
+  }
 
-function onClick(event) {
+  function onClick(event) {
   if (hoveredBuilding) {
     if (selectedBuilding) {
       selectedBuilding.material.emissiveIntensity = 
@@ -754,12 +928,13 @@ function onClick(event) {
     // Smooth camera transition would go here
     // For now, just look at the building
     camera.lookAt(target);
-    if (controls) controls.target.copy(target);
-
+    if (controls && controls.target) {
+      controls.target.copy(target);
+    }
   }
-}
+  }
 
-function showHoverInfo(test) {
+  function showHoverInfo(test) {
   const hoverEl = document.getElementById('hover-info');
   const nameEl = hoverEl.querySelector('.test-name');
   const detailsEl = hoverEl.querySelector('.test-details');
@@ -767,7 +942,7 @@ function showHoverInfo(test) {
   nameEl.textContent = test.name;
   
   const statusColor = test.lastStatus === 'passed' ? '#10b981' : 
-                     test.lastStatus === 'failed' ? '#ef4444' : '#8b5cf6';
+                      test.lastStatus === 'failed' ? '#ef4444' : '#8b5cf6';
   
   detailsEl.innerHTML = \`
     <label>Suite:</label><span>\${test.suite}</span>
@@ -780,34 +955,39 @@ function showHoverInfo(test) {
   \`;
   
   hoverEl.classList.add('visible');
-}
+  }
 
-function hideHoverInfo() {
+  function hideHoverInfo() {
   document.getElementById('hover-info').classList.remove('visible');
-}
+  }
 
-// Controls
-function toggleRotation() {
-  autoRotate          = !autoRotate;
-  controls.autoRotate =  autoRotate;
+  // Controls
+  function toggleRotation() {
+  autoRotate = !autoRotate;
+  controls.autoRotate = autoRotate;
   event.target.classList.toggle('active');
-}
+  }
 
-function resetCamera() {
-  camera.position.set(30, 30, 30);
-  camera.lookAt(0, 0, 0);
+  function resetCamera() {
+  const cityWidth = districts.length > 0 ? 
+    districts[districts.length - 1].position.x + 10 : 30;
+  camera.position.set(cityWidth / 2, 30, cityWidth / 2);
+  camera.lookAt(cityWidth / 2, 0, 0);
+  if (controls && controls.target) {
+    controls.target.set(cityWidth / 2, 0, 0);
+  }
   selectedBuilding = null;
   buildings.forEach(b => {
     b.material.emissiveIntensity = b.userData.flakiness > 30 ? 0.3 : 0.05;
   });
-}
+  }
 
-function toggleStats() {
+  function toggleStats() {
   const info = document.getElementById('info');
   info.style.display = info.style.display === 'none' ? 'block' : 'none';
-}
+  }
 
-function focusFailed() {
+  function focusFailed() {
   const failedBuildings = buildings.filter(b => b.userData.lastStatus === 'failed');
   if (failedBuildings.length > 0) {
     const center = new THREE.Vector3();
@@ -816,76 +996,115 @@ function focusFailed() {
     
     camera.position.set(center.x + 20, 20, center.z + 20);
     camera.lookAt(center);
+    if (controls && controls.target) {
+      controls.target.copy(center);
+    }
   }
-}
+  }
 
-function onWindowResize() {
+  function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-}
-
-// Animation loop
-function animate() {
-  requestAnimationFrame(animate);
-  
-  // Auto-rotate camera
-  if (controls) {
-    controls.autoRotate = autoRotate && !selectedBuilding;
-    controls.update();
   }
-  
-  // Animate beacons and stars
-  scene.traverse((child) => {
-    if (child.userData.type === 'beacon') {
-      child.rotation.y += 0.02;
-      child.position.y = child.userData.parent.position.y + 
-        child.userData.parent.geometry.parameters.height / 2 + 0.5 + 
-        Math.sin(Date.now() * 0.002) * 0.1;
-    }
-    if (child.userData.type === 'star') {
-      child.rotation.y += 0.01;
-      child.rotation.x += 0.01;
-    }
-  });
-  
-  renderer.render(scene, camera);
-}
 
-// Initialize
-init();
-</script>
+  // Show error message
+  function showError(message) {
+  document.getElementById('loading').style.display = 'none';
+  const errorEl = document.getElementById('error-message');
+  document.getElementById('error-details').textContent = message;
+  errorEl.style.display = 'block';
+  }
 
-</body>
-</html>
+  // Animation loop
+  function animate() {
+  try {
+    requestAnimationFrame(animate);
+    
+    // Update controls
+    if (controls) {
+      controls.update();
+    }
+    
+    // Animate beacons and stars
+    scene.traverse((child) => {
+      if (child.userData.type === 'beacon') {
+        child.rotation.y += 0.02;
+        child.position.y = child.userData.parent.position.y + 
+          child.userData.parent.geometry.parameters.height / 2 + 0.5 + 
+          Math.sin(Date.now() * 0.002) * 0.1;
+      }
+      if (child.userData.type === 'star') {
+        child.rotation.y += 0.01;
+        child.rotation.x += 0.01;
+      }
+    });
+    
+    renderer.render(scene, camera);
+  } catch (error) {
+    console.error('Animation error:', error);
+  }
+  }
+
+  // Check if Three.js loaded properly
+  if (typeof THREE === 'undefined') {
+  showError('Three.js library failed to load. Please refresh the page.');
+  } else {
+  console.log('Three.js loaded successfully, version:', THREE.REVISION);
+  // Initialize when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+  }
+  </script>
+
+  </body>
+  </html>
   `;
-}
+  }
 
-// Main execution
-console.log('🏙️  Generating 3D Test City visualization…');
-const testData = extractTestData();
-if (!testData.length) {
-  console.error('❌ No test data found — nothing to visualise.');
+  // Main execution
+  console.log('🏙️  Generating 3D Test City visualization...');
+  console.log('📁  Working directory:', process.cwd());
+  console.log('📁  Artifacts directory:', ART);
+
+  const testData = extractTestData();
+
+  if (!testData.length) {
+  console.error('❌ No test data found to visualize');
+  console.log('📝 Please ensure test results are available in one of these locations:');
+  console.log('   - artifacts/playwright-metrics-pr.json');
+  console.log('   - artifacts/playwright-metrics.json');
+  console.log('   - artifacts/playwright-summary-pr.json');
   process.exit(1);
-}
-console.log(`📊  Visualising ${testData.length} tests`);
+  }
 
-// Generate HTML (using original giant template function)
-const html = generate3DCityHTML(testData);
+  console.log(`📊 Visualizing ${testData.length} tests`);
 
-// Ensure output dirs
-fs.mkdirSync(path.join(ART, 'web-report'), { recursive: true });
+  // Generate HTML
+  const html = generate3DCityHTML(testData);
 
-fs.writeFileSync(path.join(ART, 'web-report', 'test-city-3d.html'), html);
-fs.writeFileSync(path.join(ART, 'test-city-data.json'), JSON.stringify({
+  // Ensure output directories
+  fs.mkdirSync(path.join(ART, 'web-report'), { recursive: true });
+
+  // Write files
+  fs.writeFileSync(path.join(ART, 'web-report', 'test-city-3d.html'), html);
+  fs.writeFileSync(path.join(ART, 'test-city-data.json'), JSON.stringify({
   generated: new Date().toISOString(),
   stats: {
-    total:  testData.length,
+    total: testData.length,
     passed: testData.filter(t => t.lastStatus === 'passed').length,
     failed: testData.filter(t => t.lastStatus === 'failed').length,
-    flaky:  testData.filter(t => t.flakiness  > 30         ).length
+    flaky: testData.filter(t => t.flakiness > 30).length
   },
   tests: testData
-}, null, 2));
+  }, null, 2));
 
-console.log('✅  3D Test City generated → artifacts/web-report/test-city-3d.html');
+  console.log('✅ 3D Test City generated successfully');
+  console.log('📍 Location: artifacts/web-report/test-city-3d.html');
+  console.log('📊 Stats:');
+  console.log(`   - Total tests: ${testData.length}`);
+  console.log(`   - Failed tests: ${testData.filter(t => t.lastStatus === 'failed').length}`);
+  console.log(`   - Passed tests: ${testData.filter(t => t.lastStatus === 'passed').length}`);
