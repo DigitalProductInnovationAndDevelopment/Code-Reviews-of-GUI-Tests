@@ -5,7 +5,7 @@ module.exports = defineConfig({
   use: {
     headless: true,
     screenshot: 'on',
-    trace: 'on',
+    trace: 'on-first-retry',
     video: 'off',
     ignoreHTTPSErrors: true,
   },
