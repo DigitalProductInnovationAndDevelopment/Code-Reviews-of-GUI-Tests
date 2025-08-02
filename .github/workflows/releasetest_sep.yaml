@@ -50,7 +50,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-metrics
-          path: artifacts/playwright-metrics.json
+          path: artifacts/playwright-metrics-pr.json
 
       - name: Upload PR HTML report
         uses: actions/upload-artifact@v4

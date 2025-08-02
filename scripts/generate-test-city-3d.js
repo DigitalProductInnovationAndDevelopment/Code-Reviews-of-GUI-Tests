@@ -570,7 +570,7 @@ function init() {
 
 // Build the city from test data
 function buildCity() {
-  let districtX = -40;
+  let districtX = 0;
   let maxHeight = 0;
   
   Object.entries(suites).forEach(([suiteName, tests], suiteIdx) => {
@@ -707,8 +707,9 @@ function buildCity() {
   });
   
   // Center camera on city
-  camera.position.set(districtX / 2, maxHeight * 2, districtX / 2);
-  camera.lookAt(districtX / 2, 0, 0);
+  const cityWidth = districtX || 1;      // avoid /0 if no suites
+  camera.position.set(cityWidth / 2, maxHeight * 2, cityWidth / 2);
+  camera.lookAt(cityWidth / 2, 0, 0);
 }
 
 // Mouse interaction
