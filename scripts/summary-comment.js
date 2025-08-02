@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
  * summary-comment.js - Enhanced with reviewer insights
- * - Upserts a sticky PR comment that shows:
  *     • Checklist with completion percentage
  *     • Playwright results with regression detection
  *     • Code quality insights
