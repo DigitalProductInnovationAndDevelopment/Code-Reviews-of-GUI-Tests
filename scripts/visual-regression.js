@@ -2,7 +2,7 @@
 /**
  * visual-regression.js
  * Compares screenshots from PR and main branches
- * FIXED: Improved screenshot matching logic
+ * FIXED: Better screenshot discovery without report.json
  */
 
 const fs = require('fs');
@@ -12,189 +12,198 @@ const { execSync } = require('child_process');
 const ART = 'artifacts';
 
 /* ────────────────────────────────────────────────────────── *
- *  Read Playwright report metadata for better matching
- * ────────────────────────────────────────────────────────── */
-function extractScreenshotMetadata(reportPath) {
-  const metadata = {};
-  
-  // Try to read the report.json file that Playwright generates
-  const reportJsonPath = path.join(reportPath, 'report.json');
-  if (fs.existsSync(reportJsonPath)) {
-    try {
-      const report = JSON.parse(fs.readFileSync(reportJsonPath, 'utf8'));
-      
-      // Map screenshots to test names
-      if (report.suites) {
-        report.suites.forEach(suite => {
-          suite.tests?.forEach(test => {
-            test.results?.forEach(result => {
-              result.attachments?.forEach(attachment => {
-                if (attachment.name === 'screenshot' && attachment.path) {
-                  const filename = path.basename(attachment.path);
-                  metadata[filename] = {
-                    testId: test.testId || test.title,
-                    title: test.title,
-                    status: result.status,
-                    retry: result.retry || 0
-                  };
-                }
-              });
-            });
-          });
-        });
-      }
-    } catch (e) {
-      console.warn('Could not parse report.json:', e.message);
-    }
-  }
-  
-  return metadata;
-}
-
-/* ────────────────────────────────────────────────────────── *
- *  Find and categorize screenshots
+ *  Find all screenshots in Playwright HTML report
  * ────────────────────────────────────────────────────────── */
 function findScreenshots(reportPath) {
   const screenshots = [];
-  const metadata = extractScreenshotMetadata(reportPath);
   
-  if (!fs.existsSync(reportPath)) return screenshots;
+  if (!fs.existsSync(reportPath)) {
+    console.log(`❌ Report path not found: ${reportPath}`);
+    return screenshots;
+  }
+
+  // Search in all possible locations where Playwright stores screenshots
+  const searchPaths = [
+    reportPath,
+    path.join(reportPath, 'data'),
+    path.join(reportPath, 'trace'),
+    path.join(reportPath, 'test-results')
+  ];
+
+  // Also check for index.html to find screenshot references
+  const indexPath = path.join(reportPath, 'index.html');
+  let screenshotRefs = [];
   
-  // Look in all possible subdirectories
-  const searchDirs = ['', 'data', 'trace', 'test-results'];
-  
-  searchDirs.forEach(subDir => {
-    const dir = path.join(reportPath, subDir);
-    if (!fs.existsSync(dir)) return;
+  if (fs.existsSync(indexPath)) {
+    try {
+      const html = fs.readFileSync(indexPath, 'utf8');
+      // Extract screenshot references from HTML
+      const matches = html.match(/data\/[a-f0-9\-]+\.(png|jpe?g)/gi) || [];
+      screenshotRefs = matches.map(m => path.basename(m));
+      console.log(`Found ${screenshotRefs.length} screenshot references in index.html`);
+    } catch (e) {
+      console.warn('Could not parse index.html:', e.message);
+    }
+  }
+
+  searchPaths.forEach(searchPath => {
+    if (!fs.existsSync(searchPath)) return;
     
-    fs.readdirSync(dir).forEach(file => {
-      if (file.match(/\.(png|jpe?g)$/i)) {
-        const meta = metadata[file] || {};
-        
-        // Extract test information from filename
-        let testInfo = extractTestInfo(file);
-        
-        screenshots.push({
-          filename: file,
-          path: path.join(dir, file),
-          testName: meta.title || testInfo.testName,
-          testId: meta.testId || testInfo.testId,
-          isFailure: file.includes('-actual') || meta.status === 'failed',
-          isExpected: file.includes('-expected'),
-          isDiff: file.includes('-diff'),
-          retry: meta.retry || testInfo.retry
-        });
-      }
-    });
+    const stats = fs.statSync(searchPath);
+    if (!stats.isDirectory()) return;
+    
+    try {
+      const files = fs.readdirSync(searchPath);
+      
+      files.forEach(file => {
+        // Match screenshot files
+        if (file.match(/\.(png|jpe?g)$/i)) {
+          const filePath = path.join(searchPath, file);
+          
+          // Skip diff and expected files for now
+          const isActual = !file.includes('-diff') && !file.includes('-expected');
+          const isDiff = file.includes('-diff');
+          const isExpected = file.includes('-expected');
+          
+          // Extract test information from filename
+          const testInfo = extractTestInfoFromFilename(file);
+          
+          screenshots.push({
+            filename: file,
+            path: filePath,
+            testName: testInfo.testName,
+            testId: testInfo.testId,
+            isActual,
+            isDiff,
+            isExpected,
+            browser: testInfo.browser,
+            isFailure: file.includes('-actual') || searchPath.includes('test-results')
+          });
+        }
+      });
+    } catch (e) {
+      console.warn(`Error reading directory ${searchPath}:`, e.message);
+    }
   });
+
+  console.log(`📸 Found ${screenshots.length} total files in ${reportPath}`);
+  console.log(`   - Actual: ${screenshots.filter(s => s.isActual).length}`);
+  console.log(`   - Expected: ${screenshots.filter(s => s.isExpected).length}`);
+  console.log(`   - Diff: ${screenshots.filter(s => s.isDiff).length}`);
   
   return screenshots;
 }
 
 /* ────────────────────────────────────────────────────────── *
- *  Smart test info extraction from filename
+ *  Extract test information from screenshot filename
  * ────────────────────────────────────────────────────────── */
-function extractTestInfo(filename) {
-  // Remove common prefixes and suffixes
-  let cleaned = filename
-    .replace(/^[a-f0-9]{40}-?/, '') // Remove SHA
-    .replace(/-(actual|expected|diff|previous)/, '') // Remove comparison suffixes
-    .replace(/-(chromium|firefox|webkit|darwin|linux|win32)/, '') // Remove browser/platform
-    .replace(/-attempt\d+/, '') // Remove attempt number
-    .replace(/\.(png|jpe?g)$/i, ''); // Remove extension
+function extractTestInfoFromFilename(filename) {
+  // Remove extension
+  let name = filename.replace(/\.(png|jpe?g)$/i, '');
   
-  // Extract retry number if present
-  const retryMatch = cleaned.match(/-retry(\d+)/);
-  const retry = retryMatch ? parseInt(retryMatch[1]) : 0;
-  cleaned = cleaned.replace(/-retry\d+/, '');
-  
-  // Try to extract test hierarchy
-  const parts = cleaned.split('-');
-  let testName = cleaned;
-  let testId = cleaned;
-  
-  // Common patterns: suite-name-test-name
-  if (parts.length >= 3) {
-    testName = parts.slice(-2).join(' ').replace(/_/g, ' ');
-    testId = cleaned;
-  } else {
-    testName = cleaned.replace(/[-_]/g, ' ');
-    testId = cleaned;
+  // Extract browser if present
+  let browser = 'chromium';
+  const browserMatch = name.match(/-(chromium|firefox|webkit)/);
+  if (browserMatch) {
+    browser = browserMatch[1];
+    name = name.replace(/-(chromium|firefox|webkit)/, '');
   }
   
-  return { testName, testId, retry };
-}
-
-/* ────────────────────────────────────────────────────────── *
- *  Create a unique key for matching screenshots
- * ────────────────────────────────────────────────────────── */
-function createMatchKey(screenshot) {
-  // For failure screenshots, we want to match actual screenshots only
-  if (screenshot.isExpected || screenshot.isDiff) {
-    return null;
-  }
+  // Remove SHA prefix if present (40 hex chars)
+  name = name.replace(/^[a-f0-9]{40}-?/, '');
   
-  // Create a normalized key based on test information
-  const testKey = (screenshot.testId || screenshot.testName || '')
+  // Remove suffixes
+  name = name.replace(/-(actual|expected|diff|previous)$/, '');
+  name = name.replace(/-(darwin|linux|win32)$/, '');
+  name = name.replace(/-attempt\d+$/, '');
+  
+  // Create a normalized test name
+  const testName = name
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  // Create a normalized test ID for matching
+  const testId = testName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
   
-  // Include retry number to match correct attempts
-  return `${testKey}-retry${screenshot.retry || 0}`;
+  return { testName, testId, browser };
 }
 
 /* ────────────────────────────────────────────────────────── *
- *  Image comparison helper
+ *  Create normalized key for matching screenshots
+ * ────────────────────────────────────────────────────────── */
+function createMatchKey(screenshot) {
+  // Only match actual screenshots (not diff or expected)
+  if (!screenshot.isActual) return null;
+  
+  // Create a key that should match between PR and main
+  return `${screenshot.testId}-${screenshot.browser}`;
+}
+
+/* ────────────────────────────────────────────────────────── *
+ *  Image comparison
  * ────────────────────────────────────────────────────────── */
 async function compareImages(img1Path, img2Path, diffPath) {
   try {
-    if (!fs.existsSync(img1Path) || !fs.existsSync(img2Path)) return null;
+    if (!fs.existsSync(img1Path) || !fs.existsSync(img2Path)) {
+      console.log(`❌ Missing image for comparison: ${!fs.existsSync(img1Path) ? img1Path : img2Path}`);
+      return null;
+    }
 
-    // Quick binary check
+    // Quick binary comparison
     const buf1 = fs.readFileSync(img1Path);
     const buf2 = fs.readFileSync(img2Path);
     
     if (buf1.length === buf2.length && buf1.equals(buf2)) {
-      return { hasDiff: false, diffPercent: 0, diffImage: null, identical: true };
+      return { hasDiff: false, diffPercent: 0, identical: true };
     }
 
-    // Use ImageMagick for detailed comparison
+    // Try ImageMagick
+    try {
+      execSync('which compare', { stdio: 'ignore' });
+    } catch {
+      console.warn('⚠️  ImageMagick not found, using binary comparison only');
+      return { hasDiff: true, diffPercent: 50, method: 'binary' };
+    }
+
     fs.mkdirSync(path.dirname(diffPath), { recursive: true });
 
     try {
-      const diffOutput = execSync(
+      // Use ImageMagick compare
+      const result = execSync(
         `compare -metric AE -fuzz 5% "${img1Path}" "${img2Path}" "${diffPath}" 2>&1`,
-        { encoding: 'utf8' }
-      ).trim();
+        { encoding: 'utf8', stdio: 'pipe' }
+      );
 
-      const pixels = parseInt(diffOutput) || 0;
+      const pixels = parseInt(result) || 0;
       
-      // Get image dimensions
-      const dimensions = execSync(
-        `identify -format "%w %h" "${img1Path}"`,
-        { encoding: 'utf8' }
-      ).trim().split(' ').map(Number);
-      
-      const totalPixels = dimensions[0] * dimensions[1];
-      const percent = totalPixels > 0 ? (pixels / totalPixels) * 100 : 0;
+      // Get dimensions
+      const identify = execSync(`identify -format "%w %h" "${img1Path}"`, { encoding: 'utf8' });
+      const [width, height] = identify.trim().split(' ').map(Number);
+      const totalPixels = width * height;
+      const diffPercent = totalPixels > 0 ? (pixels / totalPixels) * 100 : 0;
 
       return {
         hasDiff: pixels > 0,
-        diffPercent: Math.round(percent * 100) / 100,
+        diffPercent: Math.round(diffPercent * 100) / 100,
         diffImage: diffPath,
         pixelDiff: pixels,
-        totalPixels: totalPixels,
-        dimensions: { width: dimensions[0], height: dimensions[1] }
+        totalPixels,
+        dimensions: { width, height },
+        method: 'imagemagick'
       };
-    } catch (compareErr) {
-      // ImageMagick returns non-zero exit code when images differ
-      const pixels = parseInt(compareErr.stdout || compareErr.stderr || '1') || 1;
-      return { 
-        hasDiff: true, 
+    } catch (err) {
+      // ImageMagick returns non-zero when images differ
+      const pixels = parseInt(err.stdout || err.stderr || '1') || 1;
+      return {
+        hasDiff: true,
         diffPercent: 50, // Assume significant difference
-        diffImage: diffPath, 
-        pixelDiff: pixels 
+        diffImage: diffPath,
+        pixelDiff: pixels,
+        method: 'imagemagick-error'
       };
     }
   } catch (err) {
@@ -209,27 +218,30 @@ async function compareImages(img1Path, img2Path, diffPath) {
 async function generateVisualReport() {
   console.log('🔍 Starting visual regression analysis...');
   
+  // Find all screenshots
   const prShots = findScreenshots(path.join(ART, 'pr-report'));
   const mainShots = findScreenshots(path.join(ART, 'main-report'));
 
-  console.log(`📸 Found ${prShots.length} PR screenshots`);
-  console.log(`📸 Found ${mainShots.length} main screenshots`);
+  // Filter to only actual screenshots (not diff/expected)
+  const prActual = prShots.filter(s => s.isActual);
+  const mainActual = mainShots.filter(s => s.isActual);
 
-  // Filter out helper images (expected, diff)
-  const prActual = prShots.filter(s => !s.isExpected && !s.isDiff);
-  const mainActual = mainShots.filter(s => !s.isExpected && !s.isDiff);
+  console.log(`\n📊 Actual screenshots to compare:`);
+  console.log(`   PR: ${prActual.length}`);
+  console.log(`   Main: ${mainActual.length}`);
 
-  console.log(`📸 Comparing ${prActual.length} PR vs ${mainActual.length} main screenshots`);
-
-  // Create match maps
+  // Create maps for matching
   const prMap = new Map();
   const mainMap = new Map();
-
+  
+  // Debug: Show what we're mapping
+  console.log('\n🔑 Creating match keys:');
+  
   prActual.forEach(shot => {
     const key = createMatchKey(shot);
     if (key) {
       prMap.set(key, shot);
-      console.log(`PR: ${key} -> ${shot.filename}`);
+      console.log(`   PR: "${key}" <- ${shot.filename}`);
     }
   });
 
@@ -237,30 +249,34 @@ async function generateVisualReport() {
     const key = createMatchKey(shot);
     if (key) {
       mainMap.set(key, shot);
-      console.log(`Main: ${key} -> ${shot.filename}`);
+      console.log(`   Main: "${key}" <- ${shot.filename}`);
     }
   });
 
+  // Prepare diff directory
   const diffDir = path.join(ART, 'visual-diffs');
   fs.mkdirSync(diffDir, { recursive: true });
 
   const comparisons = [];
+  const processedKeys = new Set();
 
-  // Compare matched screenshots
+  // Compare PR vs Main
+  console.log('\n🔄 Comparing screenshots:');
   for (const [key, prShot] of prMap) {
+    processedKeys.add(key);
     const mainShot = mainMap.get(key);
     
     if (mainShot) {
-      console.log(`🔄 Comparing ${key}`);
+      console.log(`   Comparing: ${key}`);
       const diffPath = path.join(diffDir, `diff-${key}.png`);
       const result = await compareImages(mainShot.path, prShot.path, diffPath);
       
       if (result) {
         const diffPercent = result.diffPercent || 0;
         comparisons.push({
-          testName: prShot.testName || key,
+          testName: prShot.testName,
+          testId: key,
           filename: prShot.filename,
-          matchKey: key,
           prImage: prShot.path,
           mainImage: mainShot.path,
           ...result,
@@ -268,13 +284,14 @@ async function generateVisualReport() {
                   diffPercent < 0.1 ? 'negligible' :
                   diffPercent < 1 ? 'minor' : 'major'
         });
+        console.log(`     -> ${result.diffPercent}% difference (${comparisons[comparisons.length-1].status})`);
       }
     } else {
-      // New screenshot in PR
+      console.log(`   New in PR: ${key}`);
       comparisons.push({
-        testName: prShot.testName || key,
+        testName: prShot.testName,
+        testId: key,
         filename: prShot.filename,
-        matchKey: key,
         prImage: prShot.path,
         mainImage: null,
         hasDiff: true,
@@ -284,13 +301,14 @@ async function generateVisualReport() {
     }
   }
 
-  // Find removed screenshots
+  // Check for removed screenshots
   for (const [key, mainShot] of mainMap) {
-    if (!prMap.has(key)) {
+    if (!processedKeys.has(key)) {
+      console.log(`   Removed from PR: ${key}`);
       comparisons.push({
-        testName: mainShot.testName || key,
+        testName: mainShot.testName,
+        testId: key,
         filename: mainShot.filename,
-        matchKey: key,
         prImage: null,
         mainImage: mainShot.path,
         hasDiff: true,
@@ -303,7 +321,7 @@ async function generateVisualReport() {
   // Sort by difference percentage
   comparisons.sort((a, b) => b.diffPercent - a.diffPercent);
 
-  // Generate summary
+  // Create summary
   const summary = {
     timestamp: new Date().toISOString(),
     totalScreenshots: prActual.length,
@@ -314,8 +332,14 @@ async function generateVisualReport() {
     major: comparisons.filter(c => c.status === 'major').length,
     new: comparisons.filter(c => c.status === 'new').length,
     removed: comparisons.filter(c => c.status === 'removed').length,
-    comparisons: comparisons
+    comparisons
   };
+
+  console.log('\n📊 Final summary:');
+  console.log(`   Total comparisons: ${summary.totalComparisons}`);
+  console.log(`   Identical: ${summary.identical}`);
+  console.log(`   Major changes: ${summary.major}`);
+  console.log(`   Minor changes: ${summary.minor}`);
 
   // Save results
   fs.writeFileSync(
@@ -329,13 +353,18 @@ async function generateVisualReport() {
     generateHTMLReport(summary)
   );
 
-  console.log('✅ Visual regression report generated');
-  console.log(`📊 Summary: ${summary.identical} identical, ${summary.minor} minor, ${summary.major} major changes`);
+  // Generate markdown summary
+  fs.writeFileSync(
+    path.join(ART, 'visual-regression-summary.md'),
+    generateMarkdownSummary(summary)
+  );
+
+  console.log('\n✅ Visual regression report generated');
   
   return summary;
 }
 
-// Generate HTML report
+// Generate HTML report (keeping the same as original)
 function generateHTMLReport(report) {
   const getStatusColor = (status) => {
     switch (status) {
@@ -672,15 +701,6 @@ function generateHTMLReport(report) {
         }
       });
     }
-    
-    function openImageModal(src) {
-      // This function should be defined in the main dashboard
-      if (window.openImageModal) {
-        window.openImageModal(src);
-      } else {
-        window.open(src, '_blank');
-      }
-    }
   </script>
 </div>
   `;
@@ -699,9 +719,9 @@ function generateMarkdownSummary(report) {
   
   md += '## Summary\n\n';
   md += `- ✅ Identical: ${report.identical}\n`;
-  md += `- ✓ Negligible (<1%): ${report.negligible}\n`;
-  md += `- ⚠️ Minor (1-5%): ${report.minor}\n`;
-  md += `- ❌ Major (>5%): ${report.major}\n`;
+  md += `- ✓ Negligible (<0.1%): ${report.negligible}\n`;
+  md += `- ⚠️ Minor (0.1-1%): ${report.minor}\n`;
+  md += `- ❌ Major (>1%): ${report.major}\n`;
   md += `- 🆕 New: ${report.new}\n`;
   md += `- 🗑️ Removed: ${report.removed}\n\n`;
   
@@ -718,6 +738,7 @@ function generateMarkdownSummary(report) {
   
   return md;
 }
+
 // Run the visual regression analysis
 if (require.main === module) {
   generateVisualReport().catch(console.error);
