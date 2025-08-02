@@ -1,36 +1,47 @@
 #!/usr/bin/env node
 /**
- * generate-test-city-3d.js
- * Creates an interactive 3D city visualization from actual Playwright test results
- * Each building represents a test, grouped by test suite
+ * generate-test-city-3d.js (patched 2025‑08‑02)
+ * Creates an interactive 3D city visualization from Playwright test results.
+ * Each building represents a test, grouped by test suite.
  */
 
-const fs = require('fs');
+/* eslint-disable no-console */
+
+const fs   = require('fs');
 const path = require('path');
 
-const ART = 'artifacts';
+// ────────────────────────────────────────────────────────────
+// Constants / helpers
+// ────────────────────────────────────────────────────────────
+const ART = 'artifacts';                                           // dashboard output folder
+const HISTORY_FILE = path.join(ART, 'test-history-insights.json'); // output from track-test-history.js
 
-// Helper to read JSON safely
-const readJSON = (filepath, defaultValue = null) => {
+// Safe JSON reader
+function readJSON (filepath, def = null) {
   try {
     return JSON.parse(fs.readFileSync(filepath, 'utf8'));
-  } catch (e) {
-    console.warn(`Could not read ${filepath}:`, e.message);
-    return defaultValue;
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.warn(`⚠️  Could not parse ${filepath}:`, err.message);
+    }
+    return def;
   }
-};
+}
 
-// Extract comprehensive test data from Playwright metrics
-function extractTestData() {
-  const possiblePaths = [
+// ────────────────────────────────────────────────────────────
+// Extract all test data we have (metrics + history)
+// ────────────────────────────────────────────────────────────
+function extractTestData () {
+  // Prefer the rich metrics file emitted by Playwright reporter
+  const candidatePaths = [
     'playwright-metrics.json',
     path.join(ART, 'playwright-metrics.json'),
-    path.join(ART, 'playwright-summary-pr.json'), 
-    path.join(ART, 'playwright-summary.json')   
+    path.join(ART, 'playwright-summary-pr.json'), // minimal
+    path.join(ART, 'playwright-summary.json')     // alias
   ];
-  
+
   let metrics = null;
-  for (const p of possiblePaths) {
+  for (const p of candidatePaths) {
     if (fs.existsSync(p)) {
       metrics = readJSON(p);
       if (metrics && (metrics.suites || metrics.total)) {
@@ -39,157 +50,116 @@ function extractTestData() {
       }
     }
   }
-  
-  // If no detailed metrics found, try to use summary
+
+  // Fall‑back: if we only have a summary, return one pseudo‑suite so the UI still works
   if (!metrics || !metrics.suites) {
     const summary = readJSON(path.join(ART, 'playwright-summary-pr.json'));
     if (summary && summary.total) {
-      // Create a minimal structure from summary
       console.log('Using summary data for visualization');
       return [{
-        id: 'summary-tests',
-        suite: 'All Tests',
-        describe: 'Summary',
-        name: `${summary.passed} passed, ${summary.failed} failed`,
-        duration: summary.duration || 0,
-        passRate: summary.pass_rate || 0,
-        passed: summary.passed || 0,
-        failed: summary.failed || 0,
-        total: summary.total || 0,
-        lastStatus: summary.failed > 0 ? 'failed' : 'passed',
-        priority: 1
+        id:          'summary-tests',
+        suite:       'All Tests',
+        describe:    'Summary',
+        name:        `${summary.passed} passed, ${summary.failed} failed`,
+        duration:    summary.duration || 0,
+        passRate:    summary.pass_rate || 0,
+        passed:      summary.passed || 0,
+        failed:      summary.failed || 0,
+        total:       summary.total || 0,
+        lastStatus:  summary.failed > 0 ? 'failed' : 'passed',
+        priority:    1
       }];
     }
+    // absolutely nothing to show
+    return [];
   }
-  
+
+  // Load history if it exists (for flakiness calc)
+  const historyData = readJSON(HISTORY_FILE, { tests: {} });
+  const historyMap  = historyData.tests || {};
+
   const testData = [];
-  const testHistoryMap = {};
-  
-  // Build history map for flakiness calculation
-  if (history && history.tests) {
-    Object.entries(history.tests).forEach(([testName, data]) => {
-      testHistoryMap[testName] = data;
-    });
-  }
-  
-  // Process each test suite
-  metrics.suites.forEach((suite, suiteIdx) => {
-    const suiteName = path.basename(suite.file || `suite-${suiteIdx}`)
-      .replace(/\.(spec|test)\.(js|ts|jsx|tsx)$/, '');
-    
-    // Get suite location info
-    const line = suite.line || 0;
-    const column = suite.column || 0;
-    
-    suite.suites.forEach((describe, describeIdx) => {
-      describe.specs.forEach((spec, specIdx) => {
-        const fullTestName = `${suiteName} > ${describe.title} > ${spec.title}`;
-        
-        // Get all test attempts
-        const attempts = spec.tests || [];
-        let totalDuration = 0;
-        let passCount = 0;
-        let failCount = 0;
-        let skipCount = 0;
-        let lastStatus = 'unknown';
-        let errors = [];
-        
-        attempts.forEach(test => {
-          test.results.forEach(result => {
-            totalDuration += result.duration || 0;
-            
-            if (result.status === 'passed' || result.status === 'expected') {
-              passCount++;
-              lastStatus = 'passed';
-            } else if (result.status === 'failed' || result.status === 'unexpected') {
-              failCount++;
-              lastStatus = 'failed';
-              if (result.error) {
-                errors.push({
-                  message: result.error.message,
-                  stack: result.error.stack
-                });
-              }
-            } else if (result.status === 'skipped') {
-              skipCount++;
-              lastStatus = 'skipped';
-            }
+
+  metrics.suites.forEach((suite, sIdx) => {
+    const suiteName = path.basename(suite.file || `suite-${sIdx}`)
+                      .replace(/\.(spec|test)\.(jsx?|tsx?)$/, '');
+
+    suite.suites.forEach((describe, dIdx) => {
+      describe.specs.forEach((spec, tIdx) => {
+        const fullName = `${suiteName} > ${describe.title} > ${spec.title}`;
+        const attempts  = spec.tests || [];
+
+        let durationTotal = 0;
+        let passed = 0, failed = 0, skipped = 0, lastStatus = 'unknown';
+        const errors = [];
+
+        attempts.forEach(attempt => {
+          attempt.results.forEach(r => {
+            durationTotal += r.duration || 0;
+            if (r.status === 'passed'    || r.status === 'expected')   { passed++;  lastStatus = 'passed';  }
+            else if (r.status === 'failed'   || r.status === 'unexpected') { failed++;  lastStatus = 'failed'; }
+            else if (r.status === 'skipped') { skipped++; lastStatus = 'skipped'; }
+            if (r.error) errors.push({ message: r.error.message, stack: r.error.stack });
           });
         });
-        
-        const totalRuns = passCount + failCount + skipCount;
-        const avgDuration = totalRuns > 0 ? totalDuration / totalRuns : 0;
-        const passRate = totalRuns > 0 ? (passCount / totalRuns) * 100 : 0;
-        
-        // Calculate flakiness from history or current runs
+
+        const runs      = passed + failed + skipped;
+        const avgDur    = runs ? durationTotal / runs : 0;
+        const passRate  = runs ? (passed / runs) * 100 : 0;
+
+        // flakiness: prefer history, else derive from current attempts
         let flakiness = 0;
-        const historyData = testHistoryMap[fullTestName];
-        if (historyData) {
-          flakiness = historyData.flakiness || 0;
-        } else if (totalRuns > 1 && passCount > 0 && failCount > 0) {
-          // Test both passed and failed in current run = flaky
-          flakiness = 50;
+        if (historyMap[fullName]) {
+          flakiness = historyMap[fullName].flakiness || 0;
+        } else if (runs > 1 && passed > 0 && failed > 0) {
+          flakiness = 50; // simplistic
         }
-        
-        // Determine test category
+
+        // tag category
         let category = 'standard';
-        if (spec.title.toLowerCase().includes('critical') || 
-            describe.title.toLowerCase().includes('critical')) {
-          category = 'critical';
-        } else if (spec.title.toLowerCase().includes('smoke') ||
-                   describe.title.toLowerCase().includes('smoke')) {
-          category = 'smoke';
-        } else if (spec.title.toLowerCase().includes('regression')) {
-          category = 'regression';
-        }
-        
+        const loTitle = spec.title.toLowerCase();
+        const loDesc  = describe.title.toLowerCase();
+        if (loTitle.includes('critical')  || loDesc.includes('critical'))  category = 'critical';
+        else if (loTitle.includes('smoke')   || loDesc.includes('smoke'))     category = 'smoke';
+        else if (loTitle.includes('regression'))                              category = 'regression';
+
         testData.push({
-          id: `${suiteName}-${describeIdx}-${specIdx}`,
+          id: `${suiteName}-${dIdx}-${tIdx}`,
           suite: suiteName,
           describe: describe.title,
           name: spec.title,
-          fullName: fullTestName,
-          duration: avgDuration,
-          totalDuration: totalDuration,
-          passRate: passRate,
-          runs: totalRuns,
-          passed: passCount,
-          failed: failCount,
-          skipped: skipCount,
-          lastStatus: lastStatus,
-          flakiness: flakiness,
-          category: category,
-          line: spec.line || line,
-          column: spec.column || column,
-          errors: errors,
-          // Calculate priority for height
-          priority: calculateTestPriority(avgDuration, passRate, flakiness, category)
+          fullName,
+          duration: avgDur,
+          totalDuration: durationTotal,
+          passRate,
+          runs,
+          passed,
+          failed,
+          skipped,
+          lastStatus,
+          flakiness,
+          category,
+          line: spec.line || suite.line || 0,
+          column: spec.column || suite.column || 0,
+          errors,
+          priority: calcPriority(avgDur, passRate, flakiness, category)
         });
       });
     });
   });
-  
+
   return testData;
 }
 
-// Calculate test priority (affects building height)
-function calculateTestPriority(duration, passRate, flakiness, category) {
-  let priority = 1;
-  
-  // Category weight
-  if (category === 'critical') priority *= 2;
-  else if (category === 'smoke') priority *= 1.5;
-  
-  // Duration weight (longer = higher priority)
-  priority *= (1 + duration / 5000);
-  
-  // Failure weight (lower pass rate = higher priority)
-  priority *= (2 - passRate / 100);
-  
-  // Flakiness weight
-  if (flakiness > 30) priority *= 1.5;
-  
-  return priority;
+function calcPriority (duration, passRate, flakiness, category) {
+  let p = 1;
+  if (category === 'critical') p *= 2;
+  else if (category === 'smoke') p *= 1.5;
+
+  p *= 1 + duration / 5_000;        // slower → taller
+  p *= 2 - passRate / 100;          // failing → taller
+  if (flakiness > 30) p *= 1.5;     // flaky → taller
+  return p;
 }
 
 // Generate the 3D city HTML
@@ -858,40 +828,30 @@ init();
 }
 
 // Main execution
-console.log('🏙️  Generating 3D Test City visualization...');
-
+console.log('🏙️  Generating 3D Test City visualization…');
 const testData = extractTestData();
-if (testData.length === 0) {
-  console.error('❌ No test data found to visualize');
+if (!testData.length) {
+  console.error('❌ No test data found — nothing to visualise.');
   process.exit(1);
 }
+console.log(`📊  Visualising ${testData.length} tests`);
 
-console.log(`📊 Found ${testData.length} tests to visualize`);
-
-// Generate HTML
+// Generate HTML (using original giant template function)
 const html = generate3DCityHTML(testData);
 
-// Save files
+// Ensure output dirs
 fs.mkdirSync(path.join(ART, 'web-report'), { recursive: true });
+
 fs.writeFileSync(path.join(ART, 'web-report', 'test-city-3d.html'), html);
+fs.writeFileSync(path.join(ART, 'test-city-data.json'), JSON.stringify({
+  generated: new Date().toISOString(),
+  stats: {
+    total:  testData.length,
+    passed: testData.filter(t => t.lastStatus === 'passed').length,
+    failed: testData.filter(t => t.lastStatus === 'failed').length,
+    flaky:  testData.filter(t => t.flakiness  > 30         ).length
+  },
+  tests: testData
+}, null, 2));
 
-// Also save the processed test data for other tools
-fs.writeFileSync(
-  path.join(ART, 'test-city-data.json'),
-  JSON.stringify({
-    generated: new Date().toISOString(),
-    stats: {
-      total: testData.length,
-      passed: testData.filter(t => t.lastStatus === 'passed').length,
-      failed: testData.filter(t => t.lastStatus === 'failed').length,
-      flaky: testData.filter(t => t.flakiness > 30).length
-    },
-    tests: testData
-  }, null, 2)
-);
-
-console.log('✅ Test City 3D visualization generated');
-console.log('📍 Location: artifacts/web-report/test-city-3d.html');
-console.log('🏢 Building colors: Green (passing) → Orange (unstable) → Red (failing)');
-console.log('✨ Glowing buildings indicate flaky tests');
-console.log('⭐ Stars indicate critical tests');
+console.log('✅  3D Test City generated → artifacts/web-report/test-city-3d.html');

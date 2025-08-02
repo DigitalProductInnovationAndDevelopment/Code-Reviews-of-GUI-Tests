@@ -19,6 +19,10 @@ test.describe('New Todo', () => {
     // Create 1st todo.
     await newTodo.fill(TODO_ITEMS[0]);
     await newTodo.press('Enter');
+    
+    await page.evaluate(() => {
+      document.body.style.borderTop = '12px solid hotpink';
+    });
 
     // DELIBERATE FAILURE: Expect wrong text to generate a failed test screenshot
     await expect(page.getByTestId('todo-title')).toHaveText([
