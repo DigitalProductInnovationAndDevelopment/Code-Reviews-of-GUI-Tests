@@ -6,7 +6,7 @@ on:
       - main
 
 # ───────────────────────────────────────────────────────────────
-# 1. Playwright tests  → artifacts (no Pages here)
+# 1. Playwright tests  → artifacts 
 # ───────────────────────────────────────────────────────────────
 jobs:
   test:
