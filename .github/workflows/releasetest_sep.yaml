@@ -1,0 +1,166 @@
+name: Split-Module GUI Test Pipeline separate for Playwright, ESLint, and Dashboard
+
+on:
+  pull_request:
+    branches:
+      - main
+
+# ───────────────────────────────────────────────────────────────
+# 1. Playwright tests  → artifacts (no Pages here)
+# ───────────────────────────────────────────────────────────────
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          cache: npm
+      - run: npm install
+
+      # Run Playwright with PR-vs-Main comparison
+      - name: GUI Test – Playwright only
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.2.6
+        with:
+          github-token:            ${{ secrets.GITHUB_TOKEN }}
+          mode:                    test-only
+          test-files:              tests
+          enable-dashboard:        'false'
+          enable-github-pages:     'false'
+          enable-visual-comparison: 'true'
+          main-branch:             'main'
+          key-test-file:           'tests/demo-todo-app.spec.ts'
+
+      # Upload artifacts for the dashboard job
+      - name: Upload PR summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-summary
+          path: artifacts/playwright-summary-pr.json
+
+      - name: Upload Main summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-summary-main
+          path: artifacts/playwright-summary-main.json
+
+      - name: Upload metrics JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-metrics
+          path: artifacts/playwright-metrics.json
+
+      - name: Upload PR HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: artifacts/pr-report/
+
+      - name: Upload Main HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-main
+          path: artifacts/main-report/
+
+# ───────────────────────────────────────────────────────────────
+# 2. ESLint / Prettier
+# ───────────────────────────────────────────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          cache: npm
+      - run: npm install
+
+      - name: GUI Test – Lint only
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.2.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode:        lint-only
+
+      - name: Upload lint summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-summary
+          path: artifacts/lint-summary.json
+
+# ───────────────────────────────────────────────────────────────
+# 3. Dashboard / checklist / PR comment / Pages
+# ───────────────────────────────────────────────────────────────
+  dashboard:
+    needs:
+      - test
+      - lint
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.review.outputs.dashboard-url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install npm only if needed
+        run: |
+          if [ -f package.json ]; then
+            npm ci 2>/dev/null || npm install
+          fi
+
+      # Download all required artifacts
+      - name: Download PR summary
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-summary
+          path: dl
+
+      - name: Download Main summary
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-summary-main
+          path: dl
+
+      - name: Download metrics JSON
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-metrics
+          path: dl
+
+      - name: Download PR HTML report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report
+          path: dl/pr-report
+
+      - name: Download Main HTML report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report-main
+          path: dl/main-report
+
+      - name: Download lint summary
+        uses: actions/download-artifact@v4
+        with:
+          name: lint-summary
+          path: dl
+
+      # Build dashboard, post comment, deploy Pages
+      - id: review
+        name: Dashboard / PR comment / Pages
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.2.6
+        with:
+          github-token:       ${{ secrets.GITHUB_TOKEN }}
+          mode:               dashboard-only
+          custom-artifacts-path: dl
+          enable-github-pages: 'true'

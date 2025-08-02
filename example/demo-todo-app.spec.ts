@@ -20,9 +20,9 @@ test.describe('New Todo', () => {
     await newTodo.fill(TODO_ITEMS[0]);
     await newTodo.press('Enter');
 
-    // DELIBERATE FAILURE: Expect wrong text to generate a failed test screenshot
+    // Make sure the list only has one todo item.
     await expect(page.getByTestId('todo-title')).toHaveText([
-      'WRONG EXPECTED TEXT - This will fail and generate screenshots!'
+      TODO_ITEMS[0]
     ]);
 
     // Create 2nd todo.

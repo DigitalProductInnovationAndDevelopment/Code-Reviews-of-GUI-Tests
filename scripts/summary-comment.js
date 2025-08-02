@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
- * summary-comment.js - Enhanced with reviewer insights
- * - Upserts a sticky PR comment that shows:
- *     • Checklist with completion percentage
- *     • Playwright results with regression detection
- *     • Code quality insights
- *     • Performance comparison
- *     • Actionable recommendations
+ * summary-comment.js - Enhanced with all new features
+ * - Includes 3D Test City link
+ * - Visual regression summary
+ * - Quick actions integration
+ * - Test history insights
+ * - Improved formatting and insights
  */
 
 const fs = require('fs');
@@ -15,15 +14,12 @@ const path = require('path');
 // Dynamic require for @octokit/core
 let Octokit;
 try {
-  // Try local node_modules first
   Octokit = require('@octokit/core').Octokit;
 } catch (e1) {
   try {
-    // Try action's node_modules
     Octokit = require(path.join(process.cwd(), '.gui-test-review-action/node_modules/@octokit/core')).Octokit;
   } catch (e2) {
     try {
-      // Try parent directory
       Octokit = require(path.join(__dirname, '../node_modules/@octokit/core')).Octokit;
     } catch (e3) {
       console.error('Could not load @octokit/core module. Please ensure @octokit/core is installed.');
@@ -50,6 +46,13 @@ const lintPR   = readJSON('lint-summary-pr.json', readJSON('lint-summary.json'))
 const perfMetrics = readJSON('performance-metrics.json');
 const dashboardPerf = readJSON('dashboard-performance.json');
 
+// Enhanced features data
+const testHistory = readJSON('test-history-insights.json');
+const visualRegression = readJSON('visual-regression-report.json');
+const quickActionsData = readJSON('quick-actions-data.json');
+const failureAnalysis = readJSON('test-failure-analysis.json');
+const testCityData = readJSON('test-city-data.json');
+
 const checklist = (() => {
   try { return fs.readFileSync(path.join(ART, 'checklist.md'), 'utf8'); }
   catch { return ''; }
@@ -64,6 +67,10 @@ const checklistPercent = checklistTotal > 0 ? Math.round((checklistCompleted / c
 const hasRegression = hasMain && playPR.failed > playMain.failed;
 const improvementDetected = hasMain && playPR.failed < playMain.failed;
 const performanceRegression = hasMain && playPR.duration > playMain.duration * 1.2; // 20% slower
+
+// Visual regression insights
+const hasVisualChanges = visualRegression && (visualRegression.major > 0 || visualRegression.minor > 0);
+const visualChangeCount = visualRegression ? (visualRegression.major + visualRegression.minor + visualRegression.new) : 0;
 
 // Code quality score
 const codeQualityIssues = (lintPR.eslint?.errors || 0) + (lintPR.eslint?.warnings || 0) + (lintPR.prettier?.filesWithIssues || 0);
@@ -114,6 +121,16 @@ const getPerformanceEmoji = (current, previous) => {
   return '';
 };
 
+const getPriorityEmoji = (priority) => {
+  switch(priority) {
+    case 'critical': return '🚨';
+    case 'high': return '⚠️';
+    case 'medium': return '📋';
+    case 'low': return '✅';
+    default: return '📌';
+  }
+};
+
 /* Generate insights and recommendations */
 const generateInsights = () => {
   const insights = [];
@@ -127,6 +144,16 @@ const generateInsights = () => {
   
   if (performanceRegression) {
     insights.push(`🐌 **Performance regression**: Tests are ${((playPR.duration / playMain.duration - 1) * 100).toFixed(0)}% slower than main branch`);
+  }
+  
+  // Visual regression insights
+  if (hasVisualChanges) {
+    insights.push(`🖼️ **Visual changes detected**: ${visualRegression.major} major, ${visualRegression.minor} minor changes`);
+  }
+  
+  // Flaky test insights
+  if (testHistory?.flakyTests?.length > 0) {
+    insights.push(`🎲 **${testHistory.flakyTests.length} flaky test(s)** detected with >20% failure rate`);
   }
   
   // Code quality insights
@@ -149,6 +176,12 @@ const generateInsights = () => {
 const generateRecommendations = () => {
   const recommendations = [];
   
+  // Priority recommendations from failure analysis
+  if (failureAnalysis?.recommendations?.length > 0) {
+    const topRec = failureAnalysis.recommendations[0];
+    recommendations.push(`${getPriorityEmoji(topRec.priority)} ${topRec.action}`);
+  }
+  
   if (playPR.failed > 0) {
     recommendations.push('🔧 Fix failing tests before merging');
   }
@@ -162,8 +195,16 @@ const generateRecommendations = () => {
     recommendations.push('✨ Run `npx prettier --write .` to fix formatting');
   }
   
+  if (hasVisualChanges && visualRegression.major > 0) {
+    recommendations.push('🖼️ Review visual changes carefully - major UI differences detected');
+  }
+  
   if (checklistPercent < 100) {
     recommendations.push(`📋 Complete the remaining ${checklistTotal - checklistCompleted} checklist item(s)`);
+  }
+  
+  if (testHistory?.flakyTests?.length > 3) {
+    recommendations.push('🎯 Stabilize flaky tests to improve reliability');
   }
   
   if (performanceRegression && hasMain) {
@@ -225,6 +266,63 @@ ${codeQualityScore >= 90 ? '🟢 Excellent' :
 </table>
 `;
 
+// Visual regression section (new)
+const mdVisualRegression = visualRegression && hasVisualChanges ? `
+## 🖼️ Visual Regression
+
+<details ${visualRegression.major > 0 ? 'open' : ''}>
+<summary><strong>${visualChangeCount} visual change(s) detected</strong></summary>
+
+| Type | Count | Action Required |
+|------|------:|-----------------|
+| 🔴 Major Changes | ${visualRegression.major || 0} | Review carefully |
+| 🟡 Minor Changes | ${visualRegression.minor || 0} | Quick check |
+| 🆕 New Screenshots | ${visualRegression.new || 0} | Verify expected |
+| 🗑️ Removed | ${visualRegression.removed || 0} | Confirm deletion |
+
+${visualRegression.major > 0 ? '> ⚠️ Major visual changes detected. Please review screenshots in the dashboard.' : ''}
+
+</details>
+` : '';
+
+// Flaky tests section (new)
+const mdFlakyTests = testHistory?.flakyTests?.length > 0 ? `
+## 🎲 Test Stability
+
+<details>
+<summary><strong>${testHistory.flakyTests.length} flaky test(s) need attention</strong></summary>
+
+| Test | Flakiness | Success Rate | Priority |
+|------|----------:|-------------:|----------|
+${testHistory.flakyTests.slice(0, 5).map(test => 
+  `| \`${test.name.length > 40 ? test.name.substring(0, 40) + '...' : test.name}\` | ${test.flakiness}% | ${test.successRate}% | ${test.flakiness > 40 ? '🔴 High' : '🟡 Medium'} |`
+).join('\n')}
+
+${testHistory.flakyTests.length > 5 ? `\n_...and ${testHistory.flakyTests.length - 5} more_` : ''}
+
+</details>
+` : '';
+
+// Quick commands section (enhanced)
+const mdQuickCommands = quickActionsData?.commands?.length > 0 ? `
+## ⚡ Quick Actions
+
+<details>
+<summary><strong>${quickActionsData.commands.length} context-aware commands available</strong></summary>
+
+${quickActionsData.commands.slice(0, 5).map(cmd => `
+### ${cmd.icon} ${cmd.name}
+${cmd.description}
+\`\`\`bash
+${cmd.command}
+\`\`\`
+`).join('\n')}
+
+[View all commands in dashboard →](${dashboardURL}#quick-actions)
+
+</details>
+` : '';
+
 /* Generate insights and recommendations */
 const insights = generateInsights();
 const recommendations = generateRecommendations();
@@ -235,13 +333,19 @@ const dashboardURL = process.env.WEB_REPORT_URL || 'index.html';
 /* Status summary line */
 const overallStatus = playPR.failed === 0 && codeQualityIssues === 0 ? 
   '✅ **All checks passed!**' : 
-  `⚠️ **${playPR.failed} test failure(s), ${codeQualityIssues} code quality issue(s)**`;
+  `⚠️ **${playPR.failed} test failure(s), ${codeQualityIssues} code quality issue(s)${hasVisualChanges ? `, ${visualChangeCount} visual change(s)` : ''}**`;
 
 /* final comment body */
 const body = `
 # 🔍 GUI Test Review Summary
 
-${overallStatus} • [📊 View Full Dashboard](${dashboardURL})
+${overallStatus}
+
+<div align="center">
+
+[📊 **Dashboard**](${dashboardURL}) • [🏙️ **3D Test City**](${dashboardURL}/test-city-3d.html) • [🖼️ **Visual Regression**](${dashboardURL}#visual-regression) • [⚡ **Quick Actions**](${dashboardURL}#quick-actions)
+
+</div>
 
 ${insights.length > 0 ? `
 ## 💡 Key Insights
@@ -261,33 +365,46 @@ ${mdChecklist}
 
 ${mdPlay}
 
+${mdVisualRegression}
+
+${mdFlakyTests}
+
 ## 🎨 Code Quality
 
 ${mdCodeQuality}
 
+${mdQuickCommands}
+
 ${recommendations.length > 0 ? `
 ## 🎯 Recommended Actions
 
-${recommendations.map(r => `- ${r}`).join('\n')}
+${recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}
 ` : ''}
 
 ## ⚡ Performance
 
 <details>
-<summary>Execution times</summary>
+<summary>Execution times and metrics</summary>
 
-| Metric | Duration |
-|--------|----------|
+| Metric | Value |
+|--------|-------|
 | Total Action | ${formatDuration((perfMetrics.executionTime || 0) * 1000)} |
 | Test Execution | ${formatDuration(playPR.duration)} |
 | Dashboard Generation | ${formatDuration(dashboardPerf?.dashboardGenerationMs)} |
 | Artifact Size | ${perfMetrics.artifactSizeMB?.toFixed(2) || 'N/A'} MB |
+${testHistory?.trends ? `| Avg Pass Rate (5 runs) | ${testHistory.trends.avgPassRate}% |` : ''}
+${testCityData ? `| Total Tests Visualized | ${testCityData.stats?.total || 0} |` : ''}
 
 </details>
 
 ---
 
-<sub>🤖 This comment updates automatically with each push • [View Documentation](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/wiki)</sub>
+<sub>
+🤖 Enhanced with: 3D visualization • Visual regression • Test history • Quick actions  
+📚 [Documentation](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/wiki) • 
+🐛 [Report Issue](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/issues) • 
+⭐ [Star Project](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests)
+</sub>
 `;
 
 /* upsert sticky comment */
@@ -310,7 +427,7 @@ ${recommendations.map(r => `- ${r}`).join('\n')}
       : { owner, repo, issue_number: prNumber, body };
 
     await octokit.request(endpoint, params);
-    console.log(existing ? '🔄 Updated comment with insights.' : '💬 Created comment with insights.');
+    console.log(existing ? '🔄 Updated enhanced comment.' : '💬 Created enhanced comment.');
   } catch (error) {
     console.error('Failed to post/update comment:', error.message);
     process.exit(1);

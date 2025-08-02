@@ -1,8 +1,8 @@
 # ───────────────────────────────────────────────────────────────
-#  GUI-BASED TESTING CODE REVIEW — MODULAR COMPOSITE ACTION
+#  GUI-BASED TESTING CODE REVIEW — ENHANCED COMPOSITE ACTION
 # ───────────────────────────────────────────────────────────────
 name: 'GUI-Based Testing Code Review'
-description: 'Playwright GUI tests · ESLint/Prettier · visual dashboard, checklist & PR comment'
+description: 'Playwright GUI tests · ESLint/Prettier · visual dashboard with 3D visualization, visual regression & quick actions'
 author: 'Digital Product Innovation and Development – TUM'
 
 branding:
@@ -121,6 +121,21 @@ inputs:
     required: false
     default: '2'
 
+  enable-3d-visualization:
+    description: 'Enable 3D Test City visualization'
+    required: false
+    default: 'true'
+
+  enable-visual-regression:
+    description: 'Enable visual regression testing for screenshots'
+    required: false
+    default: 'true'
+
+  enable-test-history:
+    description: 'Track test history for flakiness detection'
+    required: false
+    default: 'true'
+
 # ───────────────────────────────────────────────────────────────
 # ▸▸ Outputs (Enhanced with new outputs)
 # ───────────────────────────────────────────────────────────────
@@ -170,6 +185,15 @@ outputs:
   performance-metrics:
     description: 'JSON object with performance data'
     value: ${{ steps.performance.outputs.metrics }}
+  flaky-tests:
+    description: 'JSON array of flaky test names'
+    value: ${{ steps.history.outputs.flaky-tests }}
+  visual-regression-summary:
+    description: 'Visual regression test results'
+    value: ${{ steps.visual-regression.outputs.summary }}
+  test-city-url:
+    description: 'URL to 3D Test City visualization'
+    value: ${{ steps.test-city.outputs.url }}
 
 # ───────────────────────────────────────────────────────────────
 # ▸▸ Composite run
@@ -184,7 +208,7 @@ runs:
     shell: bash
     run: |
       echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
-      echo "🏁 Starting GUI Test Review at $(date)"
+      echo "🏁 Starting Enhanced GUI Test Review at $(date)"
 
   # 0b - derive feature flags
   - id: modes
@@ -254,28 +278,46 @@ runs:
       
       # Check and copy Playwright config if missing
       if [ ! -f "playwright.config.js" ] && [ ! -f "playwright.config.ts" ]; then
-        echo "📋 No Playwright config found, using default..."
-        cp "$ACTION_PATH/playwright.config.js" ./playwright.config.js
+        echo "📋 No Playwright config found, using enhanced default..."
+        cat > playwright.config.js << 'EOF'
+      const { defineConfig } = require('@playwright/test');
+      
+      module.exports = defineConfig({
+        testDir: './tests',
+        use: {
+          headless: true,
+          screenshot: 'only-on-failure',  // Important for visual regression
+          trace: 'on-first-retry',
+          video: 'off',  // Set to 'retain-on-failure' if you want videos
+          ignoreHTTPSErrors: true,
+        },
+        reporter: [
+          ['list'],
+          ['json', { outputFile: 'playwright-metrics.json' }],
+          ['html', { outputFolder: 'playwright-report', open: 'never' }],
+        ],
+        retries: process.env.CI ? 2 : 0,
+      });
+      EOF
       fi
       
       # Check and copy ESLint config if missing
       if [ ! -f ".eslintrc.json" ] && [ ! -f ".eslintrc.js" ] && [ ! -f "eslint.config.js" ] && [ ! -f "eslint.config.mjs" ]; then
         echo "📋 No ESLint config found, using default..."
-        # Copy the traditional format (since it's more compatible)
-        cp "$ACTION_PATH/.eslintrc.json" ./.eslintrc.json
+        cp "$ACTION_PATH/.eslintrc.json" ./.eslintrc.json 2>/dev/null || true
       fi
       
       # Check and copy Prettier config if missing  
       if [ ! -f ".prettierrc" ] && [ ! -f ".prettierrc.json" ] && [ ! -f "prettier.config.js" ]; then
         echo "📋 No Prettier config found, using default..."
-        cp "$ACTION_PATH/.prettierrc.json" ./.prettierrc.json
+        cp "$ACTION_PATH/.prettierrc.json" ./.prettierrc.json 2>/dev/null || true
       fi
       
   - uses: actions/setup-node@v4
     with:
       node-version: ${{ inputs.node-version }}
 
-  # 1c - Cache action dependencies (new)
+  # 1c - Cache action dependencies
   - name: Cache action dependencies
     uses: actions/cache@v3
     with:
@@ -323,8 +365,6 @@ runs:
       GITHUB_TOKEN: ${{ inputs.github-token }}
     run: |
       echo "🎨 Running code quality checks..."
-      echo "📏 Checking ESLint..."
-      echo "🎨 Checking Prettier formatting..."
       ACTION_PATH="${{ github.action_path }}"
       if [ -f "$ACTION_PATH/scripts/lint.js" ]; then 
         node "$ACTION_PATH/scripts/lint.js"
@@ -522,11 +562,84 @@ runs:
     run: |
       echo "🔍 Analyzing test failure patterns..."
       ACTION_PATH="${{ github.action_path }}"
-      # Create the analysis script if it doesn't exist in the action
-      if [ ! -f "$ACTION_PATH/scripts/analyze-test-failures.js" ]; then
-        echo "⚠️  Test failure analyzer not found in action, skipping analysis"
-      else
+      if [ -f "$ACTION_PATH/scripts/analyze-test-failures.js" ]; then
         node "$ACTION_PATH/scripts/analyze-test-failures.js"
+      fi
+    continue-on-error: true
+
+  # ENHANCEMENT: Track test history
+  - id: history
+    name: Track Test History
+    if: steps.modes.outputs.playwright == 'true' && inputs.enable-test-history == 'true'
+    shell: bash
+    run: |
+      echo "📈 Tracking test history..."
+      ACTION_PATH="${{ github.action_path }}"
+      if [ -f "$ACTION_PATH/scripts/track-test-history.js" ]; then
+        node "$ACTION_PATH/scripts/track-test-history.js"
+        
+        # Extract flaky tests
+        if [ -f artifacts/test-history-insights.json ]; then
+          FLAKY=$(jq -c '.flakyTests // []' artifacts/test-history-insights.json)
+          echo "flaky-tests=$FLAKY" >> $GITHUB_OUTPUT
+        fi
+      fi
+    continue-on-error: true
+
+  # ENHANCEMENT: Visual regression testing
+  - id: visual-regression
+    name: Generate Visual Regression Report
+    if: steps.modes.outputs.compare == 'true' && steps.modes.outputs.dashboard == 'true' && inputs.enable-visual-regression == 'true'
+    shell: bash
+    run: |
+      echo "🖼️ Analyzing visual differences..."
+      ACTION_PATH="${{ github.action_path }}"
+      if [ -f "$ACTION_PATH/scripts/visual-regression.js" ]; then
+        node "$ACTION_PATH/scripts/visual-regression.js"
+        
+        # Extract summary
+        if [ -f artifacts/visual-regression-report.json ]; then
+          SUMMARY=$(jq -c '{
+            total: .totalComparisons,
+            identical: .identical,
+            changed: (.minor + .major),
+            new: .new,
+            removed: .removed
+          }' artifacts/visual-regression-report.json)
+          echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+        fi
+      fi
+    continue-on-error: true
+
+  # ENHANCEMENT: Generate Quick Actions Panel
+  - name: Generate Quick Actions
+    if: steps.modes.outputs.dashboard == 'true'
+    shell: bash
+    env:
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GITHUB_RUN_ID: ${{ github.run-id }}
+      GITHUB_SHA: ${{ github.sha }}
+      GITHUB_REF: ${{ github.ref }}
+      GITHUB_EVENT_NAME: ${{ github.event-name }}
+    run: |
+      echo "⚡ Generating quick actions panel..."
+      ACTION_PATH="${{ github.action_path }}"
+      if [ -f "$ACTION_PATH/scripts/generate-quick-actions.js" ]; then
+        node "$ACTION_PATH/scripts/generate-quick-actions.js"
+      fi
+    continue-on-error: true
+
+  # ENHANCEMENT: Generate 3D Test City
+  - id: test-city
+    name: Generate 3D Test City Visualization
+    if: steps.modes.outputs.dashboard == 'true' && inputs.enable-3d-visualization == 'true'
+    shell: bash
+    run: |
+      echo "🏙️ Generating 3D Test City visualization..."
+      ACTION_PATH="${{ github.action_path }}"
+      if [ -f "$ACTION_PATH/scripts/generate-test-city-3d.js" ]; then
+        node "$ACTION_PATH/scripts/generate-test-city-3d.js"
+        echo "url=test-city-3d.html" >> $GITHUB_OUTPUT
       fi
     continue-on-error: true
 
@@ -544,6 +657,11 @@ runs:
       # Export timing for performance metrics
       export DASHBOARD_GEN_START=$(date +%s%N)
       [ -f "$ACTION_PATH/scripts/generate-webpage.js" ] && node "$ACTION_PATH/scripts/generate-webpage.js"
+      
+      # Enhance with new features
+      if [ -f "$ACTION_PATH/scripts/generate-enhanced-webpage.js" ]; then
+        node "$ACTION_PATH/scripts/generate-enhanced-webpage.js"
+      fi
     continue-on-error: true
 
   # 8b - Collect performance metrics
@@ -605,7 +723,11 @@ runs:
         # Add link to dashboard if available
         if [ "${{ steps.deploy-report.outputs.page_url }}" != "" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🔗 [View Full Dashboard](${{ steps.deploy-report.outputs.page_url }})" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Enhanced Features" >> $GITHUB_STEP_SUMMARY
+          echo "- [📊 Full Dashboard](${{ steps.deploy-report.outputs.page_url }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [🏙️ 3D Test City](${{ steps.deploy-report.outputs.page_url }}/test-city-3d.html)" >> $GITHUB_STEP_SUMMARY
+          echo "- [🖼️ Visual Regression](${{ steps.deploy-report.outputs.page_url }}#visual-regression)" >> $GITHUB_STEP_SUMMARY
+          echo "- [⚡ Quick Actions](${{ steps.deploy-report.outputs.page_url }}#quick-actions)" >> $GITHUB_STEP_SUMMARY
         fi
       fi
 
@@ -651,7 +773,7 @@ runs:
         fi
       fi
 
-  # 11 PR comment
+  # 11 PR comment (enhanced)
   - name: PR summary comment
     if: steps.modes.outputs.dashboard == 'true' &&
         inputs.enable-pr-comments == 'true' &&
@@ -662,7 +784,7 @@ runs:
       WEB_REPORT_URL: ${{ inputs.web-report-url || steps.deploy-report.outputs.page_url }}
       NODE_PATH: ${{ github.workspace }}/node_modules
     run: |
-      echo "💬 Posting summary comment to PR..."
+      echo "💬 Posting enhanced summary comment to PR..."
       ACTION_PATH="${{ github.action_path }}"
       [ -f "$ACTION_PATH/scripts/summary-comment.js" ] && node "$ACTION_PATH/scripts/summary-comment.js"
     continue-on-error: true
@@ -682,7 +804,7 @@ runs:
   - name: Finish
     shell: bash
     run: |
-      echo '✅ GUI-Based Testing Code Review completed!'
+      echo '✅ Enhanced GUI-Based Testing Code Review completed!'
       
       # Provide helpful summary based on results
       if [ -f artifacts/playwright-summary-pr.json ]; then
@@ -696,4 +818,11 @@ runs:
       
       if [ "${{ steps.deploy-report.outputs.page_url }}" != "" ]; then
         echo "📊 Dashboard: ${{ steps.deploy-report.outputs.page_url }}"
+        echo "🏙️ Test City: ${{ steps.deploy-report.outputs.page_url }}/test-city-3d.html"
       fi
+      
+      echo "✨ New features available:"
+      echo "   - 3D Test City visualization"
+      echo "   - Visual regression testing"
+      echo "   - Quick actions panel"
+      echo "   - Test history tracking"
