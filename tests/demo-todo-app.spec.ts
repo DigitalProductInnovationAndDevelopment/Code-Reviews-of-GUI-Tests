@@ -20,9 +20,17 @@ test.describe('New Todo', () => {
     await newTodo.fill(TODO_ITEMS[0]);
     await newTodo.press('Enter');
 
-    // Make sure the list only has one todo item.
+    // Add visual difference
+    await page.evaluate(() => {
+      document.body.style.borderTop = '12px solid hotpink';
+    });
+
+    // Take screenshot before failure
+    await page.screenshot({ path: 'test-results/before-failure.png' });
+
+    // DELIBERATE FAILURE: This will fail and should show in the metrics
     await expect(page.getByTestId('todo-title')).toHaveText([
-      TODO_ITEMS[0]
+      'WRONG EXPECTED TEXT - This will fail and generate screenshots!'
     ]);
 
     // Create 2nd todo.
