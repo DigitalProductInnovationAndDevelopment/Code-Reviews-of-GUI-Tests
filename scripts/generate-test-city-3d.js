@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * generate-test-city-3d.js (patched 2025‑08‑02)
+ * generate-test-city-3d.js 
  * Creates an interactive 3D city visualization from Playwright test results.
  * Each building represents a test, grouped by test suite.
  */
@@ -34,10 +34,13 @@ function readJSON (filepath, def = null) {
 function extractTestData () {
   // Prefer the rich metrics file emitted by Playwright reporter
   const candidatePaths = [
+    // Prefer PR‑branch detailed metrics first
+    path.join(ART, 'playwright-metrics-pr.json'),
+    path.join(ART, 'playwright-summary-pr.json'), // minimal but PR‑scoped
+    // Fallbacks (may contain main‑branch data if workflow overwrote generic files)
     'playwright-metrics.json',
     path.join(ART, 'playwright-metrics.json'),
-    path.join(ART, 'playwright-summary-pr.json'), // minimal
-    path.join(ART, 'playwright-summary.json')     // alias
+    path.join(ART, 'playwright-summary.json')
   ];
 
   let metrics = null;
@@ -359,6 +362,7 @@ body {
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.min.js"></script>
 </head>
 <body>
 
@@ -480,6 +484,20 @@ function init() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   document.getElementById('container').appendChild(renderer.domElement);
   
+  // ★ PATCH: enable OrbitControls (damping + initial auto-rotate)
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping   = true;
+  controls.dampingFactor   = 0.05;
+  controls.autoRotate      = true;      // keep the original spinning behaviour
+  controls.autoRotateSpeed = 2.0;
+
+  // ★ PATCH: if the user starts dragging, stop auto-rotate & toggle button
+  controls.addEventListener('start', () => {
+    autoRotate = false;
+    controls.autoRotate = false;
+    document.querySelector('.control-btn.active')?.classList.remove('active');
+  });
+
   // Lights
   const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
   scene.add(ambientLight);
@@ -720,6 +738,8 @@ function onClick(event) {
     // Smooth camera transition would go here
     // For now, just look at the building
     camera.lookAt(target);
+    if (controls) controls.target.copy(target);
+
   }
 }
 
@@ -752,7 +772,7 @@ function hideHoverInfo() {
 
 // Controls
 function toggleRotation() {
-  autoRotate = !autoRotate;
+  controls.autoRotate =  autoRotate;
   event.target.classList.toggle('active');
 }
 
@@ -793,12 +813,9 @@ function animate() {
   requestAnimationFrame(animate);
   
   // Auto-rotate camera
-  if (autoRotate && !selectedBuilding) {
-    const time = Date.now() * 0.0001;
-    camera.position.x = Math.cos(time) * 40;
-    camera.position.z = Math.sin(time) * 40;
-    camera.position.y = 25 + Math.sin(time * 2) * 10;
-    camera.lookAt(0, 0, 0);
+  if (controls) {
+    controls.autoRotate = autoRotate && !selectedBuilding;
+    controls.update();
   }
   
   // Animate beacons and stars

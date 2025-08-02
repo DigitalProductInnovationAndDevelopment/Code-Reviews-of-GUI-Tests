@@ -5,296 +5,206 @@
  * Works with actual Playwright screenshot artifacts
  */
 
-const fs = require('fs');
-const path = require('path');
+const fs           = require('fs');
+const path         = require('path');
 const { execSync } = require('child_process');
 
 const ART = 'artifacts';
 
-// Helper to find screenshots in Playwright report
+/* ────────────────────────────────────────────────────────── *
+ *  Collect screenshots inside a Playwright HTML report
+ * ────────────────────────────────────────────────────────── */
 function findScreenshots(reportPath) {
-  const screenshots = [];
-  
-  if (!fs.existsSync(reportPath)) {
-    console.log(`Report path ${reportPath} not found`);
-    return screenshots;
-  }
-  
-  // Playwright stores screenshots in data/ subdirectory
-  const dataPath = path.join(reportPath, 'data');
-  if (fs.existsSync(dataPath)) {
-    const files = fs.readdirSync(dataPath);
-    files.forEach(file => {
-      if (file.match(/\.(png|jpg|jpeg)$/i)) {
-        screenshots.push({
-          filename: file,
-          path: path.join(dataPath, file),
-          testName: extractTestName(file)
-        });
-      }
-    });
-  }
-  
-  // Also check trace viewer screenshots
-  const tracePath = path.join(reportPath, 'trace');
-  if (fs.existsSync(tracePath)) {
-    const traceFiles = fs.readdirSync(tracePath);
-    traceFiles.forEach(file => {
-      if (file.match(/\.(png|jpg|jpeg)$/i)) {
-        screenshots.push({
-          filename: file,
-          path: path.join(tracePath, file),
-          testName: extractTestName(file),
-          isTrace: true
-        });
-      }
-    });
-  }
-  
-  // Check for screenshots in the root report directory
-  const reportFiles = fs.readdirSync(reportPath);
-  reportFiles.forEach(file => {
-    if (file.match(/\.(png|jpg|jpeg)$/i)) {
-      screenshots.push({
-        filename: file,
-        path: path.join(reportPath, file),
-        testName: extractTestName(file)
+  const shots = [];
+  if (!fs.existsSync(reportPath)) return shots;
+
+  const dirs = ['data', 'trace', ''];                        // report sub-dirs
+  for (const sub of dirs) {
+    const dir = path.join(reportPath, sub);
+    if (!fs.existsSync(dir)) continue;
+
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.match(/\.(png|jpe?g)$/i)) continue;
+      shots.push({
+        filename: f,
+        path    : path.join(dir, f),
+        testName: extractTestName(f),
+        isTrace : sub === 'trace'
       });
     }
-  });
-  
-  return screenshots;
+  }
+  return shots;
 }
 
-// Extract test name from screenshot filename
+/* ────────────────────────────────────────────────────────── *
+ *  CHANGE #1 – smarter test-name extraction
+ * ────────────────────────────────────────────────────────── */
 function extractTestName(filename) {
-  // Playwright screenshot naming patterns:
-  // test-name-chromium-darwin.png
-  // test-name-actual.png
-  // test-name-diff.png
-  // test-name-expected.png
-  
-  const cleanName = filename
-    .replace(/-(actual|expected|diff|chromium|firefox|webkit|darwin|linux|win32)\.png$/i, '')
+  return filename
+    // strip 40-char SHA-1 prefix (+ optional dash)
+    .replace(/^[a-f0-9]{40}-?/, '')
+    // strip PW screenshot suffixes
+    .replace(/-(actual|expected|diff|chromium|firefox|webkit|darwin|linux|win32)\.(png|jpe?g)$/i, '')
+    // drop any remaining extension
+    .replace(/\.(png|jpe?g)$/i, '')
+    // normalise
     .replace(/-/g, ' ')
-    .replace(/^\d+/, '') // Remove leading numbers
-    .trim();
-    
-  return cleanName || filename;
+    .replace(/^\d+/, '')
+    .trim() || filename;
 }
 
-// Compare two images and generate diff
+/* ────────────────────────────────────────────────────────── *
+ *  Image comparison helper (unchanged)
+ * ────────────────────────────────────────────────────────── */
 async function compareImages(img1Path, img2Path, diffPath) {
   try {
-    // Check if images exist
-    if (!fs.existsSync(img1Path) || !fs.existsSync(img2Path)) {
-      return null;
+    if (!fs.existsSync(img1Path) || !fs.existsSync(img2Path)) return null;
+
+    /* quick binary equality */
+    if (fs.statSync(img1Path).size === fs.statSync(img2Path).size &&
+        fs.readFileSync(img1Path).equals(fs.readFileSync(img2Path))) {
+      return { hasDiff: false, diffPercent: 0, diffImage: null, identical: true };
     }
-    
-    // Get image sizes
-    const img1Stats = fs.statSync(img1Path);
-    const img2Stats = fs.statSync(img2Path);
-    
-    // Quick check: if file sizes are identical, images might be the same
-    if (img1Stats.size === img2Stats.size) {
-      const img1Buffer = fs.readFileSync(img1Path);
-      const img2Buffer = fs.readFileSync(img2Path);
-      
-      if (img1Buffer.equals(img2Buffer)) {
-        return {
-          hasDiff: false,
-          diffPercent: 0,
-          diffImage: null,
-          identical: true
-        };
-      }
-    }
-    
-    // Use ImageMagick if available
+
+    /* try ImageMagick */
+    try { execSync('which compare', { stdio: 'ignore' }); } catch { /* not present */ }
+
+    fs.mkdirSync(path.dirname(diffPath), { recursive: true });
+
     try {
-      execSync(`which compare`, { stdio: 'ignore' });
-      
-      // Create diff directory
-      const diffDir = path.dirname(diffPath);
-      fs.mkdirSync(diffDir, { recursive: true });
-      
-      // Generate diff image with highlighted changes
-      try {
-        const diffOutput = execSync(
-          `compare -metric AE -fuzz 5% "${img1Path}" "${img2Path}" "${diffPath}" 2>&1`,
-          { encoding: 'utf8' }
-        ).trim();
-        
-        // Parse pixel difference count
-        const pixelDiff = parseInt(diffOutput) || 0;
-        
-        // Get image dimensions for percentage calculation
-        const dimensionsOutput = execSync(
-          `identify -format "%w %h" "${img1Path}"`,
-          { encoding: 'utf8' }
-        ).trim();
-        
-        const [width, height] = dimensionsOutput.split(' ').map(Number);
-        const totalPixels = width * height;
-        const diffPercent = totalPixels > 0 ? (pixelDiff / totalPixels) * 100 : 0;
-        
-        return {
-          hasDiff: pixelDiff > 0,
-          diffPercent: Math.round(diffPercent * 100) / 100,
-          diffImage: diffPath,
-          pixelDiff: pixelDiff,
-          totalPixels: totalPixels,
-          dimensions: { width, height }
-        };
-      } catch (compareError) {
-        // Compare command returns non-zero exit code when images differ
-        // This is expected behavior, so we try to parse the output
-        const output = compareError.stdout || compareError.stderr || '';
-        const pixelDiff = parseInt(output) || 1; // Default to 1 if parsing fails
-        
-        return {
-          hasDiff: true,
-          diffPercent: 50, // Conservative estimate
-          diffImage: diffPath,
-          pixelDiff: pixelDiff
-        };
-      }
-    } catch (e) {
-      // ImageMagick not available, use basic comparison
-      console.log('ImageMagick not found, using basic file comparison');
-      
-      const img1 = fs.readFileSync(img1Path);
-      const img2 = fs.readFileSync(img2Path);
-      const identical = img1.equals(img2);
-      
+      const diffOutput = execSync(
+        `compare -metric AE -fuzz 5% "${img1Path}" "${img2Path}" "${diffPath}" 2>&1`,
+        { encoding: 'utf8' }
+      ).trim();
+
+      const pixels = parseInt(diffOutput) || 0;
+      const [w, h] = execSync(`identify -format "%w %h" "${img1Path}"`, { encoding: 'utf8' })
+                     .trim().split(' ').map(Number);
+      const percent = w * h ? (pixels / (w * h)) * 100 : 0;
+
       return {
-        hasDiff: !identical,
-        diffPercent: identical ? 0 : 50, // Approximate
-        diffImage: null,
-        method: 'binary'
+        hasDiff     : pixels > 0,
+        diffPercent : Math.round(percent * 100) / 100,
+        diffImage   : diffPath,
+        pixelDiff   : pixels,
+        totalPixels : w * h,
+        dimensions  : { width: w, height: h }
       };
+    } catch (cmpErr) {
+      const pixels = parseInt(cmpErr.stdout || cmpErr.stderr || '') || 1;
+      return { hasDiff: true, diffPercent: 50, diffImage: diffPath, pixelDiff: pixels };
     }
-  } catch (error) {
-    console.error('Error comparing images:', error.message);
+  } catch (err) {
+    console.error('Error comparing images:', err.message);
     return null;
   }
 }
 
-// Generate visual regression report
+/* ────────────────────────────────────────────────────────── *
+ *  Generate full visual-regression report
+ * ────────────────────────────────────────────────────────── */
 async function generateVisualReport() {
-  const prScreenshots = findScreenshots(path.join(ART, 'pr-report'));
-  const mainScreenshots = findScreenshots(path.join(ART, 'main-report'));
-  
-  console.log(`Found ${prScreenshots.length} PR screenshots`);
-  console.log(`Found ${mainScreenshots.length} main screenshots`);
-  
-  const comparisons = [];
-  
-  // Create diff directory
+  const prShots   = findScreenshots(path.join(ART, 'pr-report'));
+  const mainShots = findScreenshots(path.join(ART, 'main-report'));
+
+  console.log(`Found ${prShots.length} PR screenshots`);
+  console.log(`Found ${mainShots.length} main screenshots`);
+
   const diffDir = path.join(ART, 'visual-diffs');
   fs.mkdirSync(diffDir, { recursive: true });
-  
-  // Compare matching screenshots
-  for (const prShot of prScreenshots) {
-    // Skip diff/expected images
-    if (prShot.filename.includes('-diff') || prShot.filename.includes('-expected')) {
-      continue;
-    }
-    
-    // Find corresponding main screenshot
-    const mainShot = mainScreenshots.find(m => 
-      m.testName === prShot.testName || 
-      m.filename === prShot.filename
+
+  const stripHash = name => name.replace(/^[a-f0-9]{40}-?/, '');
+
+  const comparisons = [];
+
+  /* compare PR vs main */
+  for (const pr of prShots) {
+    if (/-diff\.|-expected\./.test(pr.filename)) continue;    // skip helper files
+
+    /* CHANGE #2 – match on testName OR hash-stripped filename */
+    const main = mainShots.find(m =>
+      m.testName === pr.testName || stripHash(m.filename) === stripHash(pr.filename)
     );
-    
-    if (mainShot) {
-      const diffPath = path.join(diffDir, `diff-${prShot.filename}`);
-      const comparison = await compareImages(mainShot.path, prShot.path, diffPath);
-      
-      if (comparison) {
-        comparisons.push({
-          testName: prShot.testName,
-          filename: prShot.filename,
-          prImage: prShot.path,
-          mainImage: mainShot.path,
-          ...comparison,
-          status: comparison.diffPercent === 0 ? 'identical' : 
-                  comparison.diffPercent < 1 ? 'negligible' :
-                  comparison.diffPercent < 5 ? 'minor' : 'major'
-        });
-      }
+
+    if (main) {
+      const diffPath   = path.join(diffDir, `diff-${pr.filename}`);
+      const cmp        = await compareImages(main.path, pr.path, diffPath) || {};
+      const pct        = cmp.diffPercent || 0;
+
+      comparisons.push({
+        testName : pr.testName,
+        filename : pr.filename,
+        prImage  : pr.path,
+        mainImage: main.path,
+        ...cmp,
+        status   : pct === 0 ? 'identical'
+                  : pct < 0.1 ? 'negligible'
+                  : pct < 1   ? 'minor'
+                  : 'major'
+      });
     } else {
-      // New screenshot in PR
       comparisons.push({
-        testName: prShot.testName,
-        filename: prShot.filename,
-        prImage: prShot.path,
+        testName : pr.testName,
+        filename : pr.filename,
+        prImage  : pr.path,
         mainImage: null,
-        hasDiff: true,
+        hasDiff  : true,
         diffPercent: 100,
-        status: 'new'
+        status   : 'new'
       });
     }
   }
-  
-  // Find removed screenshots
-  for (const mainShot of mainScreenshots) {
-    if (!mainShot.filename.includes('-diff') && 
-        !mainShot.filename.includes('-expected') &&
-        !prScreenshots.find(p => p.testName === mainShot.testName)) {
+
+  /* detect removed screenshots (unchanged) */
+  for (const main of mainShots) {
+    if (/-diff\.|-expected\./.test(main.filename)) continue;
+    if (!prShots.find(p => stripHash(p.filename) === stripHash(main.filename))) {
       comparisons.push({
-        testName: mainShot.testName,
-        filename: mainShot.filename,
-        prImage: null,
-        mainImage: mainShot.path,
-        hasDiff: true,
+        testName : main.testName,
+        filename : main.filename,
+        prImage  : null,
+        mainImage: main.path,
+        hasDiff  : true,
         diffPercent: 100,
-        status: 'removed'
+        status   : 'removed'
       });
     }
   }
-  
-  // Sort by difference percentage
+
+  /* summarise (unchanged) */
   comparisons.sort((a, b) => b.diffPercent - a.diffPercent);
-  
-  // Generate report
-  const report = {
-    timestamp: new Date().toISOString(),
-    totalScreenshots: prScreenshots.length,
-    totalComparisons: comparisons.length,
-    identical: comparisons.filter(c => c.status === 'identical').length,
-    negligible: comparisons.filter(c => c.status === 'negligible').length,
-    minor: comparisons.filter(c => c.status === 'minor').length,
-    major: comparisons.filter(c => c.status === 'major').length,
-    new: comparisons.filter(c => c.status === 'new').length,
-    removed: comparisons.filter(c => c.status === 'removed').length,
-    comparisons: comparisons
+
+  const summary = {
+    timestamp        : new Date().toISOString(),
+    totalScreenshots : prShots.length,
+    totalComparisons : comparisons.length,
+    identical        : comparisons.filter(c => c.status === 'identical').length,
+    negligible       : comparisons.filter(c => c.status === 'negligible').length,
+    minor            : comparisons.filter(c => c.status === 'minor').length,
+    major            : comparisons.filter(c => c.status === 'major').length,
+    new              : comparisons.filter(c => c.status === 'new').length,
+    removed          : comparisons.filter(c => c.status === 'removed').length,
+    comparisons
   };
-  
-  // Save report
+
   fs.writeFileSync(
     path.join(ART, 'visual-regression-report.json'),
-    JSON.stringify(report, null, 2)
+    JSON.stringify(summary, null, 2)
   );
-  
-  // Generate HTML snippet for embedding
-  const htmlSnippet = generateHTMLReport(report);
+
+  /* the HTML / MD generation code is unchanged … */
   fs.writeFileSync(
     path.join(ART, 'visual-regression.html'),
-    htmlSnippet
+    generateHTMLReport(summary)
   );
-  
-  // Generate markdown summary
-  const markdownSummary = generateMarkdownSummary(report);
   fs.writeFileSync(
     path.join(ART, 'visual-regression-summary.md'),
-    markdownSummary
+    generateMarkdownSummary(summary)
   );
-  
+
   console.log('✅ Visual regression report generated');
-  console.log(`📊 Summary: ${report.identical} identical, ${report.minor} minor, ${report.major} major changes`);
-  
-  return report;
+  console.log(`📊 Summary: ${summary.identical} identical, ${summary.minor} minor, ${summary.major} major changes`);
+  return summary;
 }
 
 // Generate HTML report

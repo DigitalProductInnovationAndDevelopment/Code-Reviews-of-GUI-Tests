@@ -725,7 +725,7 @@ runs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🔗 Enhanced Features" >> $GITHUB_STEP_SUMMARY
           echo "- [📊 Full Dashboard](${{ steps.deploy-report.outputs.page_url }})" >> $GITHUB_STEP_SUMMARY
-          echo "- [🏙️ 3D Test City](${{ steps.deploy-report.outputs.page_url }}/test-city-3d.html)" >> $GITHUB_STEP_SUMMARY
+          echo "- [🏙️ 3D Test City](${{ steps.deploy-report.outputs.page_url }}test-city-3d.html)" >> $GITHUB_STEP_SUMMARY
           echo "- [🖼️ Visual Regression](${{ steps.deploy-report.outputs.page_url }}#visual-regression)" >> $GITHUB_STEP_SUMMARY
           echo "- [⚡ Quick Actions](${{ steps.deploy-report.outputs.page_url }}#quick-actions)" >> $GITHUB_STEP_SUMMARY
         fi
