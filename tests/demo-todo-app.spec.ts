@@ -19,14 +19,10 @@ test.describe('New Todo', () => {
     // Create 1st todo.
     await newTodo.fill(TODO_ITEMS[0]);
     await newTodo.press('Enter');
-    //diff
-    await page.evaluate(() => {
-      document.body.style.borderTop = '12px solid hotpink';
-    });
 
-    // DELIBERATE FAILURE: Expect wrong text to generate a failed test screenshot
+    // Make sure the list only has one todo item.
     await expect(page.getByTestId('todo-title')).toHaveText([
-      'WRONG EXPECTED TEXT - This will fail and generate screenshots!'
+      TODO_ITEMS[0]
     ]);
 
     // Create 2nd todo.
