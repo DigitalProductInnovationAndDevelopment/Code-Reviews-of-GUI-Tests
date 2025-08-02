@@ -137,16 +137,6 @@ jobs:
           name: playwright-metrics
           path: dl
 
-      - name: Prepare metrics file
-        run: |
-          if [ -f dl/playwright-metrics-pr.json ]; then
-            cp dl/playwright-metrics-pr.json dl/playwright-metrics.json
-            echo "✅ Copied playwright-metrics-pr.json to playwright-metrics.json"
-          else
-            echo "⚠️  Warning: playwright-metrics-pr.json not found"
-            ls -la dl/
-          fi
-
       - name: Download PR HTML report
         uses: actions/download-artifact@v4
         with:
@@ -164,6 +154,26 @@ jobs:
         with:
           name: lint-summary
           path: dl
+
+      # CRITICAL: Ensure PR metrics are used for visualization
+      - name: Prepare artifact files
+        run: |
+          echo "📁 Downloaded artifacts:"
+          ls -la dl/
+          
+          # Ensure the PR metrics file is properly named
+          if [ -f dl/playwright-metrics-pr.json ]; then
+            cp dl/playwright-metrics-pr.json dl/playwright-metrics.json
+            echo "✅ Using PR metrics for visualization"
+          else
+            echo "❌ PR metrics file not found!"
+          fi
+          
+          # Ensure PR summary is properly named
+          if [ -f dl/playwright-summary-pr.json ] && [ ! -f dl/playwright-summary.json ]; then
+            cp dl/playwright-summary-pr.json dl/playwright-summary.json
+            echo "✅ Using PR summary"
+          fi
 
       # Build dashboard, post comment, deploy Pages
       - id: review

@@ -24,7 +24,7 @@ test.describe('New Todo', () => {
       document.body.style.borderTop = '12px solid hotpink';
     });
 
-    // DELIBERATE FAILURE: Expect wrong text to generate a failed test screenshot
+    // DELIBERATE FAILURE: This will fail and should show in the metrics
     await expect(page.getByTestId('todo-title')).toHaveText([
       'WRONG EXPECTED TEXT - This will fail and generate screenshots!'
     ]);
