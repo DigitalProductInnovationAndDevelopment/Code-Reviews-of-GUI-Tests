@@ -14,9 +14,29 @@ const ART = 'artifacts';
 /* ────────────────────────────────────────────────────────── *
  *  Collect screenshots inside a Playwright HTML report
  * ────────────────────────────────────────────────────────── */
+// ★ PATCH: read report.json to map screenshots to the exact testId + title
+function readReportIndex(reportPath) {
+  const index = {};                                             // { <sha>.png : "testId#attachmentName" }
+  const indexFile = path.join(reportPath, 'report.json');
+  try {
+    const json = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
+    json.tests?.forEach(t => {
+      const id = t.testId || `${t.file}::${t.title}`;
+      (t.attachments || []).forEach(a => {
+        if (a.contentType?.startsWith('image/') && a.path) {
+          index[path.basename(a.path)] = `${id}#${a.name || a.title || 'screenshot'}`;
+        }
+      });
+    });
+  } catch (_) { /* silently ignore */ }
+  return index;
+}
+
 function findScreenshots(reportPath) {
-  const shots = [];
-  if (!fs.existsSync(reportPath)) return shots;
+  const screenshots = [];
+  const shotIndex   = readReportIndex(reportPath);
+
+  if (!fs.existsSync(reportPath)) return screenshots;
 
   const dirs = ['data', 'trace', ''];                        // report sub-dirs
   for (const sub of dirs) {
@@ -25,15 +45,15 @@ function findScreenshots(reportPath) {
 
     for (const f of fs.readdirSync(dir)) {
       if (!f.match(/\.(png|jpe?g)$/i)) continue;
-      shots.push({
+      screenshots.push({
         filename: f,
         path    : path.join(dir, f),
-        testName: extractTestName(f),
+        testName: shotIndex[f] || extractTestName(f),
         isTrace : sub === 'trace'
       });
     }
   }
-  return shots;
+  return screenshots;
 }
 
 /* ────────────────────────────────────────────────────────── *

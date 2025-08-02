@@ -43,16 +43,31 @@ function extractTestData () {
     path.join(ART, 'playwright-summary.json')
   ];
 
-  let metrics = null;
+  // ★ PATCH: keep looking until we find a file **with suites**.
+  //           If we only find summaries, remember the first one
+  //           and fall back to it later.
+  let metrics        = null;   // detailed (has suites)
+  let summaryMetrics = null;   // first summary found
+
   for (const p of candidatePaths) {
-    if (fs.existsSync(p)) {
-      metrics = readJSON(p);
-      if (metrics && (metrics.suites || metrics.total)) {
-        console.log(`Found metrics at: ${p}`);
-        break;
-      }
+    if (!fs.existsSync(p)) continue;
+
+    const data = readJSON(p);
+    if (!data) continue;
+
+    if (data.suites) {
+      metrics = data;                               // detailed ⇒ stop
+      console.log(`Found detailed metrics at: ${p}`);
+      break;
+    }
+
+    if (!summaryMetrics && data.total) {
+      summaryMetrics = data;                        // remember first summary
+      console.log(`Found summary metrics at: ${p} (continuing search for detailed)`);
     }
   }
+
+  if (!metrics) metrics = summaryMetrics;           // fall back if needed
 
   // Fall‑back: if we only have a summary, return one pseudo‑suite so the UI still works
   if (!metrics || !metrics.suites) {
@@ -772,6 +787,7 @@ function hideHoverInfo() {
 
 // Controls
 function toggleRotation() {
+  autoRotate          = !autoRotate;
   controls.autoRotate =  autoRotate;
   event.target.classList.toggle('active');
 }
