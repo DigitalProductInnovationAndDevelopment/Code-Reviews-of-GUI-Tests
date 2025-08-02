@@ -303,6 +303,9 @@ ${testHistory.flakyTests.length > 5 ? `\n_...and ${testHistory.flakyTests.length
 </details>
 ` : '';
 
+/* dashboard root (absolute if workflow provided it) */
+const dashboardURL = process.env.WEB_REPORT_URL || 'index.html';
+
 // Quick commands section (enhanced)
 const mdQuickCommands = quickActionsData?.commands?.length > 0 ? `
 ## ⚡ Quick Actions
@@ -327,13 +330,17 @@ ${cmd.command}
 const insights = generateInsights();
 const recommendations = generateRecommendations();
 
-/* dashboard root (absolute if workflow provided it) */
-const dashboardURL = process.env.WEB_REPORT_URL || 'index.html';
-
 /* Status summary line */
 const overallStatus = playPR.failed === 0 && codeQualityIssues === 0 ? 
   '✅ **All checks passed!**' : 
   `⚠️ **${playPR.failed} test failure(s), ${codeQualityIssues} code quality issue(s)${hasVisualChanges ? `, ${visualChangeCount} visual change(s)` : ''}**`;
+
+const joinURL = (base, path) => {
+  if (base.endsWith('/')) {
+    return base + path;
+  }
+  return base + '/' + path;
+};
 
 /* final comment body */
 const body = `
@@ -343,7 +350,7 @@ ${overallStatus}
 
 <div align="center">
 
-[📊 **Dashboard**](${dashboardURL}) • [🏙️ **3D Test City**](${dashboardURL}/test-city-3d.html) • [🖼️ **Visual Regression**](${dashboardURL}#visual-regression) • [⚡ **Quick Actions**](${dashboardURL}#quick-actions)
+[📊 **Dashboard**](${dashboardURL}) • [🏙️ **3D Test City**](${joinURL(dashboardURL, 'test-city-3d.html')}) • [🖼️ **Visual Regression**](${dashboardURL}#visual-regression) • [⚡ **Quick Actions**](${dashboardURL}#quick-actions)
 
 </div>
 

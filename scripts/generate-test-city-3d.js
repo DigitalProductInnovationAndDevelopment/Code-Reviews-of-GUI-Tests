@@ -22,13 +22,44 @@ const readJSON = (filepath, defaultValue = null) => {
 
 // Extract comprehensive test data from Playwright metrics
 function extractTestData() {
-  const metrics = readJSON('playwright-metrics.json') || readJSON(path.join(ART, 'playwright-metrics.json'));
-  const history = readJSON('.test-history.json');
-  const failureAnalysis = readJSON(path.join(ART, 'test-failure-analysis.json'));
+  const possiblePaths = [
+    'playwright-metrics.json',
+    path.join(ART, 'playwright-metrics.json'),
+    path.join(ART, 'playwright-summary-pr.json'), 
+    path.join(ART, 'playwright-summary.json')   
+  ];
   
+  let metrics = null;
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      metrics = readJSON(p);
+      if (metrics && (metrics.suites || metrics.total)) {
+        console.log(`Found metrics at: ${p}`);
+        break;
+      }
+    }
+  }
+  
+  // If no detailed metrics found, try to use summary
   if (!metrics || !metrics.suites) {
-    console.error('No test metrics found');
-    return [];
+    const summary = readJSON(path.join(ART, 'playwright-summary-pr.json'));
+    if (summary && summary.total) {
+      // Create a minimal structure from summary
+      console.log('Using summary data for visualization');
+      return [{
+        id: 'summary-tests',
+        suite: 'All Tests',
+        describe: 'Summary',
+        name: `${summary.passed} passed, ${summary.failed} failed`,
+        duration: summary.duration || 0,
+        passRate: summary.pass_rate || 0,
+        passed: summary.passed || 0,
+        failed: summary.failed || 0,
+        total: summary.total || 0,
+        lastStatus: summary.failed > 0 ? 'failed' : 'passed',
+        priority: 1
+      }];
+    }
   }
   
   const testData = [];
