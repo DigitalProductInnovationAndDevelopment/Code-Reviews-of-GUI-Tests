@@ -222,7 +222,7 @@ runs:
       case '${{ inputs.mode }}' in
         lint-only)      play=false ; dash=false ; compare=false ;;
         test-only)      lint=false ; dash=false ;;
-        dashboard-only) play=false ; lint=false ; compare=false ;;
+        dashboard-only) play=false ; lint=false ;
       esac
       echo "playwright=$play" >> $GITHUB_OUTPUT
       echo "lint=$lint"       >> $GITHUB_OUTPUT
@@ -453,7 +453,7 @@ runs:
 
   # 3b ── Playwright on main branch with progress indicators
   - name: Run Playwright on main
-    if: steps.modes.outputs.compare == 'true' && github.event_name == 'pull_request'
+    if: steps.modes.outputs.compare == 'true' && steps.modes.outputs.playwright == 'true' && github.event_name == 'pull_request'
     shell: bash
     env:
       PLAYWRIGHT_CONFIG: ${{ inputs.playwright-config }}
@@ -555,7 +555,7 @@ runs:
 
   # 7b - Analyze test failures
   - name: Analyze test failures
-    if: steps.modes.outputs.dashboard == 'true' && steps.test-summary.outputs.has-failures == 'true'
+    if: steps.modes.outputs.dashboard == 'true'
     shell: bash
     env:
       NODE_PATH: ${{ github.workspace }}/node_modules
@@ -570,7 +570,7 @@ runs:
   # ENHANCEMENT: Track test history
   - id: history
     name: Track Test History
-    if: steps.modes.outputs.playwright == 'true' && inputs.enable-test-history == 'true'
+    if: inputs.enable-test-history == 'true'
     shell: bash
     run: |
       echo "📈 Tracking test history..."

@@ -164,3 +164,4 @@ jobs:
           mode:               dashboard-only
           custom-artifacts-path: dl
           enable-github-pages: 'true'
+          enable-visual-comparison: 'true'

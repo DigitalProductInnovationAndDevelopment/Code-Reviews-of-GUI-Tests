@@ -4,7 +4,7 @@ module.exports = defineConfig({
   testDir: './tests',
   use: {
     headless: true,
-    screenshot: 'only-on-failure',
+    screenshot: 'on',
     trace: 'on-first-retry',
     video: 'off',
     ignoreHTTPSErrors: true,
