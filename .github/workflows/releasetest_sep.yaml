@@ -137,6 +137,16 @@ jobs:
           name: playwright-metrics
           path: dl
 
+      - name: Prepare metrics file
+        run: |
+          if [ -f dl/playwright-metrics-pr.json ]; then
+            cp dl/playwright-metrics-pr.json dl/playwright-metrics.json
+            echo "✅ Copied playwright-metrics-pr.json to playwright-metrics.json"
+          else
+            echo "⚠️  Warning: playwright-metrics-pr.json not found"
+            ls -la dl/
+          fi
+
       - name: Download PR HTML report
         uses: actions/download-artifact@v4
         with:
