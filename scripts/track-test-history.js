@@ -2,7 +2,6 @@
 /**
  * track-test-history.js
  * Tracks test results over time to identify flaky tests and trends
- * Maintains a rolling history of test runs
  */
 
 const fs = require('fs');
@@ -25,7 +24,6 @@ function loadHistory() {
 }
 
 function analyzeCurrentRun() {
-  // Try multiple locations for metrics file
   const possiblePaths = [
     'playwright-metrics.json',
     path.join(ART, 'playwright-metrics.json'),
@@ -62,8 +60,6 @@ function analyzeCurrentRun() {
   };
   
   const testResults = {};
-  
-  // Process test results
   if (metrics.suites) {
     metrics.suites.forEach(suite => {
       const suiteName = path.basename(suite.file || 'unknown').replace(/\.(spec|test)\.(js|ts)$/, '');
