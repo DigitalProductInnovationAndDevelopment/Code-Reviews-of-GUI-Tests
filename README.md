@@ -20,6 +20,8 @@ Automatically captures and displays visual context from your Playwright tests di
 - **🎨 Code Quality** - ESLint/Prettier checks with inline PR feedback via reviewdog
 - **🚀 Modular Design** - Use all-in-one or integrate with existing CI/CD
 - **💡 Actionable Insights** - Regression detection, flaky test identification, and prioritized recommendations
+- **🏙️ 3D Test City Visualization** - Interactive 3D representation of your test suite
+- **⚡ Quick Actions Panel** - Context-aware commands and GitHub actions
 
 ## 🚀 Quick Start
 
@@ -44,7 +46,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           enable-visual-comparison: 'true'  # Compare PR vs main
-          max-test-retries: '2'             # Retry flaky tests
 ```
 
 **That's it!** The action will:
@@ -52,7 +53,9 @@ jobs:
 2. Check code quality with ESLint/Prettier
 3. Analyze test failures and identify patterns
 4. Generate an interactive dashboard with performance metrics
-5. Post an insightful summary comment on your PR
+5. Create a 3D visualization of your test suite
+6. Compare screenshots between branches
+7. Post an insightful summary comment on your PR
 
 ## 🏗️ Required Project Structure
 
@@ -153,6 +156,12 @@ with:
 | `enable-pr-comments` | Post summary comment on PRs | `true` |
 | `fail-on-test-failure` | Fail job if tests fail | `false` |
 | `artifacts-retention-days` | Days to retain artifacts | `30` |
+| `enable-3d-visualization` | Enable 3D Test City visualization | `true` |
+| `enable-visual-regression` | Enable visual regression testing | `true` |
+| `enable-test-history` | Track test history for flakiness | `true` |
+| `custom-artifacts-path` | Path for dashboard-only mode | `''` |
+| `main-branch` | Main branch for comparison | `main` |
+
 
 ### Enhanced Outputs
 
@@ -164,19 +173,32 @@ with:
 | `failure-details` | JSON array of failed test names |
 | `execution-time` | Total execution time in seconds |
 | `performance-metrics` | JSON object with performance data |
-| `gui-regression-detected` | True if regression detected vs main |
+| `gui-regression-detected` | `true` if regression detected vs main |
+| `flaky-tests` | JSON array of flaky test names |
+| `visual-regression-summary` | Visual regression test results |
+| `test-city-url` | URL to 3D Test City visualization |
+| `review-checklist-status` | Checklist completion status |
+| `code-quality-score` | Overall quality score (50–100) |
+| `pr-test-results` | PR branch test summary |
+| `main-test-results` | Main branch test summary |
+
 
 [📚 **Full Configuration Guide →**](https://github.com/DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests/wiki/Configuration-Reference)
 
 ## 📊 What You Get
 
-- **PR Comment** with test summary and metrics
-- **Interactive Dashboard** with test flows and results
-- **Inline Code Review** feedback via reviewdog
-- **Visual Comparisons** between branches
-- **Review Checklist** tracking
-- **Smart Test Failure Analysis** to identify patterns
-- **Performance Tracking** with optimization suggestions
+- **PR Comment** posts a concise test summary with key metrics.  
+- **Interactive Dashboard** displays real-time test flows and detailed results.  
+- **Inline Code Review** injects automated feedback via reviewdog directly into pull requests.  
+- **Visual Comparisons** highlight UI differences between the current branch and main.  
+- **Review Checklist** automatically tracks the completion status of required review steps.  
+- **Smart Test Failure Analysis** clusters failing tests to expose recurring patterns.  
+- **Performance Tracking** records execution times and suggests optimization opportunities.  
+- **3D Test City** renders an interactive cityscape where building height reflects test priority, color shows pass/fail, glow marks flaky tests, and districts map to suites.  
+- **Quick Actions Panel** offers context-aware commands, GitHub CLI shortcuts, and ready-to-use code snippets.  
+- **Test History Analysis** visualizes flaky tests, performance trends, and success rates over time.  
+
+
 
 ## 📚 Documentation
 

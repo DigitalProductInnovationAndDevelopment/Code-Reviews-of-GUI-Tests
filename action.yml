@@ -444,14 +444,17 @@ runs:
         '  artifacts/playwright-metrics.json > artifacts/playwright-summary-pr.json
 
       fi
-      cp artifacts/playwright-metrics-pr.json artifacts/playwright-metrics.json || true
+      # IMPORTANT: Keep a copy of PR metrics before main branch tests
+      if [ -f artifacts/playwright-metrics.json ]; then
+        cp artifacts/playwright-metrics.json artifacts/playwright-metrics-pr.json
+        echo "✅ Preserved PR metrics"
+      fi
 
   - name: Alias summary for checklist
     if: steps.modes.outputs.playwright == 'true'
     shell: bash
     run: |
       cp artifacts/playwright-summary-pr.json artifacts/playwright-summary.json || true
-      cp artifacts/playwright-metrics.json artifacts/playwright-metrics-pr.json || true
 
   # 3b ── Playwright on main branch with progress indicators
   - name: Run Playwright on main
