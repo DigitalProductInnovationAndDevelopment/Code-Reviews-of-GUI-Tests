@@ -11,18 +11,16 @@ module.exports = defineConfig({
     trace: 'on-first-retry',
     video: 'off',
     ignoreHTTPSErrors: true,
-  },
-  reporter: [
-    ['list'],
-    ['json', { outputFile: 'playwright-metrics.json' }],
-    ['html', { outputFolder: 'playwright-report', open: 'never' }],
-  ],
-  use: {
     testIdAttribute: 'data-testid',
     contextOptions: {
       recordVideo: {
         dir: 'test-results'
       }
     }
-  }
+  },
+  reporter: [
+    ['list'],
+    ['json', { outputFile: 'playwright-metrics.json' }],
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+  ],
 });
