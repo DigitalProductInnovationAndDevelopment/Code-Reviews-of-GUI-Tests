@@ -66,7 +66,7 @@ const performanceRegression = hasMain && playPR.duration > playMain.duration * 1
 
 // Code quality score
 const codeQualityIssues = (lintPR.eslint?.errors || 0) + (lintPR.eslint?.warnings || 0) + (lintPR.prettier?.filesWithIssues || 0);
-const codeQualityScore = codeQualityIssues === 0 ? 100 : Math.max(0, 100 - (codeQualityIssues * 5));
+const codeQualityScore = codeQualityIssues === 0 ? 100 : Math.max(50, 100 - (codeQualityIssues * 5));
 
 /* GitHub context */
 let event;
