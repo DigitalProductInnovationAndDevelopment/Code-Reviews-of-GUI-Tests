@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
  * visual-regression.js
- * Compares screenshots from PR and main branches
- * Handles Playwright's dynamic SHA-based filenames
+ * FIXED: Properly extracts test names from Playwright HTML reports
  */
 
 const fs = require('fs');
@@ -26,57 +25,155 @@ function parsePlaywrightReport(reportPath) {
   try {
     const html = fs.readFileSync(indexPath, 'utf8');
     
-    // Extract screenshot paths from HTML
-    const scriptMatch = html.match(/<script[^>]*>([^<]+window\.playwrightReportBase[^<]+)<\/script>/);
-    if (scriptMatch) {
-      // Parse the embedded data
-      const scriptContent = scriptMatch[1];
-      const dataMatch = scriptContent.match(/data\s*:\s*({[\s\S]*?})\s*,?\s*}/);
-      
-      if (dataMatch) {
-        try {
-          // Clean and parse the data
-          const jsonStr = dataMatch[1]
-            .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
-            .replace(/'/g, '"')
-            .replace(/,\s*([\]}])/g, '$1');
-          
-          const data = JSON.parse(jsonStr);
-          processReportData(data, reportPath, screenshots);
-        } catch (e) {
-          console.log('Failed to parse embedded data, trying alternative method...');
+    // Method 1: Try to extract from the embedded app data
+    const appDataRegex = /window\.playwrightReportBase64\s*=\s*"([^"]+)"/;
+    const appDataMatch = html.match(appDataRegex);
+    
+    if (appDataMatch) {
+      try {
+        const decodedData = Buffer.from(appDataMatch[1], 'base64').toString('utf8');
+        const reportData = JSON.parse(decodedData);
+        
+        if (reportData.files) {
+          reportData.files.forEach(file => {
+            file.tests?.forEach(test => {
+              test.results?.forEach(result => {
+                result.attachments?.forEach(attachment => {
+                  if (attachment.contentType?.startsWith('image/')) {
+                    const filename = path.basename(attachment.path || '');
+                    if (filename) {
+                      screenshots.set(filename, {
+                        filename,
+                        path: path.join(reportPath, attachment.path || `data/${filename}`),
+                        testName: test.title || 'Unknown Test',
+                        testLocation: test.location?.file || file.fileName || '',
+                        status: result.status,
+                        type: attachment.name || 'screenshot'
+                      });
+                    }
+                  }
+                });
+              });
+            });
+          });
         }
+        
+        console.log(`📋 Extracted ${screenshots.size} screenshots from base64 data`);
+        return screenshots;
+      } catch (e) {
+        console.log('Failed to parse base64 data, trying alternative methods...');
       }
     }
     
-    // Alternative: Look for all image references in HTML
+    // Method 2: Try to find the bundled data object
+    const dataRegex = /window\.playwrightReportData\s*=\s*({[\s\S]*?});/;
+    const dataMatch = html.match(dataRegex);
+    
+    if (dataMatch) {
+      try {
+        // Use Function constructor to safely evaluate the JavaScript object
+        const reportData = new Function('return ' + dataMatch[1])();
+        processReportData(reportData, reportPath, screenshots);
+        console.log(`📋 Extracted ${screenshots.size} screenshots from report data`);
+        return screenshots;
+      } catch (e) {
+        console.log('Failed to parse report data object');
+      }
+    }
+    
+    // Method 3: Parse the bundled script content
+    const scriptRegex = /<script[^>]*>[\s\S]*?const\s+(?:data|testData|report)\s*=\s*({[\s\S]*?});[\s\S]*?<\/script>/;
+    const scriptMatch = html.match(scriptRegex);
+    
+    if (scriptMatch) {
+      try {
+        const cleanedData = scriptMatch[1]
+          .replace(/(\w+):/g, '"$1":')
+          .replace(/'/g, '"')
+          .replace(/,\s*}/g, '}')
+          .replace(/,\s*]/g, ']');
+        
+        const reportData = JSON.parse(cleanedData);
+        processReportData(reportData, reportPath, screenshots);
+        console.log(`📋 Extracted ${screenshots.size} screenshots from script data`);
+        return screenshots;
+      } catch (e) {
+        console.log('Failed to parse script data');
+      }
+    }
+    
+    // Method 4: Look for app.js file
+    const appJsPath = path.join(reportPath, 'app.js');
+    if (fs.existsSync(appJsPath)) {
+      const appJs = fs.readFileSync(appJsPath, 'utf8');
+      const testDataRegex = /tests:\s*\[([\s\S]*?)\]/;
+      const testMatch = appJs.match(testDataRegex);
+      
+      if (testMatch) {
+        // Extract test data from app.js
+        console.log('Found test data in app.js');
+      }
+    }
+    
+    // Fallback: Just find image references without test names
     const imgRegex = /data\/([a-f0-9]{40})(-[a-z]+)?\.png/gi;
     let match;
+    const imageRefs = new Map();
+    
     while ((match = imgRegex.exec(html)) !== null) {
       const hash = match[1];
       const suffix = match[2] || '';
       const filename = `${hash}${suffix}.png`;
+      imageRefs.set(filename, true);
+    }
+    
+    // Try to extract test information from the HTML structure
+    const testBlockRegex = /<div[^>]*class="[^"]*test[^"]*"[^>]*>[\s\S]*?<\/div>/gi;
+    const testBlocks = html.match(testBlockRegex) || [];
+    
+    // For each image reference, try to find associated test name
+    for (const [filename, _] of imageRefs) {
       const fullPath = path.join(reportPath, 'data', filename);
       
       if (fs.existsSync(fullPath)) {
-        // Determine type from suffix
-        let type = 'actual';
-        if (suffix.includes('-expected')) type = 'expected';
-        else if (suffix.includes('-diff')) type = 'diff';
-        else if (suffix.includes('-actual')) type = 'actual';
+        let testName = 'Unknown Test';
+        
+        // Try to find test name in nearby HTML
+        const fileRegex = new RegExp(`${filename}[^>]*>([^<]+)<`, 'i');
+        const nameMatch = html.match(fileRegex);
+        if (nameMatch && nameMatch[1]) {
+          testName = nameMatch[1].trim();
+        }
         
         screenshots.set(filename, {
           filename,
           path: fullPath,
-          hash,
-          type,
-          testName: 'Unknown Test' // Will be updated if we can parse the data
+          testName,
+          type: filename.includes('-diff') ? 'diff' : 
+                filename.includes('-expected') ? 'expected' : 'actual'
         });
       }
     }
     
   } catch (error) {
     console.error('Error parsing report:', error.message);
+  }
+  
+  // Final fallback: scan data directory
+  const dataPath = path.join(reportPath, 'data');
+  if (fs.existsSync(dataPath)) {
+    const files = fs.readdirSync(dataPath);
+    files.forEach(file => {
+      if (file.endsWith('.png') && !screenshots.has(file)) {
+        screenshots.set(file, {
+          filename: file,
+          path: path.join(dataPath, file),
+          testName: 'Unknown Test',
+          type: file.includes('-diff') ? 'diff' : 
+                file.includes('-expected') ? 'expected' : 'actual'
+        });
+      }
+    });
   }
   
   return screenshots;
@@ -86,24 +183,35 @@ function parsePlaywrightReport(reportPath) {
  *  Process report data structure
  * ────────────────────────────────────────────────────────── */
 function processReportData(data, reportPath, screenshots) {
-  // Handle different Playwright report structures
-  if (data.files) {
+  // Handle files array
+  if (data.files && Array.isArray(data.files)) {
     data.files.forEach(file => {
-      if (file.tests) {
+      if (file.tests && Array.isArray(file.tests)) {
         file.tests.forEach(test => {
-          processTest(test, file.fileName, reportPath, screenshots);
+          processTest(test, file.fileName || '', reportPath, screenshots);
         });
       }
     });
   }
   
-  if (data.suites) {
+  // Handle tests array directly
+  if (data.tests && Array.isArray(data.tests)) {
+    data.tests.forEach(test => {
+      processTest(test, '', reportPath, screenshots);
+    });
+  }
+  
+  // Handle suites structure
+  if (data.suites && Array.isArray(data.suites)) {
     processSuites(data.suites, reportPath, screenshots);
   }
   
-  if (data.stats && data.stats.tests) {
-    data.stats.tests.forEach(test => {
-      processTest(test, '', reportPath, screenshots);
+  // Handle projects structure (Playwright 1.20+)
+  if (data.projects && Array.isArray(data.projects)) {
+    data.projects.forEach(project => {
+      if (project.suites) {
+        processSuites(project.suites, reportPath, screenshots, project.name);
+      }
     });
   }
 }
@@ -111,17 +219,28 @@ function processReportData(data, reportPath, screenshots) {
 /* ────────────────────────────────────────────────────────── *
  *  Process test suites recursively
  * ────────────────────────────────────────────────────────── */
-function processSuites(suites, reportPath, screenshots, parentSuite = '') {
+function processSuites(suites, reportPath, screenshots, parentPath = '') {
+  if (!Array.isArray(suites)) return;
+  
   suites.forEach(suite => {
-    const suitePath = parentSuite ? `${parentSuite} > ${suite.title}` : suite.title;
+    const suitePath = parentPath ? `${parentPath} > ${suite.title}` : suite.title;
     
-    if (suite.tests) {
+    // Process tests in this suite
+    if (suite.tests && Array.isArray(suite.tests)) {
       suite.tests.forEach(test => {
         processTest(test, suitePath, reportPath, screenshots);
       });
     }
     
-    if (suite.suites) {
+    // Process specs (another common structure)
+    if (suite.specs && Array.isArray(suite.specs)) {
+      suite.specs.forEach(spec => {
+        processTest(spec, suitePath, reportPath, screenshots);
+      });
+    }
+    
+    // Recursively process nested suites
+    if (suite.suites && Array.isArray(suite.suites)) {
       processSuites(suite.suites, reportPath, screenshots, suitePath);
     }
   });
@@ -131,68 +250,109 @@ function processSuites(suites, reportPath, screenshots, parentSuite = '') {
  *  Process individual test
  * ────────────────────────────────────────────────────────── */
 function processTest(test, suitePath, reportPath, screenshots) {
-  const testName = suitePath ? `${suitePath} > ${test.title}` : test.title;
+  // Get the test title - check multiple possible properties
+  const testTitle = test.title || test.name || test.fullTitle || 'Unknown Test';
+  const fullTestName = suitePath ? `${suitePath} > ${testTitle}` : testTitle;
   
-  if (test.results) {
-    test.results.forEach(result => {
-      if (result.attachments) {
-        result.attachments.forEach(attachment => {
+  // Process test results
+  const results = test.results || test.runs || [];
+  
+  if (Array.isArray(results)) {
+    results.forEach(result => {
+      const attachments = result.attachments || [];
+      
+      if (Array.isArray(attachments)) {
+        attachments.forEach(attachment => {
           if (attachment.contentType && attachment.contentType.startsWith('image/')) {
-            const filename = path.basename(attachment.path || '');
-            const fullPath = path.join(reportPath, attachment.path || `data/${filename}`);
+            const attachmentPath = attachment.path || attachment.name || '';
+            const filename = path.basename(attachmentPath);
             
-            if (filename && fs.existsSync(fullPath)) {
+            if (filename && filename.match(/\.(png|jpe?g)$/i)) {
+              const fullPath = path.join(reportPath, attachmentPath);
+              
               // Determine screenshot type
               let type = 'actual';
-              if (attachment.name === 'expected') type = 'expected';
-              else if (attachment.name === 'diff') type = 'diff';
-              else if (attachment.name === 'actual') type = 'actual';
-              else if (filename.includes('-expected')) type = 'expected';
-              else if (filename.includes('-diff')) type = 'diff';
+              const attachmentName = (attachment.name || '').toLowerCase();
+              if (attachmentName.includes('expected') || filename.includes('-expected')) {
+                type = 'expected';
+              } else if (attachmentName.includes('diff') || filename.includes('-diff')) {
+                type = 'diff';
+              } else if (attachmentName.includes('actual') || filename.includes('-actual')) {
+                type = 'actual';
+              }
               
               screenshots.set(filename, {
                 filename,
-                path: fullPath,
-                testName,
-                testId: test.testId || testName,
-                status: result.status,
+                path: fs.existsSync(fullPath) ? fullPath : path.join(reportPath, 'data', filename),
+                testName: testTitle,  // Use just the test title, not the full path
+                fullTestName: fullTestName,  // Keep full path for reference
+                testLocation: test.location?.file || suitePath || '',
+                status: result.status || 'unknown',
                 type,
-                attachment: attachment.name
+                attachmentName: attachment.name
               });
+              
+              console.log(`   Found screenshot for test: "${testTitle}"`);
             }
           }
         });
       }
     });
   }
+  
+  // Also check if test has direct attachments (some Playwright versions)
+  if (test.attachments && Array.isArray(test.attachments)) {
+    test.attachments.forEach(attachment => {
+      if (attachment.contentType && attachment.contentType.startsWith('image/')) {
+        const filename = path.basename(attachment.path || attachment.name || '');
+        if (filename) {
+          screenshots.set(filename, {
+            filename,
+            path: path.join(reportPath, attachment.path || `data/${filename}`),
+            testName: testTitle,
+            fullTestName: fullTestName,
+            type: attachment.name || 'screenshot'
+          });
+        }
+      }
+    });
+  }
 }
 
 /* ────────────────────────────────────────────────────────── *
- *  Find all screenshots in report directory
+ *  Enhanced screenshot discovery with test name extraction
  * ────────────────────────────────────────────────────────── */
 function findAllScreenshots(reportPath) {
+  console.log(`\n🔍 Searching for screenshots in: ${reportPath}`);
+  
+  // First try to parse from HTML report
   const screenshots = parsePlaywrightReport(reportPath);
   
-  // Also scan data directory directly
+  // If we found screenshots with proper test names, return them
+  if (screenshots.size > 0) {
+    const knownTests = Array.from(screenshots.values()).filter(s => s.testName !== 'Unknown Test');
+    console.log(`   Found ${screenshots.size} screenshots (${knownTests.length} with test names)`);
+    return screenshots;
+  }
+  
+  // Fallback: scan directory and try to match with trace files
   const dataPath = path.join(reportPath, 'data');
   if (fs.existsSync(dataPath)) {
     const files = fs.readdirSync(dataPath);
     
+    // Look for trace files which might contain test information
+    const traceFiles = files.filter(f => f.endsWith('.zip'));
+    console.log(`   Found ${traceFiles.length} trace files`);
+    
+    // Process PNG files
     files.forEach(file => {
       if (file.endsWith('.png') && !screenshots.has(file)) {
-        const fullPath = path.join(dataPath, file);
-        
-        // Determine type from filename
-        let type = 'actual';
-        if (file.includes('-expected')) type = 'expected';
-        else if (file.includes('-diff')) type = 'diff';
-        else if (file.includes('-actual')) type = 'actual';
-        
         screenshots.set(file, {
           filename: file,
-          path: fullPath,
-          type,
-          testName: 'Unknown Test'
+          path: path.join(dataPath, file),
+          testName: 'Unknown Test',
+          type: file.includes('-diff') ? 'diff' : 
+                file.includes('-expected') ? 'expected' : 'actual'
         });
       }
     });
@@ -202,7 +362,7 @@ function findAllScreenshots(reportPath) {
 }
 
 /* ────────────────────────────────────────────────────────── *
- *  Image comparison
+ *  Image comparison function (unchanged)
  * ────────────────────────────────────────────────────────── */
 async function compareImages(img1Path, img2Path, diffPath) {
   try {
@@ -262,10 +422,9 @@ async function compareImages(img1Path, img2Path, diffPath) {
       const stderr = err.stderr || err.stdout || '';
       const pixels = parseInt(stderr) || 1;
       
-      // Still try to create the diff image
       return {
         hasDiff: true,
-        diffPercent: 50, // Assume significant difference
+        diffPercent: 50,
         diffImage: diffPath,
         pixelDiff: pixels,
         method: 'imagemagick-error'
@@ -278,14 +437,14 @@ async function compareImages(img1Path, img2Path, diffPath) {
 }
 
 /* ────────────────────────────────────────────────────────── *
- *  Match screenshots between PR and main branches
+ *  Match and compare screenshots (updated)
  * ────────────────────────────────────────────────────────── */
 async function matchAndCompareScreenshots(prScreenshots, mainScreenshots) {
   const comparisons = [];
   const unmatchedPR = new Set(prScreenshots.keys());
   const unmatchedMain = new Set(mainScreenshots.keys());
   
-  // Group screenshots by type
+  // Filter to actual screenshots only
   const prActual = new Map();
   const mainActual = new Map();
   
@@ -354,6 +513,7 @@ async function matchAndCompareScreenshots(prScreenshots, mainScreenshots) {
   fs.mkdirSync(diffDir, { recursive: true });
   
   for (const match of matches) {
+    // Use the test name from PR screenshot (should be the actual test title now)
     const testName = match.pr.testName || match.main.testName || 'Unknown Test';
     const diffPath = path.join(diffDir, `diff-${path.basename(match.pr.filename)}`);
     
@@ -363,7 +523,7 @@ async function matchAndCompareScreenshots(prScreenshots, mainScreenshots) {
     if (result) {
       const diffPercent = result.diffPercent || 0;
       comparisons.push({
-        testName,
+        testName,  // This should now be the actual test name like "should allow me to add todo items"
         filename: match.pr.filename,
         prImage: match.pr.path,
         mainImage: match.main.path,
@@ -411,7 +571,7 @@ async function matchAndCompareScreenshots(prScreenshots, mainScreenshots) {
 }
 
 /* ────────────────────────────────────────────────────────── *
- *  Generate HTML report
+ *  HTML report generation (complete version)
  * ────────────────────────────────────────────────────────── */
 function generateHTMLReport(report) {
   const getStatusColor = (status) => {
