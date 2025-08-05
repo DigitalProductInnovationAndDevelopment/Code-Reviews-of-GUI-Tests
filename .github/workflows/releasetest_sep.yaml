@@ -22,7 +22,7 @@ jobs:
 
       # Run Playwright with PR-vs-Main comparison
       - name: GUI Test – Playwright only
-        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1.2.2
+        uses: DigitalProductInnovationAndDevelopment/Code-Reviews-of-GUI-Tests@v1
         with:
           github-token:            ${{ secrets.GITHUB_TOKEN }}
           mode:                    test-only
