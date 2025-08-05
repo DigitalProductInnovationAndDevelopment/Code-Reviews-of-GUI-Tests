@@ -1358,29 +1358,24 @@ function debugScreenshots() {
       .filter(f => f.endsWith('.png'));
     console.log(`  Found ${files.length} PNG files`);
     console.log(`  Sample:`, files.slice(0, 3));
-  } else {
+    } else {
     console.log('  No data directory found');
   }
-  
-  console.log('\n'); 3));
-  } else {
-    console.log('  No data directory found');
-  }
-  
+
   // Try to inspect the HTML report structure
   console.log('\n📄 Inspecting HTML report structure:');
   const indexPath = path.join(prReportPath, 'index.html');
   if (fs.existsSync(indexPath)) {
     const html = fs.readFileSync(indexPath, 'utf8');
     console.log(`  HTML file size: ${(html.length / 1024).toFixed(1)} KB`);
-    
+
     // Check for various report data patterns
     console.log('  Checking for report data patterns:');
     console.log(`    - window.playwrightReport: ${html.includes('window.playwrightReport') ? '✓' : '✗'}`);
     console.log(`    - window.playwrightReportBase64: ${html.includes('window.playwrightReportBase64') ? '✓' : '✗'}`);
     console.log(`    - __playwright_report__: ${html.includes('__playwright_report__') ? '✓' : '✗'}`);
     console.log(`    - data-testid="test-case-title": ${html.includes('data-testid="test-case-title"') ? '✓' : '✗'}`);
-    
+
     // Try to find test titles in HTML
     const testTitleRegex = /data-testid="test-case-title"[^>]*>([^<]+)</gi;
     const titles = [];
@@ -1388,24 +1383,18 @@ function debugScreenshots() {
     while ((titleMatch = testTitleRegex.exec(html)) !== null && titles.length < 5) {
       titles.push(titleMatch[1].trim());
     }
-    
+
     if (titles.length > 0) {
       console.log(`  Found test titles in HTML:`);
       titles.forEach(title => console.log(`    - "${title}"`));
     }
-    
+
     // Save a snippet of the HTML for manual inspection
     const snippet = html.substring(0, 2000);
     fs.writeFileSync(path.join(ART, 'html-snippet.txt'), snippet);
     console.log(`  Saved HTML snippet to artifacts/html-snippet.txt for inspection`);
   }
-  
-  console.log('\n');
-} 3));
-  } else {
-    console.log('  No data directory found');
-  }
-  
+
   console.log('\n');
 }
 
